@@ -1,0 +1,8 @@
+# Vercel solo despliega el frontend (Vite). El backend corre en el VPS, no aca.
+backend/
+research/
+deploy/
+DEPLOY.md
+*.html
+ARCA*
+*_files/
