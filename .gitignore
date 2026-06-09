@@ -10,3 +10,10 @@ build/
 .idea/
 .claude/
 *.tsbuildinfo
+
+# Páginas guardadas / dumps de research y debug (pueden contener datos reales) — NO al repo
+ARCA _ Inicio.html
+categorias.html
+serviciosarca.html
+serviciosarca2.html
+*_files/

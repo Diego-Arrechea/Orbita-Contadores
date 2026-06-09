@@ -1,0 +1,3 @@
+cryptography>=42.0      # firma CMS/PKCS#7 del TRA (lo único realmente "AFIP-específico")
+requests>=2.31          # POST SOAP crudo al WSAA (para ver el wire)
+zeep>=4.2               # cliente SOAP para los WS de negocio (WSFEv1, padrón)

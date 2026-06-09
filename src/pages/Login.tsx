@@ -1,11 +1,36 @@
-import { useNavigate } from 'react-router-dom';
-import { Orbit, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
+import type { FormEvent } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Orbit, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { login, mensajeDeError } from '@/services/authService';
+import { iniciarSesion } from '@/lib/cuenta';
 
 export function Login() {
   const navigate = useNavigate();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(false);
+
+  async function entrar(e: FormEvent) {
+    e.preventDefault();
+    if (cargando) return;
+    setError(null);
+    setCargando(true);
+    try {
+      const auth = await login(email.trim(), password);
+      iniciarSesion(auth);
+      navigate('/');
+    } catch (err) {
+      setError(mensajeDeError(err));
+    } finally {
+      setCargando(false);
+    }
+  }
+
   return (
     <div className="min-h-full flex items-center justify-center p-6 bg-gradient-to-br from-background via-accent/40 to-background">
       <div className="w-full max-w-md">
@@ -25,20 +50,19 @@ export function Login() {
             Monitoreá tus clientes monotributistas en un solo lugar.
           </p>
 
-          <form
-            className="space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              navigate('/');
-            }}
-          >
+          <form className="space-y-4" onSubmit={entrar}>
             <div className="space-y-1.5">
               <Label htmlFor="email">Correo electrónico</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="felipe@estudiodurso.com.ar"
-                defaultValue="felipe@estudiodurso.com.ar"
+                autoComplete="email"
+                placeholder="tucorreo@estudio.com.ar"
+                value={email}
+                onChange={e => {
+                  setEmail(e.target.value);
+                  setError(null);
+                }}
               />
             </div>
             <div className="space-y-1.5">
@@ -48,25 +72,55 @@ export function Login() {
                   ¿Olvidaste tu contraseña?
                 </a>
               </div>
-              <Input id="password" type="password" defaultValue="••••••••" />
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={e => {
+                  setPassword(e.target.value);
+                  setError(null);
+                }}
+              />
             </div>
 
-            <Button type="submit" className="w-full" size="lg">
-              Entrar al dashboard
+            {error && (
+              <div className="rounded-lg bg-danger/10 border border-danger/25 px-3.5 py-2.5 text-sm flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-danger shrink-0 mt-0.5" />
+                <span className="text-foreground/80">{error}</span>
+              </div>
+            )}
+
+            <Button type="submit" className="w-full" size="lg" disabled={cargando}>
+              {cargando ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Entrando…
+                </>
+              ) : (
+                'Entrar al dashboard'
+              )}
             </Button>
-
-            <div className="flex items-start gap-2 mt-6 text-xs text-muted-foreground">
-              <ShieldCheck className="h-4 w-4 mt-0.5 shrink-0" />
-              <span>
-                Las claves fiscales de tus clientes viajan cifradas y nunca se muestran en ninguna
-                pantalla del sistema.
-              </span>
-            </div>
           </form>
+
+          <div className="mt-6 pt-5 border-t border-border/60 text-center text-sm text-muted-foreground">
+            ¿No tenés cuenta?{' '}
+            <Link to="/registro" className="text-primary font-medium hover:underline">
+              Creá tu estudio
+            </Link>
+          </div>
+
+          <div className="flex items-start gap-2 mt-6 text-xs text-muted-foreground">
+            <ShieldCheck className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>
+              Las claves fiscales de tus clientes viajan cifradas y nunca se muestran en ninguna
+              pantalla del sistema.
+            </span>
+          </div>
         </div>
 
         <div className="text-center text-xs text-muted-foreground mt-6">
-          Versión prototipo · Datos de ejemplo · No conectado a ARCA todavía
+          Versión prototipo · Órbita Contador
         </div>
       </div>
     </div>

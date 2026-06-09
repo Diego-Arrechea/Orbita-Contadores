@@ -1,15 +1,20 @@
-import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, UserPlus, Upload, Settings, Orbit, LogOut } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { LayoutDashboard, Bell, Landmark, UserPlus, Settings, Orbit, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { cuentaActual, logoutCuenta } from '@/lib/cuenta';
+import { resetChatSoporte } from '@/components/shared/SoporteChat';
 
 const nav = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/alertas', label: 'Alertas', icon: Bell },
+  { to: '/conciliacion', label: 'Conciliación', icon: Landmark },
   { to: '/clientes/nuevo', label: 'Nuevo cliente', icon: UserPlus },
-  { to: '/clientes/importar', label: 'Importar cartera', icon: Upload },
   { to: '/configuracion', label: 'Configuración', icon: Settings },
 ];
 
 export function Sidebar() {
+  const navigate = useNavigate();
+  const cuenta = cuentaActual();
   return (
     <aside
       className="hidden lg:flex w-72 shrink-0 flex-col px-4 py-7 text-[hsl(var(--sidebar-foreground))]"
@@ -55,13 +60,20 @@ export function Sidebar() {
       <div className="border-t border-[hsl(var(--sidebar-border))] pt-4 mt-4">
         <div className="rounded-xl bg-[hsl(var(--sidebar-hover))] p-3 flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-primary text-sm font-semibold">
-            FD
+            {cuenta?.iniciales ?? '—'}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-white truncate">Felipe Durso</div>
-            <div className="text-xs text-[hsl(var(--sidebar-muted))] truncate">Estudio Durso</div>
+            <div className="text-sm font-medium text-white truncate">{cuenta?.nombre ?? 'Invitado'}</div>
+            <div className="text-xs text-[hsl(var(--sidebar-muted))] truncate">
+              {cuenta?.estudio ?? ''}
+            </div>
           </div>
           <button
+            onClick={() => {
+              resetChatSoporte(); // limpia la sesión de Crisp: la próxima cuenta no hereda el chat
+              logoutCuenta();
+              navigate('/login');
+            }}
             className="text-[hsl(var(--sidebar-muted))] hover:text-white transition-colors p-1.5 rounded-md hover:bg-[hsl(var(--sidebar-hover))]"
             title="Salir"
           >

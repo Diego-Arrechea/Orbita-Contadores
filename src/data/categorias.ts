@@ -1,24 +1,32 @@
 import type { Categoria } from '@/types';
 
-// Valores vigentes desde febrero/mayo 2026 (Monotributo)
-// Fuente: indicadores.ar/monotributo (datos públicos ARCA)
+// Escala oficial de Monotributo vigente (ARCA). Verificado 2026-06 contra la tabla de categorías de
+// ARCA (arca.gob.ar/monotributo/categorias.asp) y el facturómetro del propio contribuyente.
+//   topeAnual               = "Ingresos brutos" (límite anual de la categoría).
+//   cuotaServicios/Comercio = "Total" de cada actividad (impuesto integrado + aportes SIPA + obra
+//                             social); es el FALLBACK de la cuota mensual cuando no tenemos el
+//                             importe real del cliente (cliente.proxVencImporte lo pisa).
+//   alquilerMaxAnual        = "Alquileres devengados anualmente".
+//   topePrecioUnitario      = "Precio unitario máximo para venta de cosas muebles".
+// OJO: ARCA reajusta esta escala cada semestre → mantener actualizado (idealmente refrescándola
+// automáticamente desde la tabla pública de categorías; ver plan de "refresher global").
 export const CATEGORIAS: Categoria[] = [
-  { codigo: 'A', topeAnual: 7_813_063,  cuotaServicios: 37_919,  cuotaComercio: 37_919,  superficieMax: 30,  energiaMaxKwh: 3_300,   alquilerMaxAnual: 1_563_000  },
-  { codigo: 'B', topeAnual: 11_447_046, cuotaServicios: 42_701,  cuotaComercio: 42_701,  superficieMax: 45,  energiaMaxKwh: 5_000,   alquilerMaxAnual: 1_563_000  },
-  { codigo: 'C', topeAnual: 16_050_091, cuotaServicios: 49_185,  cuotaComercio: 48_500,  superficieMax: 60,  energiaMaxKwh: 6_700,   alquilerMaxAnual: 3_128_000  },
-  { codigo: 'D', topeAnual: 19_926_340, cuotaServicios: 58_463,  cuotaComercio: 57_400,  superficieMax: 85,  energiaMaxKwh: 10_000,  alquilerMaxAnual: 3_128_000  },
-  { codigo: 'E', topeAnual: 23_439_944, cuotaServicios: 85_133,  cuotaComercio: 75_000,  superficieMax: 110, energiaMaxKwh: 13_000,  alquilerMaxAnual: 3_906_000  },
-  { codigo: 'F', topeAnual: 29_374_695, cuotaServicios: 103_308, cuotaComercio: 90_000,  superficieMax: 150, energiaMaxKwh: 16_500,  alquilerMaxAnual: 3_906_000  },
-  { codigo: 'G', topeAnual: 35_128_502, cuotaServicios: 130_361, cuotaComercio: 110_000, superficieMax: 200, energiaMaxKwh: 20_000,  alquilerMaxAnual: 4_687_000  },
-  { codigo: 'H', topeAnual: 52_649_764, cuotaServicios: 216_247, cuotaComercio: 180_000, superficieMax: 200, energiaMaxKwh: 20_000,  alquilerMaxAnual: 5_469_000  },
-  { codigo: 'I', topeAnual: 58_565_148, cuotaServicios: 294_340, cuotaComercio: 250_000, superficieMax: 200, energiaMaxKwh: 20_000,  alquilerMaxAnual: 5_469_000, topePrecioUnitario: 466_361 },
-  { codigo: 'J', topeAnual: 67_520_420, cuotaServicios: 340_472, cuotaComercio: 300_000, superficieMax: 200, energiaMaxKwh: 20_000,  alquilerMaxAnual: 5_469_000, topePrecioUnitario: 466_361 },
-  { codigo: 'K', topeAnual: 75_046_018, cuotaServicios: 383_608, cuotaComercio: 380_000, superficieMax: 200, energiaMaxKwh: 20_000,  alquilerMaxAnual: 7_170_689, topePrecioUnitario: 466_361 },
+  { codigo: 'A', topeAnual: 10_277_988,  cuotaServicios: 42_387,    cuotaComercio: 42_387,   superficieMax: 30,  energiaMaxKwh: 3_330,   alquilerMaxAnual: 2_390_230 },
+  { codigo: 'B', topeAnual: 15_058_448,  cuotaServicios: 48_251,    cuotaComercio: 48_251,   superficieMax: 45,  energiaMaxKwh: 5_000,   alquilerMaxAnual: 2_390_230 },
+  { codigo: 'C', topeAnual: 21_113_697,  cuotaServicios: 56_502,    cuotaComercio: 55_227,   superficieMax: 60,  energiaMaxKwh: 6_700,   alquilerMaxAnual: 3_266_647 },
+  { codigo: 'D', topeAnual: 26_212_853,  cuotaServicios: 72_414,    cuotaComercio: 70_661,   superficieMax: 85,  energiaMaxKwh: 10_000,  alquilerMaxAnual: 3_266_647 },
+  { codigo: 'E', topeAnual: 30_833_964,  cuotaServicios: 102_538,   cuotaComercio: 92_658,   superficieMax: 110, energiaMaxKwh: 13_000,  alquilerMaxAnual: 4_143_065 },
+  { codigo: 'F', topeAnual: 38_642_048,  cuotaServicios: 129_045,   cuotaComercio: 111_198,  superficieMax: 150, energiaMaxKwh: 16_500,  alquilerMaxAnual: 4_143_065 },
+  { codigo: 'G', topeAnual: 46_211_109,  cuotaServicios: 197_108,   cuotaComercio: 135_918,  superficieMax: 200, energiaMaxKwh: 20_000,  alquilerMaxAnual: 4_939_808 },
+  { codigo: 'H', topeAnual: 70_113_407,  cuotaServicios: 447_347,   cuotaComercio: 272_063,  superficieMax: 200, energiaMaxKwh: 20_000,  alquilerMaxAnual: 7_170_689 },
+  { codigo: 'I', topeAnual: 78_479_212,  cuotaServicios: 824_802,   cuotaComercio: 406_512,  superficieMax: 200, energiaMaxKwh: 20_000,  alquilerMaxAnual: 7_170_689, topePrecioUnitario: 613_492 },
+  { codigo: 'J', topeAnual: 89_872_640,  cuotaServicios: 999_008,   cuotaComercio: 497_059,  superficieMax: 200, energiaMaxKwh: 20_000,  alquilerMaxAnual: 7_170_689, topePrecioUnitario: 613_492 },
+  { codigo: 'K', topeAnual: 108_357_084, cuotaServicios: 1_381_688, cuotaComercio: 600_880,  superficieMax: 200, energiaMaxKwh: 20_000,  alquilerMaxAnual: 7_170_689, topePrecioUnitario: 613_492 },
 ];
 
-export const TOPE_CATEGORIA_K = 75_046_018;
+export const TOPE_CATEGORIA_K = 108_357_084;
 
-export function getCategoria(codigo: string): Categoria {
+export function getCategoria(codigo: string | null | undefined): Categoria {
   return CATEGORIAS.find(c => c.codigo === codigo) || CATEGORIAS[0];
 }
 

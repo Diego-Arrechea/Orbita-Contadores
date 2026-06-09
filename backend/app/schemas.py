@@ -1,0 +1,346 @@
+"""Schemas Pydantic. ComprobanteOut replica el tipo `Comprobante` de src/types/index.ts."""
+from __future__ import annotations
+
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+# Mapa CbteTipo (AFIP, FEParamGetTiposCbte) -> TipoComprobante (Órbita).
+# Los nombres de Notas de Crédito CONTIENEN "Nota Crédito" a propósito: así el cálculo las
+# detecta para RESTARLAS (derivarHistorial), sin importar la clase (A/B/C/M/FCE/tique).
+TIPO_COMPROBANTE: dict[int, str] = {
+    # Clase A
+    1: "Factura A", 2: "Nota Débito A", 3: "Nota Crédito A", 4: "Recibo A",
+    201: "Factura FCE A", 202: "Nota Débito FCE A", 203: "Nota Crédito FCE A",
+    # Clase B
+    6: "Factura B", 7: "Nota Débito B", 8: "Nota Crédito B", 9: "Recibo B",
+    206: "Factura FCE B", 207: "Nota Débito FCE B", 208: "Nota Crédito FCE B",
+    # Clase C (monotributo)
+    11: "Factura C", 12: "Nota Débito C", 13: "Nota Crédito C", 15: "Recibo C",
+    211: "Factura FCE C", 212: "Nota Débito FCE C", 213: "Nota Crédito FCE C",
+    # Clase M
+    51: "Factura M", 52: "Nota Débito M", 53: "Nota Crédito M", 54: "Recibo M",
+    # Exportación
+    19: "Factura E", 20: "Nota Débito E", 21: "Nota Crédito E",
+    # Controlador fiscal (tiques)
+    81: "Tique Factura A", 82: "Tique Factura B", 83: "Tique",
+    111: "Tique Factura C",
+    112: "Tique Nota Crédito A", 113: "Tique Nota Crédito B", 114: "Tique Nota Crédito C",
+    115: "Tique Nota Débito A", 116: "Tique Nota Débito B", 117: "Tique Nota Débito C",
+}
+
+
+def nombre_tipo(cbte_tipo: int) -> str:
+    return TIPO_COMPROBANTE.get(cbte_tipo, f"Tipo {cbte_tipo}")
+
+
+# Comprobantes clase C (+ FCE C + tiques C): los ÚNICOS que puede emitir un monotributista.
+# Si un contribuyente EMITE algún comprobante fuera de este set (clase A/B/M/E), es RI.
+TIPOS_MONOTRIBUTO: set[int] = {11, 12, 13, 15, 211, 212, 213, 111, 114, 117}
+
+
+# cbte_tipos de Notas de Crédito (todas las clases + FCE + tiques): se RESTAN al netear el mes,
+# igual que hace derivarHistorial en el front (que usa el nombre 'Nota Crédito' para detectarlas).
+TIPOS_NOTA_CREDITO: set[int] = {3, 8, 13, 21, 53, 112, 113, 114, 203, 208, 213}
+
+
+def clasificar_regimen(cbte_tipos_emitidos: set[int]) -> str | None:
+    """Deduce el régimen por lo que el contribuyente EMITE: sólo clase C → 'monotributo'; alguna
+    otra clase → 'responsable_inscripto'. Sin comprobantes emitidos → None (no hay evidencia)."""
+    if not cbte_tipos_emitidos:
+        return None
+    return "monotributo" if cbte_tipos_emitidos <= TIPOS_MONOTRIBUTO else "responsable_inscripto"
+
+
+def resolver_regimen(almacenado: str | None, inferido: str | None) -> str | None:
+    """Combina el régimen AUTORITATIVO del padrón ARCA (`almacenado`, fuente oficial) con el
+    `inferido` de los comprobantes emitidos. Precedencia:
+      1) padrón dice monotributo            → 'monotributo'
+      2) evidencia dura de RI (emite A/B/M/E) → 'responsable_inscripto'
+      3) padrón dice que NO es monotributista → 'no_monotributo'
+      4) inferencia por comprobantes (clase C → monotributo) o None si no hay evidencia.
+    Nunca inventa 'monotributo' sin evidencia: None = sin determinar (el front no fabrica categoría).
+    """
+    if almacenado == "monotributo":
+        return "monotributo"
+    if inferido == "responsable_inscripto":
+        return "responsable_inscripto"
+    if almacenado == "no_monotributo":
+        return "no_monotributo"
+    return inferido
+
+
+class ComprobanteOut(BaseModel):
+    """Shape EXACTO del `Comprobante` que consume el frontend (camelCase a propósito)."""
+
+    id: str
+    direccion: str = "emitido"
+    tipo: str
+    fechaEmision: str  # noqa: N815 — matchea el front
+    puntoVenta: int  # noqa: N815
+    numero: str
+    monto: float  # SIEMPRE en pesos (canónico para sumas/tope)
+    moneda: str = "ARS"
+    cotizacion: float = 1.0
+    montoOrigen: float  # noqa: N815 — monto en la moneda original (para mostrar en la lista)
+    contraparteNombre: str = "—"  # noqa: N815
+    contraparteCuit: str  # noqa: N815
+
+
+class HistorialMesOut(BaseModel):
+    """Un mes agregado del historial del cliente (replica `HistorialMes` del front). El dashboard
+    los consume para calcular % tope, ratio de gastos y proyección sin tener que bajar todos los
+    comprobantes."""
+
+    mes: str  # aaaa-mm
+    emitidasBrutas: float  # noqa: N815
+    notasCredito: float  # noqa: N815
+    emitidasNetas: float  # noqa: N815
+    recibidas: float
+    recibidasComputables: float  # noqa: N815
+    ingresosNoFacturados: float = 0  # noqa: N815 — siempre 0 desde el backend; lo pisa el front si aplica
+
+
+class ClienteOut(BaseModel):
+    cuit: str
+    nombre: str
+    regimen: str | None = None  # monotributo | responsable_inscripto | no_monotributo | None
+    categoria: str | None = None
+    actividad: str | None = None
+    prox_recategorizacion: str | None = None
+    cuota_estado: str | None = None  # al-dia | con-deuda
+    cuota_deuda: float | None = None
+    cuota_saldo_favor: float | None = None
+    prox_venc_fecha: str | None = None
+    prox_venc_importe: float | None = None
+    debito_automatico: bool | None = None
+    facturacion_12m: float | None = None  # ingresos brutos 12m oficiales (facturómetro ARCA)
+    tope_categoria: float | None = None  # tope oficial de la categoría actual (facturómetro ARCA)
+    facturometro_actualizado: str | None = None  # fecha de corte que informa ARCA (dd/mm/aaaa)
+    ultima_extraccion: str | None = None
+    resultado_ultima_extraccion: str | None = None
+    motivo_ultima_extraccion: str | None = None
+    # Editables por el contador (override manual guardado en la cuenta; ver edicion_json):
+    notas: str | None = None
+    fecha_inicio: str | None = None
+    # Historial mensual agregado (últimos 12 meses calendario, cronológico). Reemplaza el bajar todos
+    # los comprobantes en el dashboard: alcanza para % tope, ratio de gastos y proyección.
+    historial_mensual: list[HistorialMesOut] = []
+    tiene_comprobantes: bool = False  # para el semáforo 'sin datos' sin necesidad de bajarlos
+
+
+class ConfiguracionIn(BaseModel):
+    """Preferencias del contador. Todos opcionales: el PUT mergea (parcial) sobre lo ya guardado y el
+    front completa con sus defaults. `ventanas` lleva la forma que define el front
+    (VentanaRecategorizacion: semestre/fechaLimite/efectoDesde)."""
+
+    inflacionMensualProyeccion: float | None = None  # noqa: N815
+    umbralAmarilloPorcentaje: float | None = None  # noqa: N815
+    umbralAmarilloDias: int | None = None  # noqa: N815
+    umbralRojoDias: int | None = None  # noqa: N815
+    umbralRatioGastosAmarillo: float | None = None  # noqa: N815
+    # Fracción de la cuota del mes a partir de la cual una deuda es URGENTE (0.10 = 10%). Debajo de
+    # ese %, la deuda se reporta como aviso (no urgente): evita que un resto de $200 grite "urgente".
+    umbralDeudaCuotaUrgente: float | None = None  # noqa: N815
+    ventanas: list[dict] | None = None
+
+
+class ConfiguracionOut(ConfiguracionIn):
+    """Misma forma; el GET devuelve todo None si el contador nunca guardó configuración."""
+
+
+class EdicionClienteIn(BaseModel):
+    """Ediciones manuales del contador sobre un cliente (todas opcionales; el PUT mergea parcial)."""
+
+    nombre: str | None = None
+    categoria: str | None = None
+    tipoActividad: str | None = None  # noqa: N815 — comercio | servicios
+    fechaInicio: str | None = None  # noqa: N815 — aaaa-mm-dd
+    estadoCuotaMesActual: str | None = None  # noqa: N815 — al-dia | con-deuda
+    notas: str | None = None
+
+
+class ExtraccionOut(BaseModel):
+    """Una sincronización con ARCA (replica el tipo `Extraccion` del front)."""
+
+    id: str
+    fecha: str  # ISO con hora
+    resultado: str  # exitosa | fallida
+    motivo: str | None = None
+    duracionMs: int | None = None  # noqa: N815
+    comprobantes: int | None = None  # cuántos comprobantes trajo esta corrida
+
+
+class SincronizarOut(BaseModel):
+    sincronizados: int
+
+
+class OnboardingIn(BaseModel):
+    """Credenciales del contador para la run primaria (la clave NO se persiste)."""
+
+    cuit: str
+    clave: str
+
+
+class RepresentadoOut(BaseModel):
+    cuit: str
+    nombre: str
+
+
+class RepSel(BaseModel):
+    cuit: str
+    nombre: str
+
+
+class MonitorearIn(BaseModel):
+    """El contador (cuit+clave) elige a quién monitorear; el backend les genera el cert."""
+
+    cuit: str  # CUIT del contador (login)
+    clave: str
+    seleccionados: list[RepSel]
+
+
+class JobOut(BaseModel):
+    estado: str  # en_proceso | terminado | error
+    progreso: int
+    mensaje: str
+    resultados: list[dict]
+    error: str | None = None
+
+
+class SubirCertIn(BaseModel):
+    """Carga manual: el contador sube el .crt + la .key de un cliente que ya tenía emitidos."""
+
+    cuit: str
+    nombre: str
+    cert_pem: str
+    key_pem: str
+
+
+class SubirCertOut(BaseModel):
+    cuit: str
+    nombre: str
+    sincronizados: int
+    advertencia: str | None = None
+
+
+# --- Auth (login/registro de contadores) ---
+
+
+def _solo_digitos(v: str) -> str:
+    return "".join(ch for ch in v if ch.isdigit())
+
+
+class RegistroIn(BaseModel):
+    """Alta de un contador. dni/cuit se normalizan a sólo dígitos; la contraseña va en claro
+    sólo en tránsito (HTTPS) y se hashea en el backend (nunca se persiste en claro)."""
+
+    nombre: str = Field(min_length=1, max_length=80)
+    apellido: str = Field(min_length=1, max_length=80)
+    email: EmailStr
+    telefono: str = Field(min_length=6, max_length=30)
+    dni: str
+    cuit: str
+    estudio: str = Field(min_length=1, max_length=120)
+    matricula: str | None = Field(default=None, max_length=40)
+    password: str = Field(min_length=8, max_length=72)  # bcrypt opera sobre <= 72 bytes
+    acepto_terminos: bool
+
+    @field_validator("dni")
+    @classmethod
+    def _val_dni(cls, v: str) -> str:
+        d = _solo_digitos(v)
+        if not 7 <= len(d) <= 8:
+            raise ValueError("DNI inválido: tiene que tener 7 u 8 dígitos.")
+        return d
+
+    @field_validator("cuit")
+    @classmethod
+    def _val_cuit(cls, v: str) -> str:
+        d = _solo_digitos(v)
+        if len(d) != 11:
+            raise ValueError("CUIT inválido: tiene que tener 11 dígitos.")
+        return d
+
+    @field_validator("acepto_terminos")
+    @classmethod
+    def _val_terminos(cls, v: bool) -> bool:  # noqa: FBT001
+        if not v:
+            raise ValueError("Tenés que aceptar los términos y condiciones.")
+        return v
+
+
+class LoginIn(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UsuarioOut(BaseModel):
+    """Datos del contador que devolvemos al front (sin la contraseña)."""
+
+    id: int
+    nombre: str
+    apellido: str
+    email: EmailStr
+    telefono: str
+    dni: str
+    cuit: str
+    estudio: str
+    matricula: str | None = None
+
+
+class AuthOut(BaseModel):
+    """Respuesta de registro/login: token de sesión + datos del contador."""
+
+    token: str
+    usuario: UsuarioOut
+
+
+# --- Movimientos bancarios / Conciliación ---
+
+
+class MovimientoIn(BaseModel):
+    """Una fila YA normalizada del extracto (la arma el front al parsear + mapear el archivo)."""
+
+    fecha: str  # ISO aaaa-mm-dd
+    monto: float
+    cuitOriginante: str | None = None  # noqa: N815 — matchea el front
+    nombreOriginante: str | None = None  # noqa: N815
+    descripcion: str | None = None
+
+
+class ImportarMovimientosIn(BaseModel):
+    fuente: str = "banco"  # banco | mercadopago | otro
+    filas: list[MovimientoIn]
+
+
+class MovimientoOut(BaseModel):
+    """Shape EXACTO del `MovimientoBancario` que consume el front (camelCase a propósito)."""
+
+    id: str
+    fecha: str
+    monto: float
+    fuente: str
+    cuitOriginante: str | None = None  # noqa: N815
+    nombreOriginante: str | None = None  # noqa: N815
+    descripcion: str | None = None
+    comprobanteMatcheadoId: str | None = None  # noqa: N815
+    matchConfianza: str | None = None  # noqa: N815 — alta | media | sugerido
+    marcadoComo: str | None = None  # noqa: N815 — ingreso-actividad | no-es-venta
+    marcadoPorContador: str | None = None  # noqa: N815
+    marcadoEn: str | None = None  # noqa: N815
+
+
+class ImportarResumenOut(BaseModel):
+    importados: int
+    duplicadosOmitidos: int  # noqa: N815
+    debitosOmitidos: int  # noqa: N815
+    matcheadosAuto: int  # noqa: N815
+    pendientes: int
+    movimientos: list[MovimientoOut]
+
+
+class ClasificarIn(BaseModel):
+    """Override manual del contador sobre un movimiento: o lo marca como venta/no-venta, o fuerza
+    (o suelta, con comprobanteId=None y marcadoComo=None) un match contra un comprobante puntual."""
+
+    marcadoComo: str | None = None  # noqa: N815 — ingreso-actividad | no-es-venta
+    comprobanteId: str | None = None  # noqa: N815

@@ -1,0 +1,21 @@
+# Entorno y artefactos — NUNCA al repo
+.venv/
+__pycache__/
+*.pyc
+
+# Secretos y datos
+.env
+data/
+.ta_cache/
+
+# Certificados / claves sueltas (las del bootstrap van a data/keys/, igual por las dudas)
+*.key
+*.crt
+*.csr
+*.pem
+
+# Perfiles de Chromium del scraping (basura, datos de sesión) — NUNCA al repo
+.perfil_*/
+perfil_*/
+*-profile/
+*.pma

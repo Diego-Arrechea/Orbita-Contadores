@@ -1,4 +1,4 @@
-import type { Cliente, Categoria, VentanaRecategorizacion } from '@/types';
+import type { Cliente, Categoria, HistorialMes, VentanaRecategorizacion } from '@/types';
 import {
   CATEGORIAS,
   getCategoria,
@@ -8,7 +8,29 @@ import {
 } from '@/data/categorias';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 
-export const HOY = new Date('2026-05-12T12:00:00');
+// Fecha de referencia para todos los cálculos temporales: días para la ventana de recategorización,
+// meses de actividad y proyección de cruce de tope. Es la fecha REAL del momento en que se abre la
+// app (si la pestaña queda abierta cruzando la medianoche, se actualiza al recargar).
+export const HOY = new Date();
+
+/**
+ * Entradas del historial que caen dentro de la ventana de 12 meses CALENDARIO que termina en
+ * `hasta` (inclusive). Es la ventana que usa el facturómetro de ARCA: los últimos 12 meses corridos.
+ *
+ * Por qué NO `historial.slice(-12)`: el historial sólo tiene una fila por mes CON comprobantes (los
+ * meses sin facturar no existen, no se rellenan con $0). Entonces `slice(-12)` toma los últimos 12
+ * meses *con actividad*, que ante huecos de facturación terminan abarcando 15, 18 o 24 meses
+ * calendario reales → suma de más. Anclando a una fecha real nunca sumamos más de 12 meses corridos.
+ */
+export function ventana12Meses(historial: HistorialMes[], hasta: Date = HOY): HistorialMes[] {
+  const finIdx = hasta.getFullYear() * 12 + hasta.getMonth();
+  const desdeIdx = finIdx - 11;
+  return historial.filter(m => {
+    const [y, mo] = m.mes.split('-').map(Number);
+    const idx = y * 12 + (mo - 1);
+    return idx >= desdeIdx && idx <= finIdx;
+  });
+}
 
 export interface CalculoCliente {
   facturacionUltimos12: number;
@@ -31,9 +53,9 @@ export interface CalculoCliente {
 export function calcularCliente(
   cliente: Cliente,
   ventanas: VentanaRecategorizacion[],
-  margenInflacion: number,
+  inflacionMensual: number,
 ): CalculoCliente {
-  const ultimos12 = cliente.historialMensual.slice(-12);
+  const ultimos12 = ventana12Meses(cliente.historialMensual);
   const facturacion12 = ultimos12.reduce(
     (acc, m) => acc + m.emitidasNetas + m.ingresosNoFacturados,
     0,
@@ -75,8 +97,12 @@ export function calcularCliente(
     categoriaActual.topeAnual,
   );
 
-  const promConInflacion = promUlt3 * (1 + 0.025 + margenInflacion);
-  const facturacionConInflacion = promConInflacion * 12;
+  // Proyección a 12 meses: parte del ritmo mensual reciente (promedio de los últimos 3 meses) y lo
+  // lleva hacia adelante con inflación mensual COMPUESTA, sumando los 12 meses proyectados. Suma
+  // geométrica Σ promUlt3·(1+r)^i (i=0..11) = promUlt3·((1+r)^12 − 1)/r; con r=0 es el run-rate ×12.
+  const r = inflacionMensual;
+  const facturacionConInflacion =
+    r === 0 ? promUlt3 * 12 : (promUlt3 * ((1 + r) ** 12 - 1)) / r;
   const categoriaConInflacion =
     CATEGORIAS.find(c => facturacionConInflacion <= c.topeAnual) ||
     CATEGORIAS[CATEGORIAS.length - 1];

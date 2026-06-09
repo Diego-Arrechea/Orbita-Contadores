@@ -1,0 +1,21 @@
+[Unit]
+Description=Orbita backend (FastAPI/uvicorn)
+After=network.target
+
+[Service]
+Type=simple
+User=orbita
+Group=orbita
+WorkingDirectory=/srv/orbita/backend
+# 1 solo worker: el scheduler (APScheduler) corre dentro del proceso; con varios workers
+# el sync diario se dispararia N veces.
+ExecStart=/srv/orbita/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=5
+# patchright/cloakbrowser descargan Chromium acá:
+Environment=PLAYWRIGHT_BROWSERS_PATH=/srv/orbita/.cache/ms-playwright
+# Limites generosos (Chromium abre muchos FDs)
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

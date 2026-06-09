@@ -1,0 +1,5 @@
+cloakbrowser        # Chromium stealth (drop-in de Playwright). Baja un binario ~200MB en el 1er uso.
+# Opcional — mejora reCAPTCHA v3 Enterprise (usar con backend="patchright"):
+# patchright
+#
+# NOTA: no hace falta 'playwright install chromium'; CloakBrowser trae su propio binario stealth.

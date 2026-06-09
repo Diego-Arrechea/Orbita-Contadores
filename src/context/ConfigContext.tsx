@@ -1,0 +1,83 @@
+/**
+ * Configuración del contador (ventanas de recategorización, umbrales, inflación) GUARDADA EN LA
+ * CUENTA. Antes vivía en localStorage; ahora se trae del backend (GET /configuracion) al entrar y se
+ * guarda con PUT, así sigue al contador entre dispositivos.
+ *
+ * Arranca con los DEFAULTS (CONFIGURACION_INICIAL + ventanas calculadas a hoy), así el primer render
+ * nunca está vacío: cuando llega lo guardado del backend, se refina sin parpadeo. Guardar es
+ * optimista (aplica local y luego PUT).
+ */
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
+import { apiGet, apiPut } from '@/services/apiClient';
+import { CONFIGURACION_INICIAL } from '@/data/configuracion';
+import { ventanasRecategorizacion } from '@/lib/recategorizacion';
+import type { Configuracion } from '@/types';
+
+interface ConfigContextValue {
+  config: Configuracion; // SIEMPRE presente (arranca en defaults)
+  cargando: boolean; // true hasta resolver el primer GET
+  guardarConfig: (parcial: Partial<Configuracion>) => Promise<void>;
+}
+
+const ConfigContext = createContext<ConfigContextValue | null>(null);
+
+/**
+ * Config efectiva: defaults + lo guardado en la cuenta. Ignora campos null/undefined (el backend
+ * devuelve null en lo que el contador nunca tocó). Las ventanas se recalculan a hoy salvo que el
+ * contador las haya editado a mano (misma regla que la vieja cargarConfiguracion()).
+ */
+function combinar(guardado: Partial<Configuracion> | null | undefined): Configuracion {
+  const limpio: Partial<Configuracion> = {};
+  for (const [k, v] of Object.entries(guardado ?? {})) {
+    if (v !== null && v !== undefined) (limpio as Record<string, unknown>)[k] = v;
+  }
+  return {
+    ...CONFIGURACION_INICIAL,
+    ...limpio,
+    ventanas: limpio.ventanas ?? ventanasRecategorizacion(),
+  };
+}
+
+export function ConfigProvider({ children }: { children: ReactNode }) {
+  const [config, setConfig] = useState<Configuracion>(() => combinar(null));
+  const [cargando, setCargando] = useState(true);
+
+  useEffect(() => {
+    let vivo = true;
+    apiGet<Partial<Configuracion>>('/configuracion')
+      .then(guardado => {
+        if (vivo) setConfig(combinar(guardado));
+      })
+      .catch(() => {}) // backend caído → quedamos en defaults (degradación, como antes)
+      .finally(() => {
+        if (vivo) setCargando(false);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, []);
+
+  const guardarConfig = useCallback(async (parcial: Partial<Configuracion>) => {
+    setConfig(prev => ({ ...prev, ...parcial })); // optimista: la UI no espera el round-trip
+    await apiPut('/configuracion', parcial); // si falla, propaga el error al caller (lo muestra)
+  }, []);
+
+  return (
+    <ConfigContext.Provider value={{ config, cargando, guardarConfig }}>
+      {children}
+    </ConfigContext.Provider>
+  );
+}
+
+export function useConfig(): ConfigContextValue {
+  const ctx = useContext(ConfigContext);
+  if (!ctx) throw new Error('useConfig debe usarse dentro de <ConfigProvider>');
+  return ctx;
+}

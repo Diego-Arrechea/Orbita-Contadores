@@ -1,0 +1,19 @@
+# Caddy sirve el frontend estatico y proxea /api al backend.
+# HTTPS automatico con Let's Encrypt (solo necesitas el DNS apuntando a la IP del VPS).
+# Reemplaza app.tudominio.com por tu dominio real.
+
+app.tudominio.com {
+	encode gzip
+
+	# API -> uvicorn (FastAPI) en localhost:8000
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	# Frontend (build de Vite). try_files para que el router de React maneje las rutas.
+	handle {
+		root * /srv/orbita/frontend/dist
+		try_files {path} /index.html
+		file_server
+	}
+}

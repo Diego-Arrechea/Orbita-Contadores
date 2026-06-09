@@ -1,0 +1,14 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+sqlalchemy>=2.0
+pydantic>=2.6
+pydantic-settings>=2.2
+zeep>=4.2
+cryptography>=42.0
+bcrypt>=4.1  # hashing de contraseñas (login de contadores)
+pyjwt>=2.8  # tokens de sesión (JWT)
+email-validator>=2.1  # validación de emails (pydantic EmailStr)
+requests>=2.31
+apscheduler>=3.10
+patchright  # Playwright stealth + headless real (listar representados)
+cloakbrowser  # Chromium stealth con humanize (bootstrap del cert: maneja el árbol JS animado de ARCA)
