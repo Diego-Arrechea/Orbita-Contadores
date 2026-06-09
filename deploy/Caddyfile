@@ -1,8 +1,7 @@
-# Caddy proxea /api -> uvicorn (FastAPI) con HTTPS automatico (Let's Encrypt).
-# El frontend NO se sirve aca: vive en Vercel (app.tudominio.com).
-# Reemplaza api.tudominio.com por tu subdominio real.
+# Caddy proxea todo el trafico -> uvicorn (FastAPI) con HTTPS automatico (Let's Encrypt).
+# El frontend vive en Vercel (contadores.orbitaglobalmarketing.com).
 
-api.tudominio.com {
+api.contadores.orbitaglobalmarketing.com {
 	encode gzip
 	reverse_proxy 127.0.0.1:8000
 }

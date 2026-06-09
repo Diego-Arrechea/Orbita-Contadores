@@ -8,15 +8,17 @@ Solución: frontend a Vercel, backend al VPS.
 
 ```
    Vercel (CDN global, HTTPS)              VPS Ubuntu (HTTPS via Caddy)
-   app.tudominio.com                       api.tudominio.com
+   contadores.orbitaglobalmarketing.com                       api.contadores.orbitaglobalmarketing.com
    └── dist/ (build de Vite)               └── Caddy → uvicorn (FastAPI, systemd)
        redeploy en cada git push                       └── SQLite + Chromium (scraping)
 ```
 
 El frontend de Vercel llama al backend del VPS por URL absoluta (cross-origin), así que el
-backend tiene CORS abierto para `https://app.tudominio.com` vía `CORS_ORIGINS` en el `.env`.
+backend tiene CORS abierto para `https://contadores.orbitaglobalmarketing.com` vía `CORS_ORIGINS` en el `.env`.
 
-Reemplazá `tudominio.com` por tu dominio real en todos los pasos.
+Dominios fijados:
+- Frontend (Vercel): `contadores.orbitaglobalmarketing.com`
+- Backend (VPS):    `api.contadores.orbitaglobalmarketing.com`
 
 ---
 
@@ -25,13 +27,13 @@ Reemplazá `tudominio.com` por tu dominio real en todos los pasos.
 Dos registros en tu proveedor de DNS:
 
 ```
-CNAME  app.tudominio.com  →  cname.vercel-dns.com   (te lo da Vercel al agregar el dominio)
-A      api.tudominio.com  →  <IP_DEL_VPS>
+CNAME  contadores.orbitaglobalmarketing.com  →  cname.vercel-dns.com   (te lo da Vercel al agregar el dominio)
+A      api.contadores.orbitaglobalmarketing.com  →  <IP_DEL_VPS>
 ```
 
-Esperá a que `api.tudominio.com` resuelva a la IP del VPS (`ping api.tudominio.com`) — Caddy
-necesita eso para emitir el HTTPS. El CNAME de `app.` lo configurás cuando agregás el dominio
-en Vercel (paso A).
+Esperá a que `api.contadores.orbitaglobalmarketing.com` resuelva a la IP del VPS
+(`ping api.contadores.orbitaglobalmarketing.com`) — Caddy necesita eso para emitir el HTTPS.
+El CNAME de `contadores.` lo terminás de configurar cuando agregás el dominio en Vercel (paso A).
 
 ---
 
@@ -46,11 +48,11 @@ en Vercel (paso A).
    - Root Directory: `./` (raíz)
 4. **Environment Variables** → agregá:
    ```
-   VITE_API_URL = https://api.tudominio.com/api
+   VITE_API_URL = https://api.contadores.orbitaglobalmarketing.com/api
    ```
 5. **Deploy**. En ~2 min te da una URL `xxx.vercel.app` funcionando (la API todavía no responde
    porque falta levantarla en el VPS — pero el sitio carga).
-6. **Settings → Domains** → agregá `app.tudominio.com`. Vercel te muestra el CNAME que tenés
+6. **Settings → Domains** → agregá `contadores.orbitaglobalmarketing.com`. Vercel te muestra el CNAME que tenés
    que poner en el DNS (paso 0). En cuanto propague, queda con HTTPS automático.
 
 A partir de ahora **cada `git push` a `main` redeployea el frontend solo**.
@@ -108,7 +110,7 @@ cp .env.example .env
 .venv/bin/python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 nano .env
 #   - pegá el valor en FERNET_KEY
-#   - poné CORS_ORIGINS=["https://app.tudominio.com"]
+#   - poné CORS_ORIGINS=["https://contadores.orbitaglobalmarketing.com"]
 #   - SCRAPING_HEADLESS=true
 #   - (opcional) Crisp / Twilio
 ```
@@ -155,13 +157,12 @@ curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /
 apt update && apt install -y caddy
 
 cp /srv/orbita/repo/deploy/Caddyfile /etc/caddy/Caddyfile
-nano /etc/caddy/Caddyfile        # cambiá api.tudominio.com por tu subdominio real
 systemctl reload caddy
 journalctl -u caddy -f           # debería emitir el certificado de Let's Encrypt
 ```
 
-Probá: `curl https://api.tudominio.com/` debe devolver `{"ok":true,...}`.
-Después abrí `https://app.tudominio.com` (Vercel) y la app entera debería funcionar. 🎉
+Probá: `curl https://api.contadores.orbitaglobalmarketing.com/` debe devolver `{"ok":true,...}`.
+Después abrí `https://contadores.orbitaglobalmarketing.com` (Vercel) y la app entera debería funcionar. 🎉
 
 ---
 
