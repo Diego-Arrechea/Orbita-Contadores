@@ -3,6 +3,8 @@ backend/
 research/
 deploy/
 DEPLOY.md
-*.html
 ARCA*
+categorias.html
+serviciosarca*.html
 *_files/
+# OJO: NO ignorar index.html (es el entry point de Vite).
