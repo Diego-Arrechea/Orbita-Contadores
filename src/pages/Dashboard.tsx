@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertCircle,
@@ -7,10 +7,10 @@ import {
   Users,
   Search,
   Plus,
-  Upload,
   ChevronRight,
   Calendar,
   TrendingUp,
+  RefreshCcw,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -34,10 +34,16 @@ import {
 import { SemaforoDot, AlertaBadge } from '@/components/shared/AlertaBadge';
 import { ProgresoTope } from '@/components/shared/ProgresoTope';
 import { CLIENTES } from '@/data/clientes';
-import { CONFIGURACION_INICIAL } from '@/data/configuracion';
+import { useConfig } from '@/context/ConfigContext';
 import { calcularCliente } from '@/lib/monotributo';
+import { esMonotributista, etiquetaRegimenCorta } from '@/lib/regimen';
+import { derivarAlertas, estadoDesdeAlertas } from '@/lib/alertas';
+import { getClientesReales } from '@/services/clientesService';
+import { cuentaActual } from '@/lib/cuenta';
+import { useCargas } from '@/context/CargasContext';
+import { useSync } from '@/context/SyncContext';
 import { formatCuit, formatPercent, formatDate } from '@/lib/utils';
-import type { EstadoAlerta, TipoActividad } from '@/types';
+import type { EstadoAlerta, TipoActividad, Cliente } from '@/types';
 
 const orden: Record<EstadoAlerta, number> = { rojo: 0, gris: 1, amarillo: 2, verde: 3 };
 
@@ -45,24 +51,42 @@ export function Dashboard() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroAlerta, setFiltroAlerta] = useState<EstadoAlerta | 'todos'>('todos');
   const [filtroActividad, setFiltroActividad] = useState<TipoActividad | 'todos'>('todos');
+  const [reales, setReales] = useState<Cliente[]>([]);
+  const [recargando, setRecargando] = useState(false);
+  const [reload, setReload] = useState(0); // se incrementa para forzar un refresco manual
+  const cuenta = cuentaActual();
+  const { version } = useCargas();
+  const { version: syncVersion } = useSync();
 
+  useEffect(() => {
+    setRecargando(true);
+    getClientesReales()
+      .then(setReales) // el backend ya devuelve sólo los clientes de este contador
+      .catch(() => {}) // si el backend no está, se muestran sólo los mock
+      .finally(() => setRecargando(false));
+    // `version`/`syncVersion` cambian al terminar una carga/sincronización en segundo plano, y
+    // `reload` al apretar el botón de refrescar → re-trae la cartera sin recargar la página.
+  }, [version, syncVersion, reload]);
+
+  // La cartera de ejemplo (mock) sólo se ve en cuentas "de ejemplo"; una cuenta nueva arranca vacía.
+  const mock = cuenta?.datosEjemplo ? CLIENTES : [];
+
+  const { config } = useConfig();
   const clientesConCalculo = useMemo(
     () =>
-      CLIENTES.map(c => ({
-        cliente: c,
-        calc: calcularCliente(
-          c,
-          CONFIGURACION_INICIAL.ventanas,
-          CONFIGURACION_INICIAL.margenInflacionProyeccion,
-        ),
-      })),
-    [],
+      [...reales, ...mock].map(c0 => {
+        const c = c0; // el backend ya devuelve el cliente con las ediciones del contador aplicadas
+        const calc = calcularCliente(c, config.ventanas, config.inflacionMensualProyeccion);
+        const alertas = derivarAlertas(c, calc, config);
+        return { cliente: c, calc, alertas, estado: estadoDesdeAlertas(alertas, c) };
+      }),
+    [reales, cuenta?.datosEjemplo, config],
   );
 
   const filtrados = useMemo(() => {
     return clientesConCalculo
-      .filter(({ cliente }) => {
-        if (filtroAlerta !== 'todos' && cliente.estadoAlerta !== filtroAlerta) return false;
+      .filter(({ cliente, estado }) => {
+        if (filtroAlerta !== 'todos' && estado !== filtroAlerta) return false;
         if (filtroActividad !== 'todos' && cliente.tipoActividad !== filtroActividad) return false;
         if (busqueda) {
           const q = busqueda.toLowerCase();
@@ -73,12 +97,12 @@ export function Dashboard() {
         }
         return true;
       })
-      .sort((a, b) => orden[a.cliente.estadoAlerta] - orden[b.cliente.estadoAlerta]);
+      .sort((a, b) => orden[a.estado] - orden[b.estado]);
   }, [clientesConCalculo, busqueda, filtroAlerta, filtroActividad]);
 
   const resumen = useMemo(() => {
     const counts = { rojo: 0, amarillo: 0, gris: 0, verde: 0 };
-    clientesConCalculo.forEach(({ cliente }) => counts[cliente.estadoAlerta]++);
+    clientesConCalculo.forEach(({ estado }) => counts[estado]++);
     return counts;
   }, [clientesConCalculo]);
 
@@ -88,15 +112,10 @@ export function Dashboard() {
         <div>
           <h1 className="text-3xl xl:text-4xl font-semibold tracking-tight">Mi cartera</h1>
           <p className="text-base text-muted-foreground mt-2">
-            {CLIENTES.length} clientes monotributistas bajo monitoreo automático.
+            {clientesConCalculo.length} clientes bajo monitoreo automático.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link to="/clientes/importar">
-              <Upload className="h-4 w-4" /> Importar cartera
-            </Link>
-          </Button>
           <Button asChild>
             <Link to="/clientes/nuevo">
               <Plus className="h-4 w-4" /> Nuevo cliente
@@ -109,7 +128,7 @@ export function Dashboard() {
         <ResumenCard
           label="Acción urgente"
           value={resumen.rojo}
-          icon={<AlertCircle className="h-5 w-5" />}
+          icon={<AlertCircle className="h-4 w-4" />}
           tint="bg-danger/10 text-danger"
           onClick={() => setFiltroAlerta('rojo')}
           active={filtroAlerta === 'rojo'}
@@ -117,7 +136,7 @@ export function Dashboard() {
         <ResumenCard
           label="Monitoreo activo"
           value={resumen.amarillo}
-          icon={<AlertTriangle className="h-5 w-5" />}
+          icon={<AlertTriangle className="h-4 w-4" />}
           tint="bg-warning/20 text-warning-foreground"
           onClick={() => setFiltroAlerta('amarillo')}
           active={filtroAlerta === 'amarillo'}
@@ -125,15 +144,15 @@ export function Dashboard() {
         <ResumenCard
           label="Sin datos"
           value={resumen.gris}
-          icon={<HelpCircle className="h-5 w-5" />}
+          icon={<HelpCircle className="h-4 w-4" />}
           tint="bg-muted text-muted-foreground"
           onClick={() => setFiltroAlerta('gris')}
           active={filtroAlerta === 'gris'}
         />
         <ResumenCard
           label="Total clientes"
-          value={CLIENTES.length}
-          icon={<Users className="h-5 w-5" />}
+          value={clientesConCalculo.length}
+          icon={<Users className="h-4 w-4" />}
           tint="bg-primary/10 text-primary"
           onClick={() => setFiltroAlerta('todos')}
           active={filtroAlerta === 'todos'}
@@ -180,6 +199,17 @@ export function Dashboard() {
                 <SelectItem value="servicios">Servicios</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 bg-card"
+              onClick={() => setReload(r => r + 1)}
+              disabled={recargando}
+              title="Refrescar la lista de clientes"
+              aria-label="Refrescar la lista de clientes"
+            >
+              <RefreshCcw className={`h-4 w-4 ${recargando ? 'animate-spin' : ''}`} />
+            </Button>
           </div>
         </div>
 
@@ -197,14 +227,16 @@ export function Dashboard() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtrados.map(({ cliente, calc }) => (
+            {filtrados.map(({ cliente, calc, estado }) => {
+              const noMono = !esMonotributista(cliente);
+              return (
               <TableRow key={cliente.id} className="group">
                 <TableCell>
                   <Link
                     to={`/clientes/${cliente.id}`}
                     className="flex items-center gap-3 group-hover:text-primary transition-colors"
                   >
-                    <SemaforoDot estado={cliente.estadoAlerta} />
+                    <SemaforoDot estado={estado} />
                     <div>
                       <div className="font-medium leading-tight">{cliente.nombre}</div>
                       <div className="text-xs text-muted-foreground tabular-nums">
@@ -214,39 +246,53 @@ export function Dashboard() {
                   </Link>
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="font-semibold">
-                      {cliente.categoria}
+                  {noMono ? (
+                    <Badge variant="muted" className="font-semibold">
+                      {etiquetaRegimenCorta(cliente.regimen)}
                     </Badge>
-                    {calc.categoriaCorresponde.codigo !== cliente.categoria && (
-                      <div className="flex items-center gap-0.5 text-xs text-warning-foreground">
-                        <TrendingUp className="h-3 w-3" />
-                        {calc.categoriaCorresponde.codigo}
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="font-semibold">
+                        {cliente.categoria}
+                      </Badge>
+                      {calc.categoriaCorresponde.codigo !== cliente.categoria && (
+                        <div className="flex items-center gap-0.5 text-xs text-warning-foreground">
+                          <TrendingUp className="h-3 w-3" />
+                          {calc.categoriaCorresponde.codigo}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {noMono ? (
+                    <span className="text-muted-foreground text-xs">No aplica</span>
+                  ) : (
+                    <ProgresoTope porcentaje={calc.porcentajeTopeActual} />
+                  )}
+                </TableCell>
+                <TableCell>
+                  {noMono ? (
+                    <span className="text-muted-foreground text-xs">—</span>
+                  ) : (
+                    <div className="space-y-0.5">
+                      <div
+                        className={
+                          calc.ratioSuperadoLegal
+                            ? 'text-danger font-medium text-sm tabular-nums'
+                            : 'text-sm tabular-nums'
+                        }
+                      >
+                        {formatPercent(calc.ratioGastosTopeCatK, 1)}
                       </div>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <ProgresoTope porcentaje={calc.porcentajeTopeActual} />
-                </TableCell>
-                <TableCell>
-                  <div className="space-y-0.5">
-                    <div
-                      className={
-                        calc.ratioSuperadoLegal
-                          ? 'text-danger font-medium text-sm tabular-nums'
-                          : 'text-sm tabular-nums'
-                      }
-                    >
-                      {formatPercent(calc.ratioGastosTopeCatK, 1)}
+                      <div className="text-[11px] text-muted-foreground">
+                        sobre tope cat. K
+                      </div>
                     </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      sobre tope cat. K
-                    </div>
-                  </div>
+                  )}
                 </TableCell>
                 <TableCell>
-                  {Number.isFinite(calc.diasParaProximaVentana) ? (
+                  {!noMono && Number.isFinite(calc.diasParaProximaVentana) ? (
                     <div className="flex items-center gap-1.5 text-sm">
                       <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                       <span className="tabular-nums">
@@ -258,7 +304,7 @@ export function Dashboard() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <AlertaBadge estado={cliente.estadoAlerta} />
+                  <AlertaBadge estado={estado} />
                 </TableCell>
                 <TableCell>
                   {cliente.ultimaExtraccion ? (
@@ -291,7 +337,8 @@ export function Dashboard() {
                   </Link>
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
             {filtrados.length === 0 && (
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
@@ -321,17 +368,17 @@ function ResumenCard({ label, value, icon, tint, onClick, active }: ResumenCardP
       onClick={onClick}
       className={`text-left bg-card border ${
         active ? 'border-primary/40 shadow-card-lg' : 'border-border/60 shadow-card'
-      } rounded-2xl p-6 transition-all hover:border-primary/40 hover:shadow-card-lg`}
+      } rounded-xl p-4 transition-all hover:border-primary/40 hover:shadow-card-lg`}
     >
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-2">
         <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
           {label}
         </span>
-        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tint}`}>
+        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${tint}`}>
           {icon}
         </div>
       </div>
-      <div className="text-4xl font-semibold tabular-nums tracking-tight">{value}</div>
+      <div className="text-2xl font-semibold tabular-nums tracking-tight">{value}</div>
     </button>
   );
 }

@@ -160,6 +160,7 @@ interface ClienteSeed {
   diasUltimaExtraccion: number;
   overrideCausales?: Partial<EstadoCausalCliente>[];
   overrideIngresosNoFacturados?: Record<string, number>;
+  fuente?: 'mock' | 'arca';
 }
 
 const SEEDS: ClienteSeed[] = [
@@ -523,6 +524,7 @@ function construirCliente(seed: ClienteSeed): Cliente {
       : [],
     causales,
     extracciones,
+    fuente: seed.fuente ?? 'mock',
   };
 }
 

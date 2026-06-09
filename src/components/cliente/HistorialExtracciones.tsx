@@ -30,6 +30,7 @@ export function HistorialExtracciones({ cliente }: Props) {
           <TableRow>
             <TableHead>Fecha y hora</TableHead>
             <TableHead>Resultado</TableHead>
+            <TableHead>Comprobantes</TableHead>
             <TableHead>Duración</TableHead>
             <TableHead>Detalles</TableHead>
           </TableRow>
@@ -55,6 +56,24 @@ export function HistorialExtracciones({ cliente }: Props) {
                   <Badge variant="danger">
                     <AlertCircle className="h-3 w-3" /> Falló
                   </Badge>
+                )}
+              </TableCell>
+              <TableCell>
+                {e.resultado === 'exitosa' && typeof e.comprobantes === 'number' ? (
+                  <span className="text-sm tabular-nums">
+                    {e.comprobantes === 0 ? (
+                      <span className="text-muted-foreground">Sin comprobantes</span>
+                    ) : (
+                      <>
+                        {e.comprobantes}{' '}
+                        <span className="text-muted-foreground">
+                          comprobante{e.comprobantes === 1 ? '' : 's'}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground text-xs">—</span>
                 )}
               </TableCell>
               <TableCell>

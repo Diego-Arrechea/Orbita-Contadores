@@ -1,5 +1,16 @@
-import { useState } from 'react';
-import { Save, Calendar, Sliders, Percent, Database, Info } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import {
+  Save,
+  Calendar,
+  Bell,
+  Percent,
+  Database,
+  Info,
+  MessageCircle,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+} from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,12 +27,75 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { CATEGORIAS } from '@/data/categorias';
-import { CONFIGURACION_INICIAL } from '@/data/configuracion';
+import { useConfig } from '@/context/ConfigContext';
 import { CAUSALES_EXCLUSION } from '@/data/causales';
 import { formatCurrency } from '@/lib/utils';
+import { enviarWhatsappPrueba } from '@/services/notificacionesService';
+import { mensajeDeError } from '@/services/authService';
 
 export function Configuracion() {
-  const [conf, setConf] = useState(CONFIGURACION_INICIAL);
+  const { config, guardarConfig } = useConfig();
+  const [conf, setConf] = useState(config);
+  // El provider arranca en defaults y refina con lo guardado de la cuenta: cuando llega, refrescamos
+  // el formulario (si el usuario ya estaba editando con el backend frío —caso raro—, se le pisa).
+  useEffect(() => setConf(config), [config]);
+  const [guardado, setGuardado] = useState<'fechas' | 'umbrales' | null>(null);
+  const [errorGuardar, setErrorGuardar] = useState('');
+  const [numPrueba, setNumPrueba] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [resultado, setResultado] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  // Edita una de las dos ventanas (fecha límite / efecto desde) en el estado local. El cambio recién
+  // impacta a los clientes cuando se aprieta "Guardar fechas".
+  function setVentana(i: number, campo: 'fechaLimite' | 'efectoDesde', valor: string) {
+    setConf(prev => ({
+      ...prev,
+      ventanas: prev.ventanas.map((v, idx) => (idx === i ? { ...v, [campo]: valor } : v)),
+    }));
+    setGuardado(null);
+  }
+
+  async function guardarFechas() {
+    setErrorGuardar('');
+    try {
+      await guardarConfig({ ventanas: conf.ventanas });
+      setGuardado('fechas');
+    } catch (e) {
+      setGuardado(null);
+      setErrorGuardar(mensajeDeError(e));
+    }
+  }
+
+  async function guardarUmbrales() {
+    setErrorGuardar('');
+    try {
+      await guardarConfig({
+        umbralAmarilloPorcentaje: conf.umbralAmarilloPorcentaje,
+        umbralRatioGastosAmarillo: conf.umbralRatioGastosAmarillo,
+        umbralAmarilloDias: conf.umbralAmarilloDias,
+        umbralRojoDias: conf.umbralRojoDias,
+        umbralDeudaCuotaUrgente: conf.umbralDeudaCuotaUrgente,
+        inflacionMensualProyeccion: conf.inflacionMensualProyeccion,
+      });
+      setGuardado('umbrales');
+    } catch (e) {
+      setGuardado(null);
+      setErrorGuardar(mensajeDeError(e));
+    }
+  }
+
+  async function probarWhatsapp() {
+    setEnviando(true);
+    setResultado(null);
+    try {
+      const r = await enviarWhatsappPrueba(numPrueba.trim() || undefined);
+      setResultado({ ok: true, msg: `Enviado a ${r.destino}. Revisá tu WhatsApp.` });
+    } catch (e) {
+      setResultado({ ok: false, msg: mensajeDeError(e) });
+    } finally {
+      setEnviando(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -33,12 +107,19 @@ export function Configuracion() {
         </p>
       </div>
 
+      {errorGuardar && (
+        <div className="flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3.5 py-2.5 text-sm text-danger">
+          <AlertCircle className="h-4 w-4 shrink-0" /> No se pudo guardar: {errorGuardar}
+        </div>
+      )}
+
       <Tabs defaultValue="ventanas">
         <TabsList>
           <TabsTrigger value="ventanas"><Calendar className="h-3.5 w-3.5" />Ventanas</TabsTrigger>
-          <TabsTrigger value="umbrales"><Sliders className="h-3.5 w-3.5" />Umbrales</TabsTrigger>
+          <TabsTrigger value="umbrales"><Bell className="h-3.5 w-3.5" />Alertas</TabsTrigger>
           <TabsTrigger value="categorias"><Database className="h-3.5 w-3.5" />Categorías</TabsTrigger>
           <TabsTrigger value="causales"><Info className="h-3.5 w-3.5" />Causales</TabsTrigger>
+          <TabsTrigger value="notificaciones"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
         </TabsList>
 
         <TabsContent value="ventanas">
@@ -60,22 +141,29 @@ export function Configuracion() {
                       <Label>Fecha límite recategorización</Label>
                       <Input
                         type="date"
-                        defaultValue={v.fechaLimite}
+                        value={v.fechaLimite}
+                        onChange={e => setVentana(i, 'fechaLimite', e.target.value)}
                       />
                     </div>
                     <div className="space-y-1.5">
                       <Label>Efecto desde</Label>
                       <Input
                         type="date"
-                        defaultValue={v.efectoDesde}
+                        value={v.efectoDesde}
+                        onChange={e => setVentana(i, 'efectoDesde', e.target.value)}
                       />
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-            <div className="flex justify-end mt-5">
-              <Button>
+            <div className="flex items-center justify-end gap-3 mt-5">
+              {guardado === 'fechas' && (
+                <span className="flex items-center gap-1.5 text-sm text-success">
+                  <CheckCircle2 className="h-4 w-4" /> Guardado. Se aplica a todos los clientes.
+                </span>
+              )}
+              <Button onClick={guardarFechas}>
                 <Save className="h-4 w-4" /> Guardar fechas
               </Button>
             </div>
@@ -84,10 +172,10 @@ export function Configuracion() {
 
         <TabsContent value="umbrales">
           <Card className="p-6">
-            <div className="text-base font-semibold mb-1">Umbrales de alerta</div>
+            <div className="text-base font-semibold mb-1">Configuración de alertas</div>
             <p className="text-sm text-muted-foreground mb-5">
-              Configurá cuándo el sistema marca un cliente en amarillo o en rojo. Los cambios se
-              aplican al recalcular las próximas alertas.
+              Definí cuándo el sistema marca un cliente en amarillo (aviso) o en rojo (urgente). Los
+              cambios se aplican al recalcular las próximas alertas de tu cartera.
             </p>
 
             <div className="grid gap-4 md:grid-cols-2">
@@ -123,16 +211,29 @@ export function Configuracion() {
               />
               <CampoNumero
                 icon={<Percent className="h-4 w-4 text-muted-foreground" />}
-                label="Margen conservador de inflación"
-                hint="Se resta al IPC para proyectar más conservador. Maximiliano sugirió −5%."
-                value={conf.margenInflacionProyeccion * 100}
+                label="% de la cuota para deuda urgente"
+                hint="Una deuda de cuota es urgente sólo si supera este % de la cuota del mes. Por debajo, es un aviso (evita marcar urgente un resto chico)."
+                value={conf.umbralDeudaCuotaUrgente * 100}
                 sufijo="%"
-                onChange={(v) => setConf({ ...conf, margenInflacionProyeccion: v / 100 })}
+                onChange={(v) => setConf({ ...conf, umbralDeudaCuotaUrgente: v / 100 })}
+              />
+              <CampoNumero
+                icon={<Percent className="h-4 w-4 text-muted-foreground" />}
+                label="Inflación mensual estimada"
+                hint="Proyecta la facturación a 12 meses (compuesta). 0% = sin inflación."
+                value={conf.inflacionMensualProyeccion * 100}
+                sufijo="%"
+                onChange={(v) => setConf({ ...conf, inflacionMensualProyeccion: v / 100 })}
               />
             </div>
-            <div className="flex justify-end mt-5">
-              <Button>
-                <Save className="h-4 w-4" /> Guardar umbrales
+            <div className="flex items-center justify-end gap-3 mt-5">
+              {guardado === 'umbrales' && (
+                <span className="flex items-center gap-1.5 text-sm text-success">
+                  <CheckCircle2 className="h-4 w-4" /> Guardado.
+                </span>
+              )}
+              <Button onClick={guardarUmbrales}>
+                <Save className="h-4 w-4" /> Guardar alertas
               </Button>
             </div>
           </Card>
@@ -230,6 +331,64 @@ export function Configuracion() {
                 ))}
               </TableBody>
             </Table>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="notificaciones">
+          <Card className="p-6">
+            <div className="text-base font-semibold mb-1">Alertas por WhatsApp</div>
+            <p className="text-sm text-muted-foreground mb-5">
+              Las alertas urgentes de tu cartera pueden llegarte por WhatsApp. Configurá las
+              credenciales de Twilio en <code className="text-foreground">backend/.env</code> y probá
+              el envío acá.
+            </p>
+
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end max-w-xl">
+              <div className="space-y-1.5">
+                <Label htmlFor="num-prueba">Número de prueba (opcional)</Label>
+                <Input
+                  id="num-prueba"
+                  value={numPrueba}
+                  onChange={e => setNumPrueba(e.target.value)}
+                  placeholder="Vacío = el teléfono de tu cuenta"
+                />
+              </div>
+              <Button onClick={probarWhatsapp} disabled={enviando}>
+                {enviando ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Enviando…
+                  </>
+                ) : (
+                  <>
+                    <MessageCircle className="h-4 w-4" /> Enviar prueba
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {resultado && (
+              <div
+                className={`mt-4 flex items-start gap-2 rounded-lg px-3.5 py-2.5 text-sm border ${
+                  resultado.ok
+                    ? 'bg-success/10 border-success/25'
+                    : 'bg-danger/10 border-danger/25'
+                }`}
+              >
+                {resultado.ok ? (
+                  <CheckCircle2 className="h-4 w-4 text-success shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 text-danger shrink-0 mt-0.5" />
+                )}
+                <span className="text-foreground/80">{resultado.msg}</span>
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground mt-4">
+              Para probar sin el trámite de Meta usá el <strong>Sandbox de Twilio</strong>: desde tu
+              WhatsApp mandá <code className="text-foreground">join &lt;palabra&gt;</code> al número del
+              sandbox y después enviá la prueba. En Argentina, si no te llega, probá el número con el
+              9 (ej. +54 9 221…).
+            </p>
           </Card>
         </TabsContent>
       </Tabs>

@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { SoporteChat } from '@/components/shared/SoporteChat';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 export function AppLayout() {
@@ -17,6 +18,7 @@ export function AppLayout() {
           </main>
         </div>
       </div>
+      <SoporteChat />
     </TooltipProvider>
   );
 }

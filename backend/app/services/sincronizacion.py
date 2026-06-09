@@ -1,0 +1,290 @@
+"""
+Sincronización de comprobantes EMITIDOS (ventas) y RECIBIDOS (compras) desde 'Mis Comprobantes'
+(scraping con la clave del contador) y cache en la DB.
+
+INCREMENTAL por dirección: la primera vez trae el histórico (ventanas de 365 días); las
+siguientes, sólo desde el último comprobante de esa dirección (con un margen de solapamiento).
+El upsert (índice único cuit+direccion+pv+tipo+nro) deduplica el solapamiento.
+"""
+from __future__ import annotations
+
+import datetime as dt
+import json
+import time
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from .. import models
+from ..config import settings
+from ..crypto import descifrar
+from ..scraping import ccma, miscomprobantes, padron
+
+
+def _parse_fecha(yyyymmdd: str) -> dt.date:
+    return dt.date(int(yyyymmdd[0:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8]))
+
+
+def _primer_dia_mes_hace(ref: dt.date, meses: int) -> dt.date:
+    """Primer día del mes que está `meses` meses antes de `ref`. Ej.: ref=2026-06-04, meses=14 ->
+    2025-04-01."""
+    total = ref.year * 12 + (ref.month - 1) - meses
+    return dt.date(total // 12, total % 12 + 1, 1)
+
+
+def _ventanas(db: Session, cuit: str, direccion: str) -> list[tuple[str, str]]:
+    """Ventanas (dd/mm/aaaa) a consultar para una dirección, hasta ayer.
+
+    Primera vez: histórico de N años. Incremental: re-barre SIEMPRE los últimos
+    `sync_meses_revision` meses anclados a HOY (no a la última fecha guardada). El anclaje a la
+    última fecha + margen sólo capturaba comprobantes nuevos con fecha reciente, y perdía para
+    siempre los que ARCA carga tarde con fecha de emisión vieja (o las correcciones de monto en
+    meses pasados) — la causa de que el 'facturado 12m' calculado quedara por debajo del de ARCA. El
+    upsert deduplica/actualiza el solapamiento; el histórico previo a la ventana de revisión ya
+    quedó cacheado en la primera sync y no se vuelve a tocar."""
+    ultima = db.scalar(
+        select(func.max(models.ComprobanteEmitido.fecha)).where(
+            models.ComprobanteEmitido.cuit == cuit,
+            models.ComprobanteEmitido.direccion == direccion,
+        )
+    )
+    hoy = dt.date.today()
+    ayer = hoy - dt.timedelta(days=1)
+    if ultima:
+        revision = _primer_dia_mes_hace(hoy, settings.sync_meses_revision)
+        margen = ultima - dt.timedelta(days=settings.sync_margen_dias)
+        # El más viejo de los dos: la ventana de revisión (caso normal) o, si el cliente no se
+        # sincroniza hace más de N meses, desde su última fecha − margen (para no dejar hueco).
+        desde = min(revision, margen)
+    else:
+        desde = dt.date(hoy.year - settings.sync_anios_historico, 1, 1)
+    if desde > ayer:
+        desde = ayer
+    return miscomprobantes.ventanas(desde, ayer)
+
+
+def _upsert(db: Session, cuit: str, direccion: str, crudos: list[dict]) -> tuple[int, int]:
+    """Inserta/actualiza los comprobantes. Devuelve (procesados, nuevos): `procesados` es todo lo
+    que tocó (la ventana incremental re-barre meses ya conocidos), `nuevos` son sólo los que no
+    existían (inserts) — los que realmente se trajeron por primera vez en esta corrida."""
+    ahora = dt.datetime.now(dt.timezone.utc)
+    procesados = 0
+    nuevos = 0
+    for c in crudos:
+        if not c.get("fecha") or not c.get("numero"):
+            continue
+        # Consolidación a pesos EN EL BORDE: 'imp_total' del scraper viene en la moneda de origen
+        # (USD para exportación); lo pasamos a pesos con la cotización del propio comprobante. Para
+        # pesos, moneda='ARS' y cotizacion=1, así que imp_total no cambia. El .get() tolera fuentes
+        # que no traen moneda (p.ej. WSFEv1).
+        cot = float(c.get("cotizacion", 1.0) or 1.0)
+        origen = float(c["imp_total"])
+        pesos = origen * cot
+        moneda = c.get("moneda", "ARS")
+        existe = db.scalar(
+            select(models.ComprobanteEmitido).where(
+                models.ComprobanteEmitido.cuit == cuit,
+                models.ComprobanteEmitido.direccion == direccion,
+                models.ComprobanteEmitido.punto_venta == c["punto_venta"],
+                models.ComprobanteEmitido.cbte_tipo == c["cbte_tipo"],
+                models.ComprobanteEmitido.numero == c["numero"],
+            )
+        )
+        if existe:
+            existe.fecha = _parse_fecha(c["fecha"])
+            existe.imp_total = pesos
+            existe.imp_total_origen = origen
+            existe.moneda = moneda
+            existe.cotizacion = cot
+            existe.doc_nro = c["doc_nro"]
+            existe.contraparte_nombre = c.get("contraparte_nombre", "")
+            existe.cae = c["cae"]
+            existe.sincronizado_en = ahora
+        else:
+            db.add(
+                models.ComprobanteEmitido(
+                    cuit=cuit,
+                    direccion=direccion,
+                    cbte_tipo=c["cbte_tipo"],
+                    punto_venta=c["punto_venta"],
+                    numero=c["numero"],
+                    fecha=_parse_fecha(c["fecha"]),
+                    imp_total=pesos,
+                    imp_total_origen=origen,
+                    moneda=moneda,
+                    cotizacion=cot,
+                    doc_nro=c["doc_nro"],
+                    contraparte_nombre=c.get("contraparte_nombre", ""),
+                    cae=c["cae"],
+                )
+            )
+            nuevos += 1
+        procesados += 1
+    return procesados, nuevos
+
+
+def _ms(inicio: float) -> int:
+    return int((time.monotonic() - inicio) * 1000)
+
+
+def _registrar_extraccion(
+    db: Session,
+    cuit: str,
+    resultado: str,
+    comprobantes: int,
+    duracion_ms: int,
+    motivo: str | None = None,
+) -> None:
+    """Agrega una fila a la bitácora de sincronizaciones (tabla extracciones)."""
+    db.add(
+        models.Extraccion(
+            cuit=cuit,
+            resultado=resultado,
+            comprobantes=comprobantes,
+            duracion_ms=duracion_ms,
+            motivo=motivo,
+        )
+    )
+    db.commit()
+
+
+def ultima_extraccion(db: Session, cuit: str) -> "models.Extraccion | None":
+    """La extracción más reciente de un cliente (para 'última sincronización')."""
+    return db.scalar(
+        select(models.Extraccion)
+        .where(models.Extraccion.cuit == cuit)
+        .order_by(models.Extraccion.fecha.desc(), models.Extraccion.id.desc())
+        .limit(1)
+    )
+
+
+def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progress=None) -> int:
+    """Trae emitidos + recibidos del CUIT desde Mis Comprobantes (incremental) y hace upsert.
+    Devuelve cuántos comprobantes NUEVOS se trajeron en esta corrida (inserts; la bitácora de
+    extracciones registra aparte el total procesado)."""
+    cliente = db.get(models.ClienteARCA, cuit)
+    if cliente is None:
+        raise ValueError(f"Cliente {cuit} no registrado")
+    contador = db.get(models.Contador, cliente.cuit_contador)
+    if contador is None:
+        raise ValueError(f"El cliente {cuit} no tiene un contador con clave guardada")
+    clave = descifrar(contador.clave_cifrada).decode()
+
+    plan = [
+        {**miscomprobantes.PLAN_EMITIDOS, "rangos": _ventanas(db, cuit, "emitido")},
+        {**miscomprobantes.PLAN_RECIBIDOS, "rangos": _ventanas(db, cuit, "recibido")},
+    ]
+    inicio = time.monotonic()
+    try:
+        nombre, datos = miscomprobantes.descargar(
+            contador.cuit, clave, cuit, plan, headless=headless, on_progress=on_progress
+        )
+        if nombre:  # nombre real del contribuyente desde el navbar de Mis Comprobantes
+            cliente.nombre = nombre
+        procesados = 0
+        nuevos = 0
+        for direccion, crudos in datos.items():
+            p, nv = _upsert(db, cuit, direccion, crudos)
+            procesados += p
+            nuevos += nv
+        db.commit()
+    except Exception as e:  # noqa: BLE001 — registra la extracción fallida y re-lanza
+        db.rollback()
+        _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
+        raise
+    _registrar_extraccion(db, cuit, "exitosa", procesados, _ms(inicio))
+    return nuevos
+
+
+def sincronizar_padron(db: Session, cuit: str, headless: bool | None = None) -> dict:
+    """Trae del portal Monotributo la categoría real, actividad, recategorización y facturómetro, y
+    los guarda en el cliente. Funciona para el titular y para REPRESENTADOS (datos_monotributo fija
+    'actuando en representación' y verifica el CUIT con un guard anti-cruce). Devuelve los datos o {}."""
+    cliente = db.get(models.ClienteARCA, cuit)
+    if cliente is None:
+        raise ValueError(f"Cliente {cuit} no registrado")
+    contador = db.get(models.Contador, cliente.cuit_contador)
+    if contador is None:
+        raise ValueError(f"El cliente {cuit} no tiene un contador con clave guardada")
+    clave = descifrar(contador.clave_cifrada).decode()
+    # Trae la categoría/datos del padrón del CUIT objetivo. Si es representado (≠ contador),
+    # datos_monotributo fija "actuando en representación" y verifica el CUIT (guard anti-cruce):
+    # devuelve {} si la representación no tomó, así nunca se le atribuye la categoría del contador.
+    datos = padron.datos_monotributo(contador.cuit, clave, cuit_objetivo=cuit, headless=headless)
+    # Régimen AUTORITATIVO del padrón (fuente oficial): si el portal de Monotributo abrió, es
+    # monotributista; si no abrió, ARCA confirma que NO lo es. Sólo lo pisamos con una señal real
+    # (no con None) para no borrar un valor previo si el padrón falló a medias.
+    if datos.get("es_monotributista") is True or datos.get("categoria"):
+        cliente.regimen = "monotributo"
+    elif datos.get("es_monotributista") is False:
+        cliente.regimen = "no_monotributo"
+    if datos.get("categoria"):
+        cliente.categoria = datos["categoria"]
+        cliente.actividad = datos.get("actividad")
+        cliente.prox_recategorizacion = datos.get("prox_recategorizacion")
+    # Estado de cuota (CCMA) + próximo vencimiento (portal): guarda los que vinieron.
+    for campo in (
+        "cuota_estado",
+        "cuota_deuda",
+        "cuota_saldo_favor",
+        "prox_venc_fecha",
+        "prox_venc_importe",
+        "debito_automatico",
+        "facturacion_12m",
+        "tope_categoria",
+        "facturometro_actualizado",
+    ):
+        if datos.get(campo) is not None:
+            setattr(cliente, campo, datos[campo])
+    # Detalle de deuda de la CCMA (lo trae estado_cuota dentro de datos_monotributo): JSON serializado.
+    if isinstance(datos.get("deuda_detalle"), dict):
+        cliente.deuda_detalle = json.dumps(datos["deuda_detalle"], ensure_ascii=False)
+    if datos:
+        db.commit()
+    return datos
+
+
+def sincronizar_todo(db: Session, cuit: str, headless: bool | None = None) -> int:
+    """Sincroniza TODO lo scrapeable del cliente: comprobantes (Mis Comprobantes) + datos del padrón
+    de Monotributo (categoría, actividad, recategorización, estado de cuota, vencimiento, débito,
+    saldo a favor). El padrón es best-effort —sólo aplica al titular monotributista— y NO frena la
+    sincronización de comprobantes si falla. Devuelve cuántos comprobantes procesó."""
+    n = sincronizar(db, cuit, headless=headless)
+    try:
+        sincronizar_padron(db, cuit, headless=headless)
+    except Exception:  # noqa: BLE001 — el padrón no aplica o falló; los comprobantes ya se trajeron
+        pass
+    return n
+
+
+def sincronizar_deuda(db: Session, cuit: str, headless: bool | None = None) -> dict:
+    """Trae el detalle de deuda por el camino DIRECTO de la CCMA (Estado de cuenta → elegir CUIT →
+    cálculo de deuda). Sirve para monotributistas, autónomos y representados. Guarda el detalle +
+    los campos de cuota en el cliente. Devuelve el resumen ({} si no se pudo)."""
+    cliente = db.get(models.ClienteARCA, cuit)
+    if cliente is None:
+        raise ValueError(f"Cliente {cuit} no registrado")
+    contador = db.get(models.Contador, cliente.cuit_contador)
+    if contador is None:
+        raise ValueError(f"El cliente {cuit} no tiene un contador con clave guardada")
+    clave = descifrar(contador.clave_cifrada).decode()
+    res = ccma.consultar_deuda(contador.cuit, clave, cuit_objetivo=cuit, headless=headless)
+    if isinstance(res.get("deuda_detalle"), dict):
+        cliente.deuda_detalle = json.dumps(res["deuda_detalle"], ensure_ascii=False)
+        for campo in ("cuota_estado", "cuota_deuda", "cuota_saldo_favor"):
+            if res.get(campo) is not None:
+                setattr(cliente, campo, res[campo])
+        db.commit()
+    elif res.get("no_aplica"):
+        # "No aplica" (el cliente no tiene cuenta corriente): se PERSISTE el veredicto para no volver
+        # a preguntar en cada recarga. Se guarda un marcador en deuda_detalle ({no_aplica, motivo}),
+        # que también pisa cualquier detalle viejo (incl. uno mal atribuido). Los campos de cuota se
+        # limpian porque no corresponden a un no-monotributista/no-autónomo.
+        cliente.deuda_detalle = json.dumps(
+            {"no_aplica": True, "motivo": res.get("motivo")}, ensure_ascii=False
+        )
+        cliente.cuota_estado = None
+        cliente.cuota_deuda = None
+        cliente.cuota_saldo_favor = None
+        db.commit()
+    return res

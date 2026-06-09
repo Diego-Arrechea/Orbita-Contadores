@@ -1,0 +1,24 @@
+# Secretos y artefactos del spike — NUNCA al repo
+*.key
+*.crt
+*.csr
+*.pem
+.ta_cache/
+.venv/
+__pycache__/
+*.pyc
+
+# CloakBrowser: repo de referencia clonado + perfil de sesión persistente
+.cloakbrowser_ref/
+.perfil_arca/
+.perfil_*/
+*-profile/
+
+# Credenciales locales — NUNCA al repo
+credenciales_local.py
+.env
+
+# Salidas con datos reales de contribuyentes/terceros — NUNCA al repo
+exploracion_*.txt
+diagnostico*.txt
+*_resultado.png
