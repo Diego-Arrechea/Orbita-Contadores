@@ -1,32 +1,59 @@
-# Despliegue de Órbita en un VPS (Ubuntu 22.04/24.04)
+# Despliegue de Órbita (Frontend en Vercel + Backend en VPS Ubuntu)
 
-Guía para correr todo el proyecto (frontend + backend) en un VPS propio, con HTTPS.
+Guía para producción. El backend NO puede ir a Vercel (necesita Chromium para scrapear ARCA,
+APScheduler para el sync diario, y SQLite persistente — nada de eso corre en serverless).
+Solución: frontend a Vercel, backend al VPS.
 
 **Arquitectura**
 
 ```
-Internet → Caddy (HTTPS, Let's Encrypt) en el VPS
-            ├── /        → frontend estático (build de Vite)
-            └── /api/*   → uvicorn (FastAPI, systemd) → SQLite + Chromium (scraping)
+   Vercel (CDN global, HTTPS)              VPS Ubuntu (HTTPS via Caddy)
+   app.tudominio.com                       api.tudominio.com
+   └── dist/ (build de Vite)               └── Caddy → uvicorn (FastAPI, systemd)
+       redeploy en cada git push                       └── SQLite + Chromium (scraping)
 ```
 
-Como el frontend y la API quedan en el **mismo dominio**, el frontend llama a `/api` (ruta
-relativa) y no hay problemas de CORS.
+El frontend de Vercel llama al backend del VPS por URL absoluta (cross-origin), así que el
+backend tiene CORS abierto para `https://app.tudominio.com` vía `CORS_ORIGINS` en el `.env`.
 
-Reemplazá `app.tudominio.com` por tu dominio real en todos los pasos.
+Reemplazá `tudominio.com` por tu dominio real en todos los pasos.
 
 ---
 
 ## 0) DNS (antes de empezar)
 
-En el panel de tu dominio creá un registro **A** apuntando a la IP del VPS:
+Dos registros en tu proveedor de DNS:
 
 ```
-A   app.tudominio.com   →   <IP_DEL_VPS>
+CNAME  app.tudominio.com  →  cname.vercel-dns.com   (te lo da Vercel al agregar el dominio)
+A      api.tudominio.com  →  <IP_DEL_VPS>
 ```
 
-Esperá a que propague (`ping app.tudominio.com` debe devolver la IP del VPS). Caddy necesita
-esto resuelto para emitir el certificado HTTPS.
+Esperá a que `api.tudominio.com` resuelva a la IP del VPS (`ping api.tudominio.com`) — Caddy
+necesita eso para emitir el HTTPS. El CNAME de `app.` lo configurás cuando agregás el dominio
+en Vercel (paso A).
+
+---
+
+## A) Frontend a Vercel (5 minutos, sin tocar el VPS)
+
+1. Entrá a [vercel.com](https://vercel.com) e iniciá sesión con tu cuenta de GitHub.
+2. **Add New → Project** → importá `Diego-Arrechea/Orbita-Contadores`.
+3. Vercel detecta Vite. Confirmá:
+   - Framework Preset: **Vite**
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+   - Root Directory: `./` (raíz)
+4. **Environment Variables** → agregá:
+   ```
+   VITE_API_URL = https://api.tudominio.com/api
+   ```
+5. **Deploy**. En ~2 min te da una URL `xxx.vercel.app` funcionando (la API todavía no responde
+   porque falta levantarla en el VPS — pero el sitio carga).
+6. **Settings → Domains** → agregá `app.tudominio.com`. Vercel te muestra el CNAME que tenés
+   que poner en el DNS (paso 0). En cuanto propague, queda con HTTPS automático.
+
+A partir de ahora **cada `git push` a `main` redeployea el frontend solo**.
 
 ---
 
@@ -35,9 +62,8 @@ esto resuelto para emitir el certificado HTTPS.
 ```bash
 apt update && apt upgrade -y
 
-# Node 20 (para compilar el frontend) + git
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt install -y nodejs git python3 python3-venv python3-pip
+# Git + Python (no hace falta Node: el frontend lo compila Vercel)
+apt install -y git python3 python3-venv python3-pip
 
 # Caddy (servidor web con HTTPS automático)
 apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
@@ -55,17 +81,9 @@ adduser --system --group --home /srv/orbita orbita
 
 ```bash
 mkdir -p /srv/orbita && cd /srv/orbita
-# Opción A: clonar desde tu repo git
-git clone <URL_DE_TU_REPO> repo
-# (Opción B: subirlo por scp/rsync desde tu Windows si el repo no está en remoto)
-
-# Estructura esperada: /srv/orbita/repo  con backend/ y la raíz del frontend
+git clone https://github.com/Diego-Arrechea/Orbita-Contadores repo
 ln -s /srv/orbita/repo/backend /srv/orbita/backend
-ln -s /srv/orbita/repo        /srv/orbita/frontend
 ```
-
-> Si preferís, copiá las carpetas en vez de symlinks. Lo importante es que existan
-> `/srv/orbita/backend` y `/srv/orbita/frontend/dist` (este último lo generamos en el paso 4).
 
 ---
 
@@ -120,33 +138,30 @@ journalctl -u orbita-backend -f          # ver logs en vivo
 
 ---
 
-## 4) Frontend (build estático)
+## 4) Frontend
 
-```bash
-cd /srv/orbita/frontend
-npm ci
-
-# La API queda en el mismo dominio bajo /api → ruta relativa, sin CORS:
-echo 'VITE_API_URL=/api' > .env.production
-
-npm run build      # genera /srv/orbita/frontend/dist
-chown -R orbita:orbita /srv/orbita/frontend/dist
-```
-
-Cada vez que actualices el frontend: `git pull && npm ci && npm run build`.
+Lo maneja **Vercel** (paso A). Nada que hacer en el VPS. Cada `git push` a `main` redeploya solo.
 
 ---
 
-## 5) Caddy (HTTPS + servir todo)
+## 5) Caddy (HTTPS para la API)
+
+Instalá Caddy y configurá el subdominio de la API:
 
 ```bash
+apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+apt update && apt install -y caddy
+
 cp /srv/orbita/repo/deploy/Caddyfile /etc/caddy/Caddyfile
-nano /etc/caddy/Caddyfile        # cambiá app.tudominio.com por tu dominio real
+nano /etc/caddy/Caddyfile        # cambiá api.tudominio.com por tu subdominio real
 systemctl reload caddy
 journalctl -u caddy -f           # debería emitir el certificado de Let's Encrypt
 ```
 
-Abrí `https://app.tudominio.com` en el navegador. Listo. 🎉
+Probá: `curl https://api.tudominio.com/` debe devolver `{"ok":true,...}`.
+Después abrí `https://app.tudominio.com` (Vercel) y la app entera debería funcionar. 🎉
 
 ---
 
@@ -169,7 +184,7 @@ ufw enable
 | Ver logs backend | `journalctl -u orbita-backend -f` |
 | Reiniciar backend | `systemctl restart orbita-backend` |
 | Actualizar backend | `cd /srv/orbita/repo && git pull && /srv/orbita/backend/.venv/bin/pip install -r backend/requirements.txt && systemctl restart orbita-backend` |
-| Actualizar frontend | `cd /srv/orbita/frontend && git pull && npm ci && npm run build` |
+| Actualizar frontend | Automático: `git push` → Vercel redeploya solo |
 
 ### Backups (importante)
 
