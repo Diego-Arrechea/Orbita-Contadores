@@ -1,0 +1,13 @@
+# No copiar al contexto de build (imagen más liviana y sin secretos)
+.venv/
+__pycache__/
+*.pyc
+data/
+.perfil_*/
+perfil_*/
+*-profile/
+*.crt
+*.key
+*.csr
+*.pem
+.env

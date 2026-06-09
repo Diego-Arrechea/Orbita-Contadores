@@ -1,0 +1,54 @@
+# Stack de Órbita Contadores en el VPS — integrado al patrón Docker existente.
+# - Postgres dedicado (igual que el resto de las apps: postgres:16-alpine)
+# - backend FastAPI + Chromium
+# - se engancha a la red del Caddy central (n8n_n8n_net) para que lo enrute por nombre
+#
+# Uso:  docker compose -f deploy/docker/docker-compose.yml up -d --build
+# El .env (al lado de este archivo) provee POSTGRES_PASSWORD, FERNET_KEY, etc.
+name: orbita-contadores
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: orbita_contadores_db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=orbita
+      - POSTGRES_DB=orbita_contadores
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - TZ=${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - /opt/orbita-contadores_data:/var/lib/postgresql/data
+    networks:
+      - orbita_contadores_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orbita -d orbita_contadores"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ../../backend
+    container_name: orbita_contadores_backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # La DB apunta al Postgres de arriba (por nombre de servicio en la red interna).
+      - DATABASE_URL=postgresql+psycopg2://orbita:${POSTGRES_PASSWORD}@orbita_contadores_db:5432/orbita_contadores
+      - TZ=${TZ:-America/Argentina/Buenos_Aires}
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - orbita_contadores_net   # para hablar con su Postgres
+      - n8n_net                 # para que el Caddy central lo alcance por nombre
+
+networks:
+  orbita_contadores_net:
+    driver: bridge
+  n8n_net:
+    external: true
+    name: n8n_n8n_net
