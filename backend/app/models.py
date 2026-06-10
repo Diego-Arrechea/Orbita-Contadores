@@ -55,6 +55,16 @@ class Usuario(Base):
     # vivían en localStorage del navegador; ahora se guardan en la cuenta. NULL = usa los defaults
     # del front. Ver routers/configuracion.py.
     config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Rol del usuario en Órbita. 'contador' = cuenta normal (ve sólo sus clientes); 'admin' = acceso
+    # al panel superadmin (gestiona todas las cuentas). Ver routers/admin.py + security.admin_actual.
+    rol: Mapped[str] = mapped_column(String(20), default="contador", server_default="contador")
+    # Cuenta habilitada. False = el contador no puede iniciar sesión ni operar (la deshabilita un
+    # admin desde el panel). El chequeo vive en login y en usuario_actual.
+    activo: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    # Última vez que el contador inició sesión (para el panel admin). NULL = nunca entró.
+    ultimo_acceso: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     creado_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -211,4 +221,23 @@ class MovimientoBancario(Base):
     hash_dedup: Mapped[str] = mapped_column(String(64), index=True, default="")
     importado_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class AuditoriaAdmin(Base):
+    """Bitácora de acciones sensibles del panel superadmin: quién (admin) hizo qué (activar /
+    desactivar / cambiar rol / impersonar) sobre qué cuenta y cuándo. Sólo se escribe; sirve para
+    trazabilidad de soporte y seguridad. Ver routers/admin.py."""
+
+    __tablename__ = "auditoria_admin"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    admin_id: Mapped[int] = mapped_column(Integer, ForeignKey("usuarios.id"), index=True)
+    admin_email: Mapped[str] = mapped_column(String(120), default="")  # desnormalizado (sobrevive borrados)
+    accion: Mapped[str] = mapped_column(String(30))  # activar | desactivar | cambiar_rol | impersonar
+    target_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # cuenta afectada
+    target_email: Mapped[str] = mapped_column(String(120), default="")
+    detalle: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    fecha: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
     )

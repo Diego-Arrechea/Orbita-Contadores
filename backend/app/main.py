@@ -9,7 +9,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import models  # noqa: F401 — registra los modelos para create_all
 from .config import settings
 from .db import Base, asegurar_columnas, engine
-from .routers import auth, clientes, configuracion, movimientos, notificaciones, onboarding
+from .routers import (
+    admin,
+    auth,
+    clientes,
+    configuracion,
+    movimientos,
+    notificaciones,
+    onboarding,
+)
 from .services.scheduler import detener_scheduler, iniciar_scheduler
 
 Base.metadata.create_all(bind=engine)
@@ -35,6 +43,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(admin.router)
 app.include_router(clientes.router)
 app.include_router(configuracion.router)
 app.include_router(movimientos.router)

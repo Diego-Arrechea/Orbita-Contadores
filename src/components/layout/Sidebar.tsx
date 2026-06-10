@@ -1,7 +1,16 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Bell, Landmark, UserPlus, Settings, Orbit, LogOut } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Bell,
+  Landmark,
+  UserPlus,
+  Settings,
+  Orbit,
+  LogOut,
+  ShieldCheck,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { cuentaActual, logoutCuenta } from '@/lib/cuenta';
+import { cuentaActual, esAdmin, logoutCuenta } from '@/lib/cuenta';
 import { resetChatSoporte } from '@/components/shared/SoporteChat';
 
 const nav = [
@@ -15,6 +24,10 @@ const nav = [
 export function Sidebar() {
   const navigate = useNavigate();
   const cuenta = cuentaActual();
+  // El ítem del panel sólo aparece para cuentas admin (la ruta /admin además está protegida en back).
+  const items = esAdmin()
+    ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
+    : nav;
   return (
     <aside
       className="hidden lg:flex w-72 shrink-0 flex-col px-4 py-7 text-[hsl(var(--sidebar-foreground))]"
@@ -37,7 +50,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1">
-        {nav.map(item => (
+        {items.map(item => (
           <NavLink
             key={item.to}
             to={item.to}

@@ -59,6 +59,14 @@ export function apiPut<T>(path: string, body?: unknown): Promise<T> {
   }).then(handle<T>);
 }
 
+export function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  return fetch(`${BASE_URL}${path}`, {
+    method: 'PATCH',
+    headers: conAuth(body !== undefined ? { 'Content-Type': 'application/json' } : undefined),
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  }).then(handle<T>);
+}
+
 export function apiDelete<T>(path: string): Promise<T> {
   return fetch(`${BASE_URL}${path}`, { method: 'DELETE', headers: conAuth() }).then(handle<T>);
 }

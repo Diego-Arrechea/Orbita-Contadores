@@ -71,4 +71,21 @@ def usuario_actual(
     usuario = db.get(models.Usuario, usuario_id)
     if usuario is None:
         raise no_autorizado
+    if not usuario.activo:
+        # Cuenta inhabilitada por un administrador: corta la sesión aunque el token siga vigente.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tu cuenta está inhabilitada. Escribinos para reactivarla.",
+        )
+    return usuario
+
+
+def admin_actual(usuario: models.Usuario = Depends(usuario_actual)) -> models.Usuario:
+    """Dependencia FastAPI: exige que el usuario logueado sea administrador (panel superadmin).
+    Reusa `usuario_actual` (token válido + cuenta activa) y además chequea el rol."""
+    if usuario.rol != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenés permisos para acceder a esta sección.",
+        )
     return usuario

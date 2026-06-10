@@ -7,7 +7,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Login } from '@/pages/Login';
 import { Registro } from '@/pages/Registro';
 import { Terminos, Privacidad } from '@/pages/Legal';
-import { cuentaActual } from '@/lib/cuenta';
+import { cuentaActual, esAdmin } from '@/lib/cuenta';
 
 /** Sin sesión → al login. (Cuentas demo en el front; ver src/lib/cuenta.ts). */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -19,6 +19,12 @@ function RequireAuth({ children }: { children: ReactNode }) {
     <Navigate to="/login" replace />
   );
 }
+
+/** Sólo admins: sin sesión → login; con sesión pero sin rol admin → al dashboard. */
+function RequireAdmin({ children }: { children: ReactNode }) {
+  if (!cuentaActual()) return <Navigate to="/login" replace />;
+  return esAdmin() ? <>{children}</> : <Navigate to="/" replace />;
+}
 import { Dashboard } from '@/pages/Dashboard';
 import { Alertas } from '@/pages/Alertas';
 import { ClienteDetalle } from '@/pages/ClienteDetalle';
@@ -26,6 +32,7 @@ import { ReporteCliente } from '@/pages/ReporteCliente';
 import { NuevoCliente } from '@/pages/NuevoCliente';
 import { Conciliacion } from '@/pages/Conciliacion';
 import { Configuracion } from '@/pages/Configuracion';
+import { Admin } from '@/pages/Admin';
 
 export default function App() {
   return (
@@ -49,6 +56,14 @@ export default function App() {
         <Route path="/clientes/nuevo" element={<NuevoCliente />} />
         <Route path="/clientes/:id" element={<ClienteDetalle />} />
         <Route path="/configuracion" element={<Configuracion />} />
+        <Route
+          path="/admin"
+          element={
+            <RequireAdmin>
+              <Admin />
+            </RequireAdmin>
+          }
+        />
       </Route>
       <Route
         path="/clientes/:id/reporte"
