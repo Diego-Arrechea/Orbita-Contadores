@@ -18,6 +18,10 @@ export interface Cuenta {
 
 const LS_TOKEN = 'orbita_token';
 const LS_USUARIO = 'orbita_usuario';
+// Mientras un admin está "entrando como" otro contador, guardamos acá su sesión original (la de
+// admin) para poder volver. Si existen, es señal de que hay una impersonación en curso.
+const LS_IMP_TOKEN = 'orbita_admin_token';
+const LS_IMP_USUARIO = 'orbita_admin_usuario';
 
 function iniciales(nombre: string, apellido: string): string {
   const a = nombre.trim()[0] ?? '';
@@ -75,6 +79,60 @@ export function logoutCuenta(): void {
   try {
     localStorage.removeItem(LS_TOKEN);
     localStorage.removeItem(LS_USUARIO);
+    localStorage.removeItem(LS_IMP_TOKEN);
+    localStorage.removeItem(LS_IMP_USUARIO);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** ¿La cuenta logueada es administradora (acceso al panel superadmin)? */
+export function esAdmin(): boolean {
+  return usuarioActual()?.rol === 'admin';
+}
+
+/**
+ * Empieza a "entrar como" otro contador: respalda la sesión de admin y activa la del contador.
+ * Mientras dure, esAdmin() refleja al contador impersonado (no muestra el panel) y un banner global
+ * permite volver con terminarImpersonacion().
+ */
+export function iniciarImpersonacion(auth: AuthResp): Cuenta {
+  try {
+    const tok = localStorage.getItem(LS_TOKEN);
+    const usr = localStorage.getItem(LS_USUARIO);
+    if (tok && usr) {
+      localStorage.setItem(LS_IMP_TOKEN, tok);
+      localStorage.setItem(LS_IMP_USUARIO, usr);
+    }
+  } catch {
+    /* ignore */
+  }
+  return iniciarSesion(auth);
+}
+
+/** ¿Hay una impersonación en curso? Devuelve el nombre del admin original, o null. */
+export function impersonando(): string | null {
+  try {
+    const raw = localStorage.getItem(LS_IMP_USUARIO);
+    if (!raw) return null;
+    const u = JSON.parse(raw) as Usuario;
+    return `${u.nombre} ${u.apellido}`.trim() || u.email;
+  } catch {
+    return null;
+  }
+}
+
+/** Vuelve a la sesión de admin original (deshace la impersonación). */
+export function terminarImpersonacion(): void {
+  try {
+    const tok = localStorage.getItem(LS_IMP_TOKEN);
+    const usr = localStorage.getItem(LS_IMP_USUARIO);
+    if (tok && usr) {
+      localStorage.setItem(LS_TOKEN, tok);
+      localStorage.setItem(LS_USUARIO, usr);
+    }
+    localStorage.removeItem(LS_IMP_TOKEN);
+    localStorage.removeItem(LS_IMP_USUARIO);
   } catch {
     /* ignore */
   }

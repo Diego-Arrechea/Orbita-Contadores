@@ -285,6 +285,7 @@ class UsuarioOut(BaseModel):
     cuit: str
     estudio: str
     matricula: str | None = None
+    rol: str = "contador"  # contador | admin (el front muestra el panel sólo si admin)
 
 
 class AuthOut(BaseModel):
@@ -344,3 +345,62 @@ class ClasificarIn(BaseModel):
 
     marcadoComo: str | None = None  # noqa: N815 — ingreso-actividad | no-es-venta
     comprobanteId: str | None = None  # noqa: N815
+
+
+# --- Panel superadmin (sólo rol=admin; ver routers/admin.py) ---
+
+
+class AdminUsuarioOut(BaseModel):
+    """Una cuenta de contador vista desde el panel admin (datos + estado + métricas de uso)."""
+
+    id: int
+    nombre: str
+    apellido: str
+    email: EmailStr
+    telefono: str
+    cuit: str
+    estudio: str
+    matricula: str | None = None
+    rol: str
+    activo: bool
+    creado_en: str | None = None  # ISO
+    ultimo_acceso: str | None = None  # ISO; None = nunca inició sesión
+    clientes: int = 0  # cuántos clientes tiene cargados
+
+
+class AdminUsuarioPatch(BaseModel):
+    """Cambios que un admin puede aplicar a una cuenta (todos opcionales; PATCH parcial)."""
+
+    activo: bool | None = None
+    rol: str | None = None  # contador | admin
+
+
+class AdminMetricasOut(BaseModel):
+    """Resumen global del sistema para el dashboard del panel admin."""
+
+    total_cuentas: int
+    cuentas_activas: int
+    cuentas_inactivas: int
+    total_admins: int
+    total_clientes: int  # clientes cargados en todo el sistema
+    syncs_hoy: int  # sincronizaciones (extracciones) corridas hoy
+    syncs_fallidas_hoy: int
+    nuevas_cuentas_semana: int  # altas en los últimos 7 días
+
+
+class AdminAuditoriaOut(BaseModel):
+    """Una entrada del log de acciones del panel admin."""
+
+    id: int
+    admin_email: str
+    accion: str
+    target_email: str
+    detalle: str | None = None
+    fecha: str  # ISO
+
+
+class ImpersonarOut(BaseModel):
+    """Token de la cuenta impersonada para que el admin entre 'como' ese contador."""
+
+    token: str
+    usuario: UsuarioOut

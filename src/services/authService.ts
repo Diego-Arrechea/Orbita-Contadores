@@ -14,6 +14,7 @@ export interface Usuario {
   cuit: string;
   estudio: string;
   matricula?: string | null;
+  rol?: string; // 'contador' | 'admin' — el front muestra el panel superadmin sólo si 'admin'
 }
 
 export interface AuthResp {

@@ -1,6 +1,8 @@
 """Auth de contadores: registro (alta + auto-login), login y /me."""
 from __future__ import annotations
 
+import datetime as dt
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -26,6 +28,7 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         cuit=u.cuit,
         estudio=u.estudio,
         matricula=u.matricula,
+        rol=u.rol,
     )
 
 
@@ -74,6 +77,12 @@ def login(datos: LoginIn, db: Session = Depends(get_db)):
     )
     if usuario is None or not verificar_password(datos.password, usuario.password_hash):
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos.")
+    if not usuario.activo:
+        raise HTTPException(
+            status_code=403, detail="Tu cuenta está inhabilitada. Escribinos para reactivarla."
+        )
+    usuario.ultimo_acceso = dt.datetime.now(dt.timezone.utc)
+    db.commit()
     return _auth_out(usuario)
 
 

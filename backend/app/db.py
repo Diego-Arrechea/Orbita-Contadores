@@ -27,9 +27,61 @@ def get_db() -> Iterator[Session]:
         db.close()
 
 
+# Emails que se marcan como admin del panel superadmin al iniciar (idempotente). Si una de estas
+# cuentas todavía no existe, simplemente no pasa nada hasta que se registre y vuelva a arrancar.
+ADMINS_SEMILLA = ("ulises25103@gmail.com", "diego@orbita.com")
+
+
+def _migrar_usuarios(conn) -> None:
+    """Agrega las columnas del panel admin a `usuarios` y marca los admins semilla.
+    Portable SQLite + Postgres (las demás migraciones de abajo son SQLite-only)."""
+    es_sqlite = settings.database_url.startswith("sqlite")
+    if es_sqlite:
+        info = conn.execute(text("PRAGMA table_info(usuarios)")).fetchall()
+        if not info:  # la tabla aún no existe: create_all ya la creó con todas las columnas
+            return
+        cols = {row[1] for row in info}
+    else:
+        cols = {
+            row[0]
+            for row in conn.execute(
+                text("SELECT column_name FROM information_schema.columns WHERE table_name = 'usuarios'")
+            )
+        }
+        if not cols:  # tabla recién creada por create_all: ya trae las columnas
+            return
+
+    nuevas = {
+        "rol": "VARCHAR(20) DEFAULT 'contador'",
+        "activo": "BOOLEAN DEFAULT TRUE" if not es_sqlite else "BOOLEAN DEFAULT 1",
+        "ultimo_acceso": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
+    }
+    for nombre, tipo in nuevas.items():
+        if nombre not in cols:
+            conn.execute(text(f"ALTER TABLE usuarios ADD COLUMN {nombre} {tipo}"))
+
+    # Backfill de filas previas (las nuevas columnas quedaron NULL en datos viejos) + seed de admins.
+    conn.execute(text("UPDATE usuarios SET rol = 'contador' WHERE rol IS NULL"))
+    conn.execute(
+        text("UPDATE usuarios SET activo = TRUE WHERE activo IS NULL")
+        if not es_sqlite
+        else text("UPDATE usuarios SET activo = 1 WHERE activo IS NULL")
+    )
+    for email in ADMINS_SEMILLA:
+        conn.execute(
+            text("UPDATE usuarios SET rol = 'admin' WHERE LOWER(email) = :email"),
+            {"email": email.lower()},
+        )
+
+
 def asegurar_columnas() -> None:
     """Migración ligera (sin Alembic): agrega columnas nuevas a tablas ya existentes.
     create_all() crea tablas faltantes pero NO altera las existentes."""
+    # Migración de `usuarios` (panel admin): portable a SQLite y Postgres.
+    with engine.begin() as conn:
+        _migrar_usuarios(conn)
+
+    # El resto son migraciones de tablas que sólo existen viejas en el SQLite de desarrollo.
     if not settings.database_url.startswith("sqlite"):
         return
     with engine.begin() as conn:
