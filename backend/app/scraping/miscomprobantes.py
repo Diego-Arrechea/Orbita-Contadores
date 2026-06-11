@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import io
+import json
 import re
 import shutil
 import tempfile
@@ -20,8 +21,9 @@ from pathlib import Path
 
 from patchright.sync_api import sync_playwright
 
-from ..config import settings
+from ..config import BASE_DIR, settings
 from . import _comun
+from ._traza import Traza
 
 # Cada sección de "Mis Comprobantes": botón del menú, dirección y de qué columna sale la contraparte.
 PLAN_EMITIDOS = {"boton": "#btnEmitidos", "direccion": "emitido", "contraparte": "receptor"}
@@ -107,22 +109,62 @@ def _mcmp_tab(ctx):
     return next((pg for pg in ctx.pages if "mcmp" in pg.url), None)
 
 
-def _abrir_mis_comprobantes(page, ctx):
+def _diagnostico(ctx, cuit: str, traza: Traza) -> str:
+    """Al fallar: vuelca la traza de pasos + screenshot + HTML + texto visible de la(s) pestaña(s)
+    de ARCA a data/diag/ (ahí suele estar el mensaje real del error), y devuelve un resumen corto
+    para incluir en el `motivo` del fallo. Nombres por-CUIT (se pisan): queda SIEMPRE el último
+    fallo de cada cliente, así el disco no crece. El HTML sirve para ajustar selectores si ARCA
+    rediseña una pantalla."""
+    diag = BASE_DIR / "data" / "diag"
+    diag.mkdir(parents=True, exist_ok=True)
+    try:
+        (diag / f"traza_{cuit}.json").write_text(
+            json.dumps(
+                {"fase": traza.fase, "pasos": traza.pasos}, ensure_ascii=False, indent=2
+            ),
+            encoding="utf-8",
+        )
+    except Exception:  # noqa: BLE001
+        pass
+    partes: list[str] = []
+    for i, pg in enumerate(ctx.pages):
+        try:
+            if "afip" not in pg.url:
+                continue
+            pg.screenshot(path=str(diag / f"fallo_{cuit}_{i}.png"), full_page=True)
+            try:
+                (diag / f"fallo_{cuit}_{i}.html").write_text(pg.content(), encoding="utf-8")
+            except Exception:  # noqa: BLE001
+                pass
+            partes.append(" ".join(pg.inner_text("body").split())[:200])
+        except Exception:  # noqa: BLE001
+            pass
+    cuerpo = " | ".join(partes) if partes else "(sin pestaña de ARCA)"
+    return f" | {cuerpo} [diag: {diag}]"
+
+
+def _abrir_mis_comprobantes(page, ctx, traza: Traza):
     """Desde el portal abre 'Mis Comprobantes' y queda en el menú (Emitidos/Recibidos)."""
+    traza.paso("portal: abrir 'Mis Comprobantes'", page)
     page.goto(_comun.PORTAL)
-    page.wait_for_load_state("networkidle")
+    # esperar_idle TOLERANTE (no `wait_for_load_state('networkidle')` a secas): ARCA mantiene
+    # conexiones abiertas y nunca queda 'idle', así que el networkidle colgaba hasta su timeout
+    # de 30s y tiraba un "Timeout 30000ms exceeded." genérico (sin pista de dónde).
+    _comun.esperar_idle(page)
     b = page.locator("#buscadorInput")
     b.wait_for(state="visible", timeout=20000)
     b.click()
     b.fill("")
     b.press_sequentially("Mis Comprobantes", delay=80)
     page.wait_for_timeout(2500)
+    traza.paso("portal: click opción 'Mis Comprobantes'", page)
     page.locator('li[role="option"]').filter(
         has_text=re.compile("Mis Comprobantes", re.I)
     ).first.click()
     page.wait_for_timeout(6000)
     _comun.click_continuar_si_aparece(ctx)
     page.wait_for_timeout(2000)
+    traza.paso("esperar pestaña Mis Comprobantes", page)
     mcmp = _mcmp_tab(ctx)
     if mcmp is None:
         raise RuntimeError("No se abrió Mis Comprobantes.")
@@ -139,17 +181,19 @@ def _volver_menu(ctx, mcmp):
     return _mcmp_tab(ctx) or mcmp
 
 
-def _entrar_seccion(ctx, mcmp, boton: str):
+def _entrar_seccion(ctx, mcmp, boton: str, traza: Traza):
     mcmp = _mcmp_tab(ctx) or mcmp
+    traza.paso(f"sección {boton}: click", mcmp)
     mcmp.wait_for_selector(boton, timeout=15000)
     mcmp.locator(boton).first.click()
     mcmp.wait_for_timeout(6000)
     mcmp = _mcmp_tab(ctx) or mcmp
+    traza.paso(f"sección {boton}: esperar #fechaEmision", mcmp)
     mcmp.wait_for_selector("#fechaEmision", state="attached", timeout=15000)
     return mcmp
 
 
-def _exportar_rango(ctx, mcmp, desde: str, hasta: str) -> bytes:
+def _exportar_rango(ctx, mcmp, desde: str, hasta: str, traza: Traza) -> bytes:
     """Setea el rango, busca y exporta el CSV (zip). Devuelve los bytes del zip."""
     mcmp = _mcmp_tab(ctx) or mcmp
     # Solapa "Consulta" activa (tras una búsqueda previa quedamos en "Resultados").
@@ -158,18 +202,22 @@ def _exportar_rango(ctx, mcmp, desde: str, hasta: str) -> bytes:
         mcmp.wait_for_timeout(800)
     except Exception:  # noqa: BLE001
         pass
+    traza.paso(f"rango {desde}-{hasta}: setear fechas", mcmp)
     mcmp.wait_for_selector("#fechaEmision", state="attached", timeout=15000)
     mcmp.evaluate("(v)=>{document.getElementById('fechaEmision').value=v;}", f"{desde} - {hasta}")
     mcmp.wait_for_timeout(500)
+    traza.paso(f"rango {desde}-{hasta}: buscar", mcmp)
     mcmp.get_by_role("button", name=re.compile("buscar", re.I)).first.click()
     mcmp = _mcmp_tab(ctx) or mcmp
     try:
         mcmp.get_by_text(re.compile("total de", re.I)).first.wait_for(timeout=90000)
     except Exception:  # noqa: BLE001
         mcmp.wait_for_timeout(8000)
+    traza.paso(f"rango {desde}-{hasta}: esperar botón CSV", mcmp)
     btn = mcmp.get_by_text("CSV", exact=True).first
     btn.wait_for(state="visible", timeout=30000)
     mcmp.wait_for_timeout(1000)
+    traza.paso(f"rango {desde}-{hasta}: descargar CSV", mcmp)
     with mcmp.expect_download(timeout=60000) as dl:
         btn.click()
     return Path(dl.value.path()).read_bytes()
@@ -182,23 +230,42 @@ def descargar(
     plan: list[dict],
     headless: bool | None = None,
     on_progress=None,
+    guardar_traza: bool | None = None,
 ) -> tuple[str | None, dict[str, list[dict]]]:
     """Login con la clave del contador y, en UNA sesión, descarga cada sección del `plan`
     (cada item: {boton, direccion, contraparte, rangos}). Devuelve (nombre_contribuyente,
-    {direccion: [dicts]}); el nombre sale del navbar de Mis Comprobantes (el 'Representando a:')."""
+    {direccion: [dicts]}); el nombre sale del navbar de Mis Comprobantes (el 'Representando a:').
+
+    Trazabilidad (`guardar_traza`, default `settings.scraping_trazas`): registra cada paso y, si
+    falla, deja en data/diag/ la traza + screenshot/HTML + el trace.zip de Patchright, y enriquece
+    la excepción con la FASE donde cayó (eso es lo que termina en el `motivo` del panel)."""
     if headless is None:
         headless = settings.scraping_headless
+    if guardar_traza is None:
+        guardar_traza = settings.scraping_trazas
     total = sum(len(p["rangos"]) for p in plan)
     paso = 0
+    traza = Traza(cuit_cliente)
+    diag_dir = BASE_DIR / "data" / "diag"
     perfil = tempfile.mkdtemp(prefix="orbita_mc_")
     try:
         with sync_playwright() as pw:
             ctx = _comun.crear_contexto(pw, headless=headless, user_data_dir=perfil)
+            if guardar_traza:
+                try:
+                    diag_dir.mkdir(parents=True, exist_ok=True)
+                    # screenshot + DOM por acción + fuente: el visor (playwright show-trace) muestra
+                    # cada paso con su captura, para "ver dónde fue entrando".
+                    ctx.tracing.start(screenshots=True, snapshots=True, sources=True)
+                except Exception:  # noqa: BLE001 — tracing es best-effort, no debe frenar la sync
+                    guardar_traza = False
             page = ctx.pages[0] if ctx.pages else ctx.new_page()
             try:
+                traza.paso("login ARCA", page)
                 _comun.login(page, cuit_login, clave)
-                mcmp = _abrir_mis_comprobantes(page, ctx)
+                mcmp = _abrir_mis_comprobantes(page, ctx, traza)
                 # Nombre real del contribuyente de los comprobantes (el "Representando a:" del navbar).
+                traza.paso("leer nombre del contribuyente", mcmp)
                 nombre = _comun.leer_nombre_navbar(mcmp, "text-success") or _comun.leer_nombre_navbar(
                     mcmp, "text-primary"
                 )
@@ -211,21 +278,31 @@ def descargar(
                     if not primera:
                         mcmp = _volver_menu(ctx, mcmp)
                     primera = False
-                    mcmp = _entrar_seccion(ctx, mcmp, p["boton"])
+                    mcmp = _entrar_seccion(ctx, mcmp, p["boton"], traza)
                     vistos: set[tuple] = set()
                     comps: list[dict] = []
                     for desde, hasta in p["rangos"]:
                         if on_progress:
                             paso += 1
                             on_progress(paso, total, f"{p['direccion']}s {desde} a {hasta}")
-                        for c in parsear_csv_zip(_exportar_rango(ctx, mcmp, desde, hasta), p["contraparte"]):
+                        for c in parsear_csv_zip(
+                            _exportar_rango(ctx, mcmp, desde, hasta, traza), p["contraparte"]
+                        ):
                             k = (c["punto_venta"], c["cbte_tipo"], c["numero"])
                             if k not in vistos:
                                 vistos.add(k)
                                 comps.append(c)
                     out[p["direccion"]] = comps
                 return nombre, out
+            except Exception as e:  # noqa: BLE001 — enriquece con la FASE y deja diagnóstico
+                detalle = _diagnostico(ctx, cuit_cliente, traza) if guardar_traza else ""
+                raise RuntimeError(f"{traza.fase}: {e}{detalle}") from e
             finally:
+                if guardar_traza:
+                    try:
+                        ctx.tracing.stop(path=str(diag_dir / f"trace_{cuit_cliente}.zip"))
+                    except Exception:  # noqa: BLE001
+                        pass
                 ctx.close()
     finally:
         shutil.rmtree(perfil, ignore_errors=True)
