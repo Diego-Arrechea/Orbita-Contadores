@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, AlertCircle, Wallet, Building2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,33 +28,33 @@ export function EstadoCuenta({ cliente }: Props) {
   // El estado de cuenta (CCMA) es de monotributistas y autónomos, ambos PERSONAS FÍSICAS. Una
   // sociedad (S.R.L./S.A.) no tiene → "No aplica" directo, sin consultar nada.
   const aplica = !esPersonaJuridica(cliente.cuit);
-  const [detalle, setDetalle] = useState<DeudaDetalle | null>(null);
-  const [cargando, setCargando] = useState(false);
+  const qc = useQueryClient();
+  // Deuda CCMA cacheada por cliente. Sólo se pide para clientes reales y que aplican (no jurídicas).
+  const claveDeuda = ['cliente', cliente.cuit, 'deuda'];
+  const {
+    data: detalle = null,
+    isLoading: cargando,
+    error: queryError,
+  } = useQuery({
+    queryKey: claveDeuda,
+    queryFn: () => getDeuda(cliente.cuit),
+    enabled: esReal && aplica,
+  });
   const [consultando, setConsultando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!esReal || !aplica) return;
-    let vivo = true;
-    setCargando(true);
-    getDeuda(cliente.cuit)
-      .then(d => vivo && setDetalle(d))
-      .catch(e => vivo && setError(e instanceof Error ? e.message : 'No se pudo cargar la deuda'))
-      .finally(() => vivo && setCargando(false));
-    return () => {
-      vivo = false;
-    };
-  }, [cliente.cuit, esReal, aplica]);
+  const [errorAccion, setErrorAccion] = useState<string | null>(null);
+  const error =
+    errorAccion ??
+    (queryError ? (queryError instanceof Error ? queryError.message : 'No se pudo cargar la deuda') : null);
 
   const consultar = async () => {
     setConsultando(true);
-    setError(null);
+    setErrorAccion(null);
     try {
       const { detalle: d, ok } = await sincronizarDeuda(cliente.cuit);
-      if (!ok) setError('No se pudo consultar el estado de cuenta. Probá de nuevo.');
-      else setDetalle(d);
+      if (!ok) setErrorAccion('No se pudo consultar el estado de cuenta. Probá de nuevo.');
+      else qc.setQueryData<DeudaDetalle | null>(claveDeuda, d); // actualiza la cache sin re-pedir
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo consultar la deuda');
+      setErrorAccion(e instanceof Error ? e.message : 'No se pudo consultar la deuda');
     } finally {
       setConsultando(false);
     }

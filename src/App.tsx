@@ -9,6 +9,7 @@ import { Registro } from '@/pages/Registro';
 import { Terminos, Privacidad } from '@/pages/Legal';
 import { cuentaActual, esAdmin, tokenActual, actualizarUsuarioGuardado } from '@/lib/cuenta';
 import { getMe } from '@/services/authService';
+import { InvalidadorCache } from '@/components/shared/InvalidadorCache';
 
 /** Sin sesión → al login. (Cuentas demo en el front; ver src/lib/cuenta.ts). */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -48,6 +49,7 @@ export default function App() {
   return (
     <CargasProvider>
       <SyncProvider>
+      <InvalidadorCache />
       <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/registro" element={<Registro />} />

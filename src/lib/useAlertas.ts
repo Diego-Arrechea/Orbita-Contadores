@@ -4,16 +4,14 @@
  * así ambos muestran exactamente lo mismo. Se refresca al cambiar la config o al terminar una
  * sincronización (useSync().version).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { CLIENTES } from '@/data/clientes';
 import { useConfig } from '@/context/ConfigContext';
-import { useSync } from '@/context/SyncContext';
 import { calcularCliente } from '@/lib/monotributo';
 import { derivarAlertas, ordenarPorSeveridad } from '@/lib/alertas';
 import type { Alerta } from '@/lib/alertas';
-import { getClientesReales } from '@/services/clientesService';
+import { useClientesReales } from '@/lib/queries';
 import { cuentaActual } from '@/lib/cuenta';
-import type { Cliente } from '@/types';
 
 export interface AlertasResult {
   alertas: Alerta[];
@@ -22,28 +20,11 @@ export interface AlertasResult {
 }
 
 export function useAlertas(): AlertasResult {
-  const [reales, setReales] = useState<Cliente[]>([]);
-  const [cargando, setCargando] = useState(true);
+  // Cartera cacheada y compartida con Dashboard/Conciliación; el InvalidadorCache global la re-trae
+  // al terminar una sincronización (antes esto observaba useSync().version a mano).
+  const { data: reales = [], isLoading: cargando } = useClientesReales();
   const cuenta = cuentaActual();
   const { config } = useConfig();
-  const { version } = useSync();
-
-  useEffect(() => {
-    let vivo = true;
-    setCargando(true);
-    getClientesReales()
-      .then(cs => {
-        if (vivo) setReales(cs);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (vivo) setCargando(false);
-      });
-    return () => {
-      vivo = false;
-    };
-    // version: al terminar una sincronización, recargamos la cartera.
-  }, [version]);
 
   const mock = cuenta?.datosEjemplo ? CLIENTES : [];
 

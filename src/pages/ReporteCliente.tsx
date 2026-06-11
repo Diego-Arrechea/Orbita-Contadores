@@ -1,16 +1,14 @@
-import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Orbit, Printer, ArrowLeft, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getCliente } from '@/data/clientes';
-import { getClienteReal } from '@/services/clientesService';
+import { useClienteReal } from '@/lib/queries';
 import { calcularCliente, ventana12Meses } from '@/lib/monotributo';
 import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
 import { getCategoria } from '@/data/categorias';
 import { cuentaActual } from '@/lib/cuenta';
 import { useConfig } from '@/context/ConfigContext';
 import { formatCurrency, formatCuit, formatDate, formatPercent } from '@/lib/utils';
-import type { Cliente } from '@/types';
 
 function mesLegible(mes: string): string {
   const [y, m] = mes.split('-');
@@ -20,19 +18,10 @@ function mesLegible(mes: string): string {
 export function ReporteCliente() {
   const { id } = useParams<{ id: string }>();
   const clienteMock = id ? getCliente(id) : undefined;
-  const [clienteReal, setClienteReal] = useState<Cliente | null>(null);
-  const [cargando, setCargando] = useState(!clienteMock);
+  // Cliente cacheado: comparte cache con la ficha (misma query key), así abrir el reporte tras ver
+  // la ficha es instantáneo. enabled evita pedir cuando se usa el mock.
+  const { data: clienteReal, isLoading: cargando } = useClienteReal(id, !clienteMock);
   const { config } = useConfig();
-
-  useEffect(() => {
-    if (clienteMock || !id) {
-      setCargando(false);
-      return;
-    }
-    getClienteReal(id)
-      .then(setClienteReal)
-      .finally(() => setCargando(false));
-  }, [clienteMock, id]);
 
   const cliente = clienteMock ?? clienteReal ?? undefined;
   const cuenta = cuentaActual();
