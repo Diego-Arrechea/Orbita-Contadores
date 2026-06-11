@@ -404,3 +404,15 @@ class ImpersonarOut(BaseModel):
 
     token: str
     usuario: UsuarioOut
+
+
+class AdminSyncFallidaOut(BaseModel):
+    """Una sincronización fallida vista desde el panel admin (vista de ops: motivo técnico crudo).
+    Junta la extracción con el cliente y el contador dueño para saber a quién afecta."""
+
+    fecha: str  # ISO
+    cuit: str
+    cliente: str | None = None  # nombre del cliente (None si se borró)
+    contador_email: str | None = None  # dueño del cliente (None si quedó huérfano)
+    motivo: str | None = None  # error técnico crudo (timeouts, selectores, etc.)
+    duracion_ms: int | None = None

@@ -13,6 +13,7 @@ import {
   UserCheck,
   UserX,
   RefreshCcw,
+  AlertTriangle,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -33,9 +34,11 @@ import {
   editarUsuario,
   impersonar,
   listarAuditoria,
+  listarSincronizacionesFallidas,
   type AdminUsuario,
   type AdminMetricas,
   type AdminAuditoria,
+  type AdminSyncFallida,
 } from '@/services/adminService';
 import { mensajeDeError } from '@/services/authService';
 import { iniciarImpersonacion, usuarioActual } from '@/lib/cuenta';
@@ -307,13 +310,19 @@ function MetricaCard({
 
 function TabMetricas() {
   const [m, setM] = useState<AdminMetricas | null>(null);
+  const [fallidas, setFallidas] = useState<AdminSyncFallida[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        setM(await obtenerMetricas());
+        const [met, fall] = await Promise.all([
+          obtenerMetricas(),
+          listarSincronizacionesFallidas(),
+        ]);
+        setM(met);
+        setFallidas(fall);
       } catch (e) {
         setError(mensajeDeError(e));
       } finally {
@@ -338,24 +347,84 @@ function TabMetricas() {
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <MetricaCard icon={Users} label="Cuentas totales" valor={m.total_cuentas} />
-      <MetricaCard icon={UserCheck} label="Cuentas activas" valor={m.cuentas_activas} />
-      <MetricaCard icon={UserX} label="Cuentas inhabilitadas" valor={m.cuentas_inactivas} />
-      <MetricaCard icon={ShieldCheck} label="Administradores" valor={m.total_admins} />
-      <MetricaCard icon={Building2} label="Clientes en el sistema" valor={m.total_clientes} />
-      <MetricaCard
-        icon={RefreshCcw}
-        label="Sincronizaciones hoy"
-        valor={m.syncs_hoy}
-        hint={m.syncs_fallidas_hoy > 0 ? `${m.syncs_fallidas_hoy} con problemas` : 'sin problemas'}
-      />
-      <MetricaCard
-        icon={Users}
-        label="Altas en la semana"
-        valor={m.nuevas_cuentas_semana}
-        hint="últimos 7 días"
-      />
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricaCard icon={Users} label="Cuentas totales" valor={m.total_cuentas} />
+        <MetricaCard icon={UserCheck} label="Cuentas activas" valor={m.cuentas_activas} />
+        <MetricaCard icon={UserX} label="Cuentas inhabilitadas" valor={m.cuentas_inactivas} />
+        <MetricaCard icon={ShieldCheck} label="Administradores" valor={m.total_admins} />
+        <MetricaCard icon={Building2} label="Clientes en el sistema" valor={m.total_clientes} />
+        <MetricaCard
+          icon={RefreshCcw}
+          label="Sincronizaciones hoy"
+          valor={m.syncs_hoy}
+          hint={m.syncs_fallidas_hoy > 0 ? `${m.syncs_fallidas_hoy} con problemas` : 'sin problemas'}
+        />
+        <MetricaCard
+          icon={Users}
+          label="Altas en la semana"
+          valor={m.nuevas_cuentas_semana}
+          hint="últimos 7 días"
+        />
+      </div>
+
+      <SyncsFallidas fallidas={fallidas} />
+    </div>
+  );
+}
+
+// Log de sincronizaciones con problemas (vista de ops: motivo técnico para diagnosticar).
+function SyncsFallidas({ fallidas }: { fallidas: AdminSyncFallida[] }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4 text-warning-foreground" />
+        <h2 className="text-sm font-semibold">Sincronizaciones con problemas</h2>
+        <Badge variant={fallidas.length ? 'warning' : 'muted'}>{fallidas.length}</Badge>
+      </div>
+
+      {fallidas.length === 0 ? (
+        <Card className="p-8 text-center text-sm text-muted-foreground">
+          No hay sincronizaciones con problemas recientes. 🎉
+        </Card>
+      ) : (
+        <Card className="overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="whitespace-nowrap">Fecha</TableHead>
+                <TableHead>Cliente</TableHead>
+                <TableHead>Contador</TableHead>
+                <TableHead className="text-right">Duración</TableHead>
+                <TableHead>Detalle del problema</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {fallidas.map((f, i) => (
+                <TableRow key={`${f.cuit}-${f.fecha}-${i}`}>
+                  <TableCell className="text-sm whitespace-nowrap">{fechaHora(f.fecha)}</TableCell>
+                  <TableCell className="text-sm">
+                    <div>{f.cliente || '—'}</div>
+                    <div className="text-xs text-muted-foreground tabular-nums">{f.cuit}</div>
+                  </TableCell>
+                  <TableCell className="text-sm">{f.contador_email || '—'}</TableCell>
+                  <TableCell className="text-right text-sm tabular-nums whitespace-nowrap">
+                    {f.duracion_ms != null ? `${Math.round(f.duracion_ms / 1000)}s` : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <code
+                      className="block max-w-md truncate font-mono text-xs text-danger"
+                      title={f.motivo || ''}
+                    >
+                      {(f.motivo || '—').split('\n')[0]}
+                    </code>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
+      )}
     </div>
   );
 }

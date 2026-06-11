@@ -14,6 +14,7 @@ from ..db import get_db
 from ..schemas import (
     AdminAuditoriaOut,
     AdminMetricasOut,
+    AdminSyncFallidaOut,
     AdminUsuarioOut,
     AdminUsuarioPatch,
     ImpersonarOut,
@@ -136,6 +137,35 @@ def metricas(db: Session = Depends(get_db)):
         syncs_fallidas_hoy=syncs_fallidas,
         nuevas_cuentas_semana=nuevas_semana,
     )
+
+
+@router.get("/sincronizaciones/fallidas", response_model=list[AdminSyncFallidaOut])
+def sincronizaciones_fallidas(db: Session = Depends(get_db), limite: int = 50):
+    """Últimas sincronizaciones fallidas (vista de ops) con el motivo técnico crudo, el cliente
+    afectado y su contador. Para diagnosticar qué está fallando y a quién impacta."""
+    filas = db.execute(
+        select(
+            models.Extraccion,
+            models.ClienteARCA.nombre,
+            models.Usuario.email,
+        )
+        .outerjoin(models.ClienteARCA, models.ClienteARCA.cuit == models.Extraccion.cuit)
+        .outerjoin(models.Usuario, models.Usuario.id == models.ClienteARCA.usuario_id)
+        .where(models.Extraccion.resultado == "fallida")
+        .order_by(models.Extraccion.fecha.desc())
+        .limit(min(limite, 200))
+    ).all()
+    return [
+        AdminSyncFallidaOut(
+            fecha=_iso(e.fecha) or "",
+            cuit=e.cuit,
+            cliente=nombre,
+            contador_email=email,
+            motivo=e.motivo,
+            duracion_ms=e.duracion_ms,
+        )
+        for e, nombre, email in filas
+    ]
 
 
 @router.patch("/usuarios/{usuario_id}", response_model=AdminUsuarioOut)
