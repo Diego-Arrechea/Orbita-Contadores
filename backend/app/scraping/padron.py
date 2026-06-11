@@ -8,11 +8,17 @@ from __future__ import annotations
 import re
 import shutil
 import tempfile
+import time
 
 from patchright.sync_api import sync_playwright
 
 from ..config import settings
 from . import _comun, ccma
+
+# Reintentos ante timeouts transitorios de ARCA al abrir el portal Monotributo (mismo fenómeno que
+# en Mis Comprobantes). Sólo se reintenta ante EXCEPCIÓN; un {} / es_monotributista=False es un
+# resultado válido (no aplica), no un error, y no se reintenta. Backoff incremental.
+PADRON_REINTENTOS = 2
 
 
 def extraer(html: str) -> dict:
@@ -67,7 +73,9 @@ def extraer(html: str) -> dict:
 
 def _abrir_monotributo(page, ctx):
     page.goto(_comun.PORTAL)
-    page.wait_for_load_state("networkidle")
+    # esperar_idle TOLERANTE: ARCA nunca queda 'networkidle' y el wait a secas colgaba 30s tirando
+    # un "Timeout 30000ms exceeded." genérico (la causa de los timeouts de padrón).
+    _comun.esperar_idle(page)
     b = page.locator("#buscadorInput")
     b.wait_for(state="visible", timeout=20000)
     b.click()
@@ -88,9 +96,27 @@ def datos_monotributo(
     facturómetro/cuota}. `cuit_objetivo` = de quién queremos los datos: si es un REPRESENTADO (≠ login)
     se fija 'actuando en representación' en Relaciones antes de abrir el portal (igual que el bootstrap
     del cert) y se VERIFICA que el portal abrió el del representado (guard anti-cruce). Sin objetivo =
-    el titular logueado."""
+    el titular logueado.
+
+    Reintenta ante timeouts transitorios de ARCA (ver PADRON_REINTENTOS). Un resultado válido de
+    'no aplica' ({} o {es_monotributista: False}) NO es excepción → no se reintenta."""
     if headless is None:
         headless = settings.scraping_headless
+    ultimo_error: Exception | None = None
+    for intento in range(PADRON_REINTENTOS + 1):
+        try:
+            return _datos_monotributo_intento(cuit_login, clave, cuit_objetivo, headless)
+        except Exception as e:  # noqa: BLE001 — timeout/caída transitoria de ARCA; reintentar
+            ultimo_error = e
+            if intento < PADRON_REINTENTOS:
+                time.sleep(5 * (intento + 1))  # backoff incremental: 5s, 10s
+    raise ultimo_error  # type: ignore[misc]
+
+
+def _datos_monotributo_intento(
+    cuit_login: str, clave: str, cuit_objetivo: str | None, headless: bool
+) -> dict:
+    """Un intento de scrape del portal Monotributo (ver datos_monotributo)."""
     objetivo = (cuit_objetivo or cuit_login).strip()
     es_representado = objetivo != cuit_login.strip()
     perfil = tempfile.mkdtemp(prefix="orbita_mt_")
