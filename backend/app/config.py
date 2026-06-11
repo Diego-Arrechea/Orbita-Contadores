@@ -29,8 +29,31 @@ class Settings(BaseSettings):
     # false = producción ARCA; true = homologación.
     arca_homo: bool = False
 
-    # Hora (0-23, horario de Argentina) del sync automático diario.
+    # Hora (0-23, horario de Argentina) del sync automático diario (scheduler in-process del API).
     sync_hour: int = 3
+    # El scheduler diario del API queda APAGADO por defecto: el motor de sincronización continua
+    # (contenedor worker, `python -m app.worker`) lo reemplaza. Poné true sólo si no usás el worker.
+    scheduler_enabled: bool = False
+
+    # --- Motor de sincronización continua (contenedor worker, app/worker/loop.py) ---
+    # Cuántos clientes se sincronizan en paralelo (cada uno abre un Chromium). El VPS aguanta más,
+    # pero el límite real es ARCA: mantenelo moderado. NUNCA corren dos clientes del mismo contador
+    # a la vez (misma clave fiscal) — esto cuenta contadores distintos en paralelo.
+    sync_worker_concurrencia: int = 6
+    # Cada cliente se re-sincroniza cuando su última extracción (cualquier resultado) supera esto.
+    sync_intervalo_horas: int = 12
+    # Cada cuánto el despachador revisa qué clientes están vencidos y los encola (segundos).
+    sync_poll_segundos: int = 60
+    # Envío automático de alertas por WhatsApp desde el motor continuo. Default APAGADO: el motor
+    # sincroniza igual, pero NO manda mensajes a contadores reales hasta que se active explícitamente
+    # (SYNC_ALERTAS_ENABLED=true en el .env). Evita sorprender a los usuarios al encender el motor.
+    sync_alertas_enabled: bool = False
+    # Cada cuánto corre el pase de alertas (consolida y manda WhatsApp por contador). Minutos.
+    sync_alertas_cada_min: int = 15
+    # Horario silencioso (hora AR): NO se mandan WhatsApp en esta franja (se acumulan y salen después).
+    # Soporta cruce de medianoche (ej. 22→8). inicio==fin desactiva el silencio.
+    sync_quiet_inicio: int = 0
+    sync_quiet_fin: int = 8
 
     # Navegador del scraping. True = headless (sin ventana; server/VPS y default).
     scraping_headless: bool = True

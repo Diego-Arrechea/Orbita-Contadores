@@ -26,7 +26,10 @@ asegurar_columnas()  # migración ligera: agrega columnas nuevas a tablas existe
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    iniciar_scheduler(settings.sync_hour)  # arranca el sync diario
+    # El sync continuo lo hace el contenedor worker (app/worker). El scheduler diario in-process
+    # queda apagado por defecto para no duplicar el trabajo; se puede reactivar con SCHEDULER_ENABLED.
+    if settings.scheduler_enabled:
+        iniciar_scheduler(settings.sync_hour)
     yield
     detener_scheduler()
 

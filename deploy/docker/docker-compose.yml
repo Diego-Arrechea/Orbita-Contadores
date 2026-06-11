@@ -30,6 +30,7 @@ services:
   backend:
     build:
       context: ../../backend
+    image: orbita-contadores-backend  # imagen compartida con el worker (se construye una sola vez)
     container_name: orbita_contadores_backend
     restart: unless-stopped
     env_file: .env
@@ -50,6 +51,27 @@ services:
     networks:
       - orbita_contadores_net   # para hablar con su Postgres
       - n8n_net                 # para que el Caddy central lo alcance por nombre
+
+  # Motor de sincronización continua 24/7 (pool de workers + alertas). Misma imagen que el backend
+  # (ya trae Chromium), distinto comando. No expone HTTP: sólo necesita la red de la DB.
+  worker:
+    image: orbita-contadores-backend
+    build:
+      context: ../../backend
+    container_name: orbita_contadores_worker
+    restart: unless-stopped
+    command: ["python", "-m", "app.worker"]
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://orbita:${POSTGRES_PASSWORD}@orbita_contadores_db:5432/orbita_contadores
+      - TZ=${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - /opt/orbita-contadores_diag:/app/data/diag  # mismas trazas de diagnóstico que el backend
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - orbita_contadores_net
 
 networks:
   orbita_contadores_net:
