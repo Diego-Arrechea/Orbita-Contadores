@@ -416,3 +416,13 @@ class AdminSyncFallidaOut(BaseModel):
     contador_email: str | None = None  # dueño del cliente (None si quedó huérfano)
     motivo: str | None = None  # error técnico crudo (timeouts, selectores, etc.)
     duracion_ms: int | None = None
+    # Estado ACTUAL del cliente respecto de esta falla: True si hubo una sincronización exitosa
+    # POSTERIOR (la falla ya se resolvió sola o con un reintento). False = sigue sin resolverse.
+    resuelto: bool = False
+    ultima_sync_ok: str | None = None  # ISO de la última sync exitosa del cliente (contexto)
+
+
+class JobIdOut(BaseModel):
+    """Devuelve el id de un job en background (p.ej. un reintento de sincronización)."""
+
+    job_id: str

@@ -14,6 +14,8 @@ import {
   UserX,
   RefreshCcw,
   AlertTriangle,
+  RotateCw,
+  CheckCircle2,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,6 +37,8 @@ import {
   impersonar,
   listarAuditoria,
   listarSincronizacionesFallidas,
+  reintentarSync,
+  estadoSync,
   type AdminUsuario,
   type AdminMetricas,
   type AdminAuditoria,
@@ -314,21 +318,23 @@ function TabMetricas() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
 
+  async function cargar() {
+    try {
+      const [met, fall] = await Promise.all([
+        obtenerMetricas(),
+        listarSincronizacionesFallidas(),
+      ]);
+      setM(met);
+      setFallidas(fall);
+    } catch (e) {
+      setError(mensajeDeError(e));
+    } finally {
+      setCargando(false);
+    }
+  }
+
   useEffect(() => {
-    (async () => {
-      try {
-        const [met, fall] = await Promise.all([
-          obtenerMetricas(),
-          listarSincronizacionesFallidas(),
-        ]);
-        setM(met);
-        setFallidas(fall);
-      } catch (e) {
-        setError(mensajeDeError(e));
-      } finally {
-        setCargando(false);
-      }
-    })();
+    void cargar();
   }, []);
 
   if (cargando) {
@@ -368,13 +374,48 @@ function TabMetricas() {
         />
       </div>
 
-      <SyncsFallidas fallidas={fallidas} />
+      <SyncsFallidas fallidas={fallidas} onCambio={cargar} />
     </div>
   );
 }
 
-// Log de sincronizaciones con problemas (vista de ops: motivo técnico para diagnosticar).
-function SyncsFallidas({ fallidas }: { fallidas: AdminSyncFallida[] }) {
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+// Log de sincronizaciones con problemas (vista de ops: motivo técnico + estado actual + reintento).
+function SyncsFallidas({
+  fallidas,
+  onCambio,
+}: {
+  fallidas: AdminSyncFallida[];
+  onCambio: () => Promise<void> | void;
+}) {
+  // Estado de reintento por cuit: 'corriendo' mientras poolea el job; mensaje de error si falló.
+  const [reintentando, setReintentando] = useState<Record<string, boolean>>({});
+  const [errores, setErrores] = useState<Record<string, string>>({});
+
+  async function reintentar(cuit: string) {
+    setReintentando(prev => ({ ...prev, [cuit]: true }));
+    setErrores(prev => ({ ...prev, [cuit]: '' }));
+    try {
+      const { job_id } = await reintentarSync(cuit);
+      // El sync es pesado (puede tardar varios minutos): pooleamos cada 3s hasta que termine.
+      for (let intento = 0; intento < 140; intento++) {
+        await sleep(3000);
+        const j = await estadoSync(job_id);
+        if (j.estado === 'terminado') break;
+        if (j.estado === 'error') {
+          setErrores(prev => ({ ...prev, [cuit]: j.error || 'No se pudo sincronizar.' }));
+          break;
+        }
+      }
+      await onCambio(); // refresca lista + métricas (la fila puede pasar a "Resuelto")
+    } catch (e) {
+      setErrores(prev => ({ ...prev, [cuit]: mensajeDeError(e) }));
+    } finally {
+      setReintentando(prev => ({ ...prev, [cuit]: false }));
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
@@ -395,32 +436,67 @@ function SyncsFallidas({ fallidas }: { fallidas: AdminSyncFallida[] }) {
                 <TableHead className="whitespace-nowrap">Fecha</TableHead>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Contador</TableHead>
-                <TableHead className="text-right">Duración</TableHead>
+                <TableHead className="text-center">Estado actual</TableHead>
                 <TableHead>Detalle del problema</TableHead>
+                <TableHead className="text-right">Acción</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {fallidas.map((f, i) => (
-                <TableRow key={`${f.cuit}-${f.fecha}-${i}`}>
-                  <TableCell className="text-sm whitespace-nowrap">{fechaHora(f.fecha)}</TableCell>
-                  <TableCell className="text-sm">
-                    <div>{f.cliente || '—'}</div>
-                    <div className="text-xs text-muted-foreground tabular-nums">{f.cuit}</div>
-                  </TableCell>
-                  <TableCell className="text-sm">{f.contador_email || '—'}</TableCell>
-                  <TableCell className="text-right text-sm tabular-nums whitespace-nowrap">
-                    {f.duracion_ms != null ? `${Math.round(f.duracion_ms / 1000)}s` : '—'}
-                  </TableCell>
-                  <TableCell>
-                    <code
-                      className="block max-w-md truncate font-mono text-xs text-danger"
-                      title={f.motivo || ''}
-                    >
-                      {(f.motivo || '—').split('\n')[0]}
-                    </code>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {fallidas.map((f, i) => {
+                const corriendo = reintentando[f.cuit];
+                const err = errores[f.cuit];
+                return (
+                  <TableRow key={`${f.cuit}-${f.fecha}-${i}`}>
+                    <TableCell className="text-sm whitespace-nowrap">{fechaHora(f.fecha)}</TableCell>
+                    <TableCell className="text-sm">
+                      <div>{f.cliente || '—'}</div>
+                      <div className="text-xs text-muted-foreground tabular-nums">{f.cuit}</div>
+                    </TableCell>
+                    <TableCell className="text-sm">{f.contador_email || '—'}</TableCell>
+                    <TableCell className="text-center">
+                      {f.resuelto ? (
+                        <Badge variant="success" title={`Sincronizado después: ${fechaHora(f.ultima_sync_ok)}`}>
+                          <CheckCircle2 className="h-3 w-3" /> Resuelto
+                        </Badge>
+                      ) : (
+                        <Badge variant="danger">Sin resolver</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <code
+                        className="block max-w-sm truncate font-mono text-xs text-danger"
+                        title={f.motivo || ''}
+                      >
+                        {(f.motivo || '—').split('\n')[0]}
+                      </code>
+                      {err && <div className="text-xs text-danger mt-1">{err}</div>}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {f.resuelto ? (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={corriendo}
+                          onClick={() => void reintentar(f.cuit)}
+                          title="Volver a intentar la sincronización de este cliente"
+                        >
+                          {corriendo ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" /> Reintentando…
+                            </>
+                          ) : (
+                            <>
+                              <RotateCw className="h-4 w-4" /> Reintentar
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </Card>
