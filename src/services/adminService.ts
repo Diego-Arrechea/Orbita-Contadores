@@ -128,3 +128,22 @@ export function estadoSync(jobId: string): Promise<JobEstado> {
 export function listarTodosLosClientes(): Promise<AdminCliente[]> {
   return apiGet<AdminCliente[]>('/admin/clientes');
 }
+
+export interface AdminContadorResumen {
+  total_clientes: number;
+  clientes_con_comprobantes: number;
+  comprobantes_total: number;
+  facturado_12m_total: number;
+  syncs_problemas: number;
+}
+
+/** Ficha completa de un contador: sus datos + resumen agregado + sus clientes. */
+export interface AdminContadorFicha {
+  usuario: AdminUsuario;
+  resumen: AdminContadorResumen;
+  clientes: AdminCliente[];
+}
+
+export function obtenerFichaContador(id: number): Promise<AdminContadorFicha> {
+  return apiGet<AdminContadorFicha>(`/admin/usuarios/${id}/ficha`);
+}

@@ -15,6 +15,8 @@ from ..db import get_db
 from ..schemas import (
     AdminAuditoriaOut,
     AdminClienteOut,
+    AdminContadorFichaOut,
+    AdminContadorResumen,
     AdminMetricasOut,
     AdminSyncFallidaOut,
     AdminUsuarioOut,
@@ -250,6 +252,63 @@ def todos_los_clientes(db: Session = Depends(get_db)):
             )
         )
     return out
+
+
+@router.get("/usuarios/{usuario_id}/ficha", response_model=AdminContadorFichaOut)
+def ficha_contador(usuario_id: int, db: Session = Depends(get_db)):
+    """Ficha completa de un contador (read-only): sus datos + un resumen agregado (clientes,
+    comprobantes, facturado 12m total, sincronizaciones con problemas) + la lista de sus clientes
+    con el mismo detalle que la vista global. Leer no dispara scraping: todo sale de la base."""
+    u = db.get(models.Usuario, usuario_id)
+    if u is None:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+    clientes_arca = db.scalars(
+        select(models.ClienteARCA)
+        .where(models.ClienteARCA.usuario_id == usuario_id)
+        .order_by(models.ClienteARCA.nombre)
+    ).all()
+    cuits = [c.cuit for c in clientes_arca]
+    conteos: dict[str, int] = {}
+    if cuits:
+        conteos = dict(
+            db.execute(
+                select(models.ComprobanteEmitido.cuit, func.count())
+                .where(models.ComprobanteEmitido.cuit.in_(cuits))
+                .group_by(models.ComprobanteEmitido.cuit)
+            ).all()
+        )
+    clientes_out: list[AdminClienteOut] = []
+    facturado_total = 0.0
+    con_comps = 0
+    problemas = 0
+    for c in clientes_arca:
+        base = construir_cliente_out(db, c)
+        facturado_total += sum(m.emitidasNetas for m in base.historial_mensual)
+        if base.tiene_comprobantes:
+            con_comps += 1
+        if base.resultado_ultima_extraccion == "fallida":
+            problemas += 1
+        clientes_out.append(
+            AdminClienteOut(
+                **base.model_dump(),
+                contador_id=u.id,
+                contador_email=u.email,
+                contador_nombre=f"{u.nombre} {u.apellido}".strip(),
+                cantidad_comprobantes=conteos.get(c.cuit, 0),
+            )
+        )
+    resumen = AdminContadorResumen(
+        total_clientes=len(clientes_arca),
+        clientes_con_comprobantes=con_comps,
+        comprobantes_total=sum(conteos.values()),
+        facturado_12m_total=facturado_total,
+        syncs_problemas=problemas,
+    )
+    return AdminContadorFichaOut(
+        usuario=_admin_usuario_out(u, len(clientes_arca)),
+        resumen=resumen,
+        clientes=clientes_out,
+    )
 
 
 @router.post("/clientes/{cuit}/reintentar-sync", response_model=JobIdOut)

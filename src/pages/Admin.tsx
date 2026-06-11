@@ -16,6 +16,9 @@ import {
   AlertTriangle,
   RotateCw,
   CheckCircle2,
+  ArrowLeft,
+  Receipt,
+  ChevronRight,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,11 +43,13 @@ import {
   reintentarSync,
   estadoSync,
   listarTodosLosClientes,
+  obtenerFichaContador,
   type AdminUsuario,
   type AdminMetricas,
   type AdminAuditoria,
   type AdminSyncFallida,
   type AdminCliente,
+  type AdminContadorFicha,
 } from '@/services/adminService';
 import { mensajeDeError } from '@/services/authService';
 import { iniciarImpersonacion, usuarioActual } from '@/lib/cuenta';
@@ -126,6 +131,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
   const [error, setError] = useState('');
   const [busqueda, setBusqueda] = useState('');
   const [accionando, setAccionando] = useState<number | null>(null);
+  const [fichaId, setFichaId] = useState<number | null>(null);
 
   async function cargar() {
     setCargando(true);
@@ -179,6 +185,17 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
     }
   }
 
+  if (fichaId !== null) {
+    return (
+      <FichaContador
+        id={fichaId}
+        miId={miId}
+        onVolver={() => setFichaId(null)}
+        onImpersonar={onImpersonar}
+      />
+    );
+  }
+
   if (cargando) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground">
@@ -227,15 +244,23 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
             {filtrados.map(u => (
               <TableRow key={u.id}>
                 <TableCell>
-                  <div className="font-medium flex items-center gap-2">
-                    {u.nombre} {u.apellido}
-                    {u.rol === 'admin' && (
-                      <Badge variant="default" className="text-[10px]">
-                        <ShieldCheck className="h-3 w-3" /> admin
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground">{u.email}</div>
+                  <button
+                    type="button"
+                    onClick={() => setFichaId(u.id)}
+                    className="group text-left"
+                    title="Ver ficha del contador"
+                  >
+                    <div className="font-medium flex items-center gap-2 group-hover:text-primary">
+                      {u.nombre} {u.apellido}
+                      {u.rol === 'admin' && (
+                        <Badge variant="default" className="text-[10px]">
+                          <ShieldCheck className="h-3 w-3" /> admin
+                        </Badge>
+                      )}
+                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                    </div>
+                    <div className="text-xs text-muted-foreground">{u.email}</div>
+                  </button>
                 </TableCell>
                 <TableCell className="text-sm">{u.estudio || '—'}</TableCell>
                 <TableCell className="text-center tabular-nums">{u.clientes}</TableCell>
@@ -608,78 +633,250 @@ function TabClientes() {
         </div>
       )}
 
-      <Card className="overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Cliente</TableHead>
-              <TableHead>Contador</TableHead>
-              <TableHead className="text-center">Régimen / Cat.</TableHead>
-              <TableHead className="text-right">Facturado 12m</TableHead>
-              <TableHead className="text-center">Comprob.</TableHead>
-              <TableHead className="text-center">Cuota</TableHead>
-              <TableHead>Última sincronización</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtrados.map(c => (
-              <TableRow key={c.cuit}>
-                <TableCell>
-                  <div className="font-medium">{c.nombre}</div>
-                  <div className="text-xs text-muted-foreground tabular-nums">{c.cuit}</div>
-                </TableCell>
+      <TablaClientes clientes={filtrados} mostrarContador />
+    </div>
+  );
+}
+
+/** Tabla de clientes reutilizable: la usa la vista global (con columna Contador) y la ficha de un
+ * contador (sin esa columna). Read-only. */
+function TablaClientes({
+  clientes,
+  mostrarContador,
+}: {
+  clientes: AdminCliente[];
+  mostrarContador: boolean;
+}) {
+  const cols = mostrarContador ? 7 : 6;
+  return (
+    <Card className="overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Cliente</TableHead>
+            {mostrarContador && <TableHead>Contador</TableHead>}
+            <TableHead className="text-center">Régimen / Cat.</TableHead>
+            <TableHead className="text-right">Facturado 12m</TableHead>
+            <TableHead className="text-center">Comprob.</TableHead>
+            <TableHead className="text-center">Cuota</TableHead>
+            <TableHead>Última sincronización</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {clientes.map(c => (
+            <TableRow key={c.cuit}>
+              <TableCell>
+                <div className="font-medium">{c.nombre}</div>
+                <div className="text-xs text-muted-foreground tabular-nums">{c.cuit}</div>
+              </TableCell>
+              {mostrarContador && (
                 <TableCell className="text-sm">{c.contador_email || '—'}</TableCell>
-                <TableCell className="text-center text-sm">
-                  {regimenCorto(c.regimen)}
-                  {c.categoria ? <span className="text-muted-foreground"> · {c.categoria}</span> : ''}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">{pesos(facturado12m(c))}</TableCell>
-                <TableCell className="text-center tabular-nums">{c.cantidad_comprobantes}</TableCell>
-                <TableCell className="text-center">
-                  {c.cuota_estado === 'al-dia' ? (
-                    <Badge variant="success">al día</Badge>
-                  ) : c.cuota_estado === 'con-deuda' ? (
-                    <Badge variant="warning">con deuda</Badge>
+              )}
+              <TableCell className="text-center text-sm">
+                {regimenCorto(c.regimen)}
+                {c.categoria ? <span className="text-muted-foreground"> · {c.categoria}</span> : ''}
+              </TableCell>
+              <TableCell className="text-right tabular-nums">{pesos(facturado12m(c))}</TableCell>
+              <TableCell className="text-center tabular-nums">{c.cantidad_comprobantes}</TableCell>
+              <TableCell className="text-center">
+                {c.cuota_estado === 'al-dia' ? (
+                  <Badge variant="success">al día</Badge>
+                ) : c.cuota_estado === 'con-deuda' ? (
+                  <Badge variant="warning">con deuda</Badge>
+                ) : (
+                  <span className="text-muted-foreground text-xs">—</span>
+                )}
+              </TableCell>
+              <TableCell className="text-sm">
+                <div className="flex items-center gap-2">
+                  {c.resultado_ultima_extraccion === 'exitosa' ? (
+                    <Badge variant="success">
+                      <CheckCircle2 className="h-3 w-3" /> OK
+                    </Badge>
+                  ) : c.resultado_ultima_extraccion === 'fallida' ? (
+                    <Badge variant="danger">falló</Badge>
                   ) : (
-                    <span className="text-muted-foreground text-xs">—</span>
+                    <Badge variant="muted">sin datos</Badge>
                   )}
-                </TableCell>
-                <TableCell className="text-sm">
-                  <div className="flex items-center gap-2">
-                    {c.resultado_ultima_extraccion === 'exitosa' ? (
-                      <Badge variant="success">
-                        <CheckCircle2 className="h-3 w-3" /> OK
-                      </Badge>
-                    ) : c.resultado_ultima_extraccion === 'fallida' ? (
-                      <Badge variant="danger">falló</Badge>
-                    ) : (
-                      <Badge variant="muted">sin datos</Badge>
-                    )}
-                    <span className="text-muted-foreground whitespace-nowrap">
-                      {fechaCorta(c.ultima_extraccion)}
-                    </span>
+                  <span className="text-muted-foreground whitespace-nowrap">
+                    {fechaCorta(c.ultima_extraccion)}
+                  </span>
+                </div>
+                {c.resultado_ultima_extraccion === 'fallida' && c.motivo_ultima_extraccion && (
+                  <div
+                    className="text-xs text-danger truncate max-w-xs"
+                    title={c.motivo_ultima_extraccion}
+                  >
+                    {c.motivo_ultima_extraccion.split('\n')[0]}
                   </div>
-                  {c.resultado_ultima_extraccion === 'fallida' && c.motivo_ultima_extraccion && (
-                    <div
-                      className="text-xs text-danger truncate max-w-xs"
-                      title={c.motivo_ultima_extraccion}
-                    >
-                      {c.motivo_ultima_extraccion.split('\n')[0]}
-                    </div>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-            {filtrados.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
-                  No hay clientes que coincidan con la búsqueda.
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+          {clientes.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={cols} className="text-center text-muted-foreground py-10">
+                Este contador todavía no tiene clientes.
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </Card>
+  );
+}
+
+// --- Ficha de un contador (vista detallada read-only) ---
+
+function Dato({ label, valor }: { label: string; valor?: string | null }) {
+  return (
+    <div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="font-medium break-words">{valor || '—'}</div>
+    </div>
+  );
+}
+
+function FichaContador({
+  id,
+  miId,
+  onVolver,
+  onImpersonar,
+}: {
+  id: number;
+  miId?: number;
+  onVolver: () => void;
+  onImpersonar: () => void;
+}) {
+  const [ficha, setFicha] = useState<AdminContadorFicha | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState('');
+  const [accionando, setAccionando] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      setCargando(true);
+      try {
+        setFicha(await obtenerFichaContador(id));
+      } catch (e) {
+        setError(mensajeDeError(e));
+      } finally {
+        setCargando(false);
+      }
+    })();
+  }, [id]);
+
+  async function entrarComo() {
+    setAccionando(true);
+    setError('');
+    try {
+      const auth = await impersonar(id);
+      iniciarImpersonacion(auth);
+      onImpersonar();
+    } catch (e) {
+      setError(mensajeDeError(e));
+      setAccionando(false);
+    }
+  }
+
+  if (cargando) {
+    return (
+      <div className="flex items-center justify-center py-16 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando ficha…
+      </div>
+    );
+  }
+  if (error || !ficha) {
+    return (
+      <div className="space-y-4">
+        <Button variant="ghost" size="sm" onClick={onVolver}>
+          <ArrowLeft className="h-4 w-4" /> Volver a cuentas
+        </Button>
+        <div className="flex items-center gap-2 rounded-lg bg-danger/10 text-danger px-3 py-2 text-sm">
+          <AlertCircle className="h-4 w-4" /> {error || 'No se pudo cargar la ficha.'}
+        </div>
+      </div>
+    );
+  }
+
+  const u = ficha.usuario;
+  const r = ficha.resumen;
+  const iniciales = `${u.nombre?.[0] ?? ''}${u.apellido?.[0] ?? ''}`.toUpperCase() || '?';
+
+  return (
+    <div className="space-y-5">
+      <Button variant="ghost" size="sm" onClick={onVolver}>
+        <ArrowLeft className="h-4 w-4" /> Volver a cuentas
+      </Button>
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-primary text-lg font-semibold">
+            {iniciales}
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight">
+              {u.nombre} {u.apellido}
+            </h2>
+            <div className="text-sm text-muted-foreground">{u.email}</div>
+            <div className="flex items-center gap-2 mt-1">
+              {u.rol === 'admin' && (
+                <Badge variant="default" className="text-[10px]">
+                  <ShieldCheck className="h-3 w-3" /> admin
+                </Badge>
+              )}
+              {u.activo ? (
+                <Badge variant="success">Activa</Badge>
+              ) : (
+                <Badge variant="muted">Inhabilitada</Badge>
+              )}
+            </div>
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={accionando || !u.activo || u.id === miId}
+          onClick={() => void entrarComo()}
+          title={u.id === miId ? 'Es tu propia cuenta' : 'Entrar como este contador'}
+        >
+          {accionando ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}{' '}
+          Entrar como
+        </Button>
+      </div>
+
+      <Card className="p-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+          <Dato label="Teléfono" valor={u.telefono} />
+          <Dato label="CUIT" valor={u.cuit} />
+          <Dato label="Estudio" valor={u.estudio} />
+          <Dato label="Matrícula" valor={u.matricula} />
+          <Dato label="Alta" valor={fechaCorta(u.creado_en)} />
+          <Dato label="Último acceso" valor={fechaHora(u.ultimo_acceso)} />
+        </div>
       </Card>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricaCard
+          icon={Building2}
+          label="Clientes"
+          valor={r.total_clientes}
+          hint={`${r.clientes_con_comprobantes} con datos`}
+        />
+        <MetricaCard icon={Receipt} label="Comprobantes" valor={r.comprobantes_total} />
+        <MetricaCard icon={Activity} label="Facturado 12m" valor={pesos(r.facturado_12m_total)} />
+        <MetricaCard
+          icon={AlertTriangle}
+          label="Con problemas"
+          valor={r.syncs_problemas}
+          hint={r.syncs_problemas ? 'sincronización sin resolver' : 'todo al día'}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold">Clientes ({ficha.clientes.length})</h3>
+        <TablaClientes clientes={ficha.clientes} mostrarContador={false} />
+      </div>
     </div>
   );
 }
