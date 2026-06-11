@@ -1,6 +1,9 @@
 """Schemas Pydantic. ComprobanteOut replica el tipo `Comprobante` de src/types/index.ts."""
 from __future__ import annotations
 
+import datetime as dt
+import math
+
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 # Mapa CbteTipo (AFIP, FEParamGetTiposCbte) -> TipoComprobante (Órbita).
@@ -273,6 +276,16 @@ class LoginIn(BaseModel):
     password: str
 
 
+def dias_restantes_trial(trial_fin: "dt.datetime | None") -> int | None:
+    """Días que faltan para que termine el período de prueba (redondeo hacia arriba; 0 si ya venció).
+    None si la cuenta no tiene trial definido."""
+    if trial_fin is None:
+        return None
+    ahora = dt.datetime.now(dt.timezone.utc)
+    fin = trial_fin if trial_fin.tzinfo else trial_fin.replace(tzinfo=dt.timezone.utc)
+    return max(0, math.ceil((fin - ahora).total_seconds() / 86400))
+
+
 class UsuarioOut(BaseModel):
     """Datos del contador que devolvemos al front (sin la contraseña)."""
 
@@ -286,6 +299,10 @@ class UsuarioOut(BaseModel):
     estudio: str
     matricula: str | None = None
     rol: str = "contador"  # contador | admin (el front muestra el panel sólo si admin)
+    # Período de prueba gratis: fin (ISO) + días restantes ya calculados (el front igual recalcula
+    # desde trial_fin para que el conteo no quede viejo entre cargas).
+    trial_fin: str | None = None
+    trial_dias_restantes: int | None = None
 
 
 class AuthOut(BaseModel):

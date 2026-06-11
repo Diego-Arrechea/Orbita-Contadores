@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { CargasProvider } from '@/context/CargasContext';
 import { SyncProvider } from '@/context/SyncContext';
 import { ConfigProvider } from '@/context/ConfigContext';
@@ -7,7 +7,8 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Login } from '@/pages/Login';
 import { Registro } from '@/pages/Registro';
 import { Terminos, Privacidad } from '@/pages/Legal';
-import { cuentaActual, esAdmin } from '@/lib/cuenta';
+import { cuentaActual, esAdmin, tokenActual, actualizarUsuarioGuardado } from '@/lib/cuenta';
+import { getMe } from '@/services/authService';
 
 /** Sin sesión → al login. (Cuentas demo en el front; ver src/lib/cuenta.ts). */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -35,6 +36,15 @@ import { Configuracion } from '@/pages/Configuracion';
 import { Admin } from '@/pages/Admin';
 
 export default function App() {
+  // Al cargar la app con sesión, refresca los datos del usuario (días de prueba, rol, estado) desde
+  // el backend y los re-guarda. Así el header muestra el trial sin obligar a re-loguear. Silencioso:
+  // si el token ya no sirve, los guards de ruta se encargan de mandar al login.
+  useEffect(() => {
+    if (tokenActual()) {
+      getMe().then(actualizarUsuarioGuardado).catch(() => {});
+    }
+  }, []);
+
   return (
     <CargasProvider>
       <SyncProvider>

@@ -15,6 +15,8 @@ export interface Usuario {
   estudio: string;
   matricula?: string | null;
   rol?: string; // 'contador' | 'admin' — el front muestra el panel superadmin sólo si 'admin'
+  trial_fin?: string | null; // ISO: fin del período de prueba gratis (30 días)
+  trial_dias_restantes?: number | null; // snapshot del backend; el front recalcula desde trial_fin
 }
 
 export interface AuthResp {

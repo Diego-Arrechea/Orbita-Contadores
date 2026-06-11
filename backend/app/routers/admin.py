@@ -24,6 +24,7 @@ from ..schemas import (
     ImpersonarOut,
     JobIdOut,
     UsuarioOut,
+    dias_restantes_trial,
 )
 from ..scraping import jobs
 from ..security import admin_actual, crear_token
@@ -48,6 +49,8 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         estudio=u.estudio,
         matricula=u.matricula,
         rol=u.rol,
+        trial_fin=u.trial_fin.isoformat() if u.trial_fin else None,
+        trial_dias_restantes=dias_restantes_trial(u.trial_fin),
     )
 
 
