@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # Navegador del scraping. True = headless (sin ventana; server/VPS y default).
     scraping_headless: bool = True
 
+    # Trazabilidad del scraping: al fallar una sincronización, guardar en data/diag/ la traza de
+    # pasos (traza_<cuit>.json), screenshot + HTML de la pantalla donde quedó (fallo_<cuit>_*) y la
+    # traza visual de Patchright (trace_<cuit>.zip, se abre con `playwright show-trace`). Los nombres
+    # son por-CUIT (se pisan): queda SIEMPRE el último fallo de cada cliente, así no crece el disco.
+    scraping_trazas: bool = True
+
     # Sincronización incremental de 'Mis Comprobantes':
     sync_margen_dias: int = 7  # al traer desde el último comprobante, solapamos N días (el upsert dedup)
     sync_anios_historico: int = 4  # años hacia atrás en la PRIMERA sincronización de un cliente
