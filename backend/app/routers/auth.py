@@ -56,6 +56,9 @@ def registrar(datos: RegistroIn, db: Session = Depends(get_db)):
         matricula=(datos.matricula or "").strip() or None,
         password_hash=hashear_password(datos.password),
         acepto_terminos=datos.acepto_terminos,
+        # El registro ya deja al contador logueado (devuelve token): contamos eso como su primer
+        # acceso, si no la cuenta figura como "nunca entró" hasta que pase por la pantalla de login.
+        ultimo_acceso=dt.datetime.now(dt.timezone.utc),
     )
     db.add(usuario)
     try:
