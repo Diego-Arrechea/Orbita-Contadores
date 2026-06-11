@@ -113,9 +113,9 @@ def estado_motor(db: Session = Depends(get_db)):
     hace_1h = ahora - dt.timedelta(hours=1)
     hace_24h = ahora - dt.timedelta(hours=24)
 
-    # Actividad reciente (feed de las últimas extracciones).
+    # Actividad reciente (feed de las últimas extracciones; el panel la pagina de a 10).
     recientes = db.execute(
-        select(models.Extraccion).order_by(models.Extraccion.fecha.desc()).limit(20)
+        select(models.Extraccion).order_by(models.Extraccion.fecha.desc()).limit(50)
     ).scalars().all()
     actividad = [
         _cli(

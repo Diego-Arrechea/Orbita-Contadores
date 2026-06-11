@@ -23,6 +23,7 @@ import {
   Cpu,
   Clock,
   Zap,
+  ChevronLeft,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -338,10 +339,19 @@ function haceTexto(h?: number | null): string {
 function ClientesTabla({
   filas,
   modo,
+  pageSize,
 }: {
   filas: MotorCliente[];
   modo: 'cola' | 'actividad';
+  pageSize?: number; // si se pasa, pagina la tabla de a `pageSize` filas
 }) {
+  const [pagina, setPagina] = useState(0);
+  const totalPaginas = pageSize ? Math.max(1, Math.ceil(filas.length / pageSize)) : 1;
+  // Clamp: si los datos se achican (auto-refresh) y la página quedó fuera de rango, la traemos al tope.
+  const pag = Math.min(pagina, totalPaginas - 1);
+  const visibles = pageSize ? filas.slice(pag * pageSize, (pag + 1) * pageSize) : filas;
+  const cols = modo === 'actividad' ? 5 : 3;
+
   return (
     <Card className="overflow-hidden">
       <Table>
@@ -361,8 +371,8 @@ function ClientesTabla({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filas.map((f, i) => (
-            <TableRow key={`${f.cuit}-${i}`}>
+          {visibles.map((f, i) => (
+            <TableRow key={`${f.cuit}-${f.ultima ?? ''}-${i}`}>
               <TableCell className="text-sm">
                 <div>{f.cliente || '—'}</div>
                 <div className="text-xs text-muted-foreground tabular-nums">{f.cuit}</div>
@@ -393,13 +403,39 @@ function ClientesTabla({
           ))}
           {filas.length === 0 && (
             <TableRow>
-              <TableCell colSpan={modo === 'actividad' ? 5 : 3} className="text-center text-muted-foreground py-8">
+              <TableCell colSpan={cols} className="text-center text-muted-foreground py-8">
                 {modo === 'cola' ? 'No hay clientes pendientes: está todo al día. 🎉' : 'Sin actividad reciente.'}
               </TableCell>
             </TableRow>
           )}
         </TableBody>
       </Table>
+
+      {pageSize && totalPaginas > 1 && (
+        <div className="flex items-center justify-between border-t border-border/60 px-4 py-2.5 text-sm">
+          <span className="text-muted-foreground">
+            {filas.length} en total · página {pag + 1} de {totalPaginas}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pag === 0}
+              onClick={() => setPagina(p => Math.max(0, p - 1))}
+            >
+              <ChevronLeft className="h-4 w-4" /> Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pag >= totalPaginas - 1}
+              onClick={() => setPagina(p => Math.min(totalPaginas - 1, p + 1))}
+            >
+              Siguiente <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
@@ -520,7 +556,7 @@ function TabMotor() {
           <h2 className="text-sm font-semibold flex items-center gap-2">
             <Activity className="h-4 w-4 text-muted-foreground" /> Actividad reciente
           </h2>
-          <ClientesTabla filas={m.actividad} modo="actividad" />
+          <ClientesTabla filas={m.actividad} modo="actividad" pageSize={10} />
         </div>
       </div>
     </div>
