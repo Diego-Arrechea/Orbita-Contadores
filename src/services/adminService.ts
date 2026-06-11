@@ -49,6 +49,15 @@ export interface AdminSyncFallida {
   contador_email?: string | null;
   motivo?: string | null;
   duracion_ms?: number | null;
+  resuelto: boolean;
+  ultima_sync_ok?: string | null;
+}
+
+export interface JobEstado {
+  estado: string; // en_proceso | terminado | error
+  progreso: number;
+  mensaje: string;
+  error?: string | null;
 }
 
 export function listarUsuarios(): Promise<AdminUsuario[]> {
@@ -76,4 +85,14 @@ export function listarAuditoria(): Promise<AdminAuditoria[]> {
 
 export function listarSincronizacionesFallidas(): Promise<AdminSyncFallida[]> {
   return apiGet<AdminSyncFallida[]>('/admin/sincronizaciones/fallidas');
+}
+
+/** Dispara un reintento de sincronización para cualquier cliente. Devuelve el job_id a poolear. */
+export function reintentarSync(cuit: string): Promise<{ job_id: string }> {
+  return apiPost<{ job_id: string }>(`/admin/clientes/${cuit}/reintentar-sync`);
+}
+
+/** Estado de un job de sincronización en background (mismo endpoint que usa el contador). */
+export function estadoSync(jobId: string): Promise<JobEstado> {
+  return apiGet<JobEstado>(`/sincronizaciones/${jobId}`);
 }

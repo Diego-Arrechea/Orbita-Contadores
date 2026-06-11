@@ -4,6 +4,7 @@ Todo el router está protegido por `admin_actual`."""
 from __future__ import annotations
 
 import datetime as dt
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
@@ -18,9 +19,12 @@ from ..schemas import (
     AdminUsuarioOut,
     AdminUsuarioPatch,
     ImpersonarOut,
+    JobIdOut,
     UsuarioOut,
 )
+from ..scraping import jobs
 from ..security import admin_actual, crear_token
+from .clientes import _correr_sync
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(admin_actual)])
 
@@ -142,7 +146,7 @@ def metricas(db: Session = Depends(get_db)):
 @router.get("/sincronizaciones/fallidas", response_model=list[AdminSyncFallidaOut])
 def sincronizaciones_fallidas(db: Session = Depends(get_db), limite: int = 50):
     """Últimas sincronizaciones fallidas (vista de ops) con el motivo técnico crudo, el cliente
-    afectado y su contador. Para diagnosticar qué está fallando y a quién impacta."""
+    afectado, su contador y si el cliente ya se sincronizó bien DESPUÉS (estado actual)."""
     filas = db.execute(
         select(
             models.Extraccion,
@@ -155,17 +159,58 @@ def sincronizaciones_fallidas(db: Session = Depends(get_db), limite: int = 50):
         .order_by(models.Extraccion.fecha.desc())
         .limit(min(limite, 200))
     ).all()
-    return [
-        AdminSyncFallidaOut(
-            fecha=_iso(e.fecha) or "",
-            cuit=e.cuit,
-            cliente=nombre,
-            contador_email=email,
-            motivo=e.motivo,
-            duracion_ms=e.duracion_ms,
+
+    # Para resolver "¿se sincronizó bien después?": última extracción EXITOSA por cuit (una query).
+    cuits = {e.cuit for e, _, _ in filas}
+    ultima_ok: dict[str, dt.datetime] = {}
+    if cuits:
+        ultima_ok = dict(
+            db.execute(
+                select(models.Extraccion.cuit, func.max(models.Extraccion.fecha))
+                .where(
+                    models.Extraccion.cuit.in_(cuits),
+                    models.Extraccion.resultado == "exitosa",
+                )
+                .group_by(models.Extraccion.cuit)
+            ).all()
         )
-        for e, nombre, email in filas
-    ]
+
+    out = []
+    for e, nombre, email in filas:
+        ok_fecha = ultima_ok.get(e.cuit)
+        out.append(
+            AdminSyncFallidaOut(
+                fecha=_iso(e.fecha) or "",
+                cuit=e.cuit,
+                cliente=nombre,
+                contador_email=email,
+                motivo=e.motivo,
+                duracion_ms=e.duracion_ms,
+                # Resuelto si hay una sync exitosa POSTERIOR a esta falla puntual.
+                resuelto=ok_fecha is not None and ok_fecha > e.fecha,
+                ultima_sync_ok=_iso(ok_fecha),
+            )
+        )
+    return out
+
+
+@router.post("/clientes/{cuit}/reintentar-sync", response_model=JobIdOut)
+def reintentar_sync(
+    cuit: str,
+    db: Session = Depends(get_db),
+    admin: models.Usuario = Depends(admin_actual),
+):
+    """Dispara, en background, un nuevo intento de sincronización de un cliente (cualquiera, sin
+    importar de qué contador sea). Devuelve un job_id para seguir el progreso por
+    GET /api/sincronizaciones/{job_id}. Reusa el mismo worker que la sync manual del contador."""
+    cliente = db.get(models.ClienteARCA, cuit)
+    if cliente is None:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+    job_id = jobs.crear_job()
+    threading.Thread(target=_correr_sync, args=(job_id, cuit), daemon=True).start()
+    _registrar(db, admin, "reintentar_sync", None, f"{cliente.nombre or cuit} ({cuit})")
+    db.commit()
+    return JobIdOut(job_id=job_id)
 
 
 @router.patch("/usuarios/{usuario_id}", response_model=AdminUsuarioOut)
