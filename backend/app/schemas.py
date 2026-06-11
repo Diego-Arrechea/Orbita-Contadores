@@ -433,6 +433,25 @@ class AdminClienteOut(ClienteOut):
     cantidad_comprobantes: int = 0
 
 
+class AdminContadorResumen(BaseModel):
+    """Métricas agregadas de un contador para su ficha en el panel."""
+
+    total_clientes: int
+    clientes_con_comprobantes: int
+    comprobantes_total: int
+    facturado_12m_total: float  # suma del facturado neto 12m de todos sus clientes
+    syncs_problemas: int  # clientes cuya ÚLTIMA sincronización falló (sin resolver)
+
+
+class AdminContadorFichaOut(BaseModel):
+    """Ficha completa de un contador para el panel superadmin (read-only): sus datos, un resumen
+    agregado y la lista de sus clientes con el mismo detalle que la vista global."""
+
+    usuario: AdminUsuarioOut
+    resumen: AdminContadorResumen
+    clientes: list[AdminClienteOut]
+
+
 class JobIdOut(BaseModel):
     """Devuelve el id de un job en background (p.ej. un reintento de sincronización)."""
 
