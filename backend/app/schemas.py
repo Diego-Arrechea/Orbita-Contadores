@@ -473,3 +473,44 @@ class JobIdOut(BaseModel):
     """Devuelve el id de un job en background (p.ej. un reintento de sincronización)."""
 
     job_id: str
+
+
+# --- Motor de sincronización continua (panel admin → tab Motor; ver routers/admin_sync.py) ---
+
+
+class MotorClienteOut(BaseModel):
+    """Un cliente en las listas del motor (cola de próximos / actividad reciente)."""
+
+    cuit: str
+    cliente: str | None = None
+    contador_email: str | None = None
+    ultima: str | None = None  # ISO de la última extracción (None = nunca)
+    horas_desde: float | None = None  # horas desde la última extracción (None = nunca)
+    resultado: str | None = None  # exitosa | fallida (de la extracción de referencia)
+    comprobantes: int | None = None
+    duracion_seg: int | None = None
+
+
+class MotorEstadoOut(BaseModel):
+    """Estado del motor de sincronización continua para el panel admin."""
+
+    # Latido del worker
+    worker_vivo: bool
+    worker_actualizado: str | None = None  # ISO del último latido
+    en_vuelo: list[MotorClienteOut] = []   # clientes sincronizándose AHORA
+    concurrencia: int = 0
+    intervalo_horas: int = 0
+    # Cobertura (sobre el universo de clientes)
+    total_clientes: int = 0
+    frescos: int = 0          # última extracción dentro del intervalo
+    pendientes: int = 0       # vencidos: la sincronizará el worker (incluye 'nunca')
+    nunca: int = 0            # sin ninguna extracción todavía
+    con_falla_actual: int = 0  # su última extracción fue fallida (estado roto ahora)
+    # Throughput
+    syncs_1h: int = 0
+    syncs_24h: int = 0
+    exitosas_24h: int = 0
+    fallidas_24h: int = 0
+    # Listas
+    proximos: list[MotorClienteOut] = []    # próximos a sincronizar (más vencidos primero)
+    actividad: list[MotorClienteOut] = []   # últimas extracciones (feed)

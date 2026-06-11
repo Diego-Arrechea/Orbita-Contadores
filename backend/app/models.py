@@ -247,3 +247,17 @@ class AuditoriaAdmin(Base):
     fecha: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+
+
+class WorkerHeartbeat(Base):
+    """Latido del contenedor worker (motor de sync continuo). Fila ÚNICA (id=1) que el worker pisa
+    en cada vuelta del loop; el panel admin la lee para saber si el motor está vivo y qué clientes
+    está sincronizando ahora. Ver app/worker/loop.py y routers/admin_sync.py."""
+
+    __tablename__ = "worker_heartbeat"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)  # siempre 1
+    actualizado_en: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    en_vuelo: Mapped[str] = mapped_column(Text, default="[]")  # JSON: cuits sincronizándose ahora
+    concurrencia: Mapped[int] = mapped_column(Integer, default=0)
+    intervalo_horas: Mapped[int] = mapped_column(Integer, default=0)
