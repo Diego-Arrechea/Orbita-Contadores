@@ -143,8 +143,34 @@ def _diagnostico(ctx, cuit: str, traza: Traza) -> str:
     return f" | {cuerpo} [diag: {diag}]"
 
 
-def _abrir_mis_comprobantes(page, ctx, traza: Traza):
-    """Desde el portal abre 'Mis Comprobantes' y queda en el menú (Emitidos/Recibidos)."""
+def _cuit_formateado(cuit: str) -> str:
+    """11 dígitos -> 'XX-XXXXXXXX-X' (como lo muestra ARCA en las tarjetas)."""
+    return f"{cuit[:2]}-{cuit[2:10]}-{cuit[10:]}" if len(cuit) == 11 else cuit
+
+
+def _elegir_contribuyente(ctx, mcmp, cuit_objetivo: str, traza: Traza):
+    """Cuando la clave representa a VARIAS personas, Mis Comprobantes mete una pantalla intermedia
+    'Elegí una persona para ingresar' (cada persona es un `<a class="panel ...">` con su CUIT).
+    Elige la tarjeta del CUIT objetivo y entra. Idempotente: si esa pantalla no aparece
+    (representación única, el caso normal), no hace nada."""
+    cuit_fmt = _cuit_formateado(cuit_objetivo)
+    try:
+        aviso = mcmp.get_by_text(re.compile(r"eleg[ií] una persona", re.I)).first
+        if aviso.count() == 0 or not aviso.is_visible():
+            return mcmp  # representación única: no hay pantalla de selección
+    except Exception:  # noqa: BLE001
+        return mcmp
+    traza.paso(f"elegir contribuyente {cuit_fmt}", mcmp)
+    tarjeta = mcmp.locator("a.panel").filter(has_text=cuit_fmt).first
+    tarjeta.wait_for(state="visible", timeout=10000)
+    tarjeta.click()
+    mcmp.wait_for_timeout(4000)  # el form submitea y carga el menú Emitidos/Recibidos
+    return _mcmp_tab(ctx) or mcmp
+
+
+def _abrir_mis_comprobantes(page, ctx, cuit_objetivo: str, traza: Traza):
+    """Desde el portal abre 'Mis Comprobantes' y queda en el menú (Emitidos/Recibidos). Si la clave
+    representa a varias personas, primero elige al `cuit_objetivo` en la pantalla de selección."""
     traza.paso("portal: abrir 'Mis Comprobantes'", page)
     page.goto(_comun.PORTAL)
     # esperar_idle TOLERANTE (no `wait_for_load_state('networkidle')` a secas): ARCA mantiene
@@ -168,6 +194,8 @@ def _abrir_mis_comprobantes(page, ctx, traza: Traza):
     mcmp = _mcmp_tab(ctx)
     if mcmp is None:
         raise RuntimeError("No se abrió Mis Comprobantes.")
+    # Clave con varias representaciones → elegir al contribuyente objetivo antes del menú.
+    mcmp = _elegir_contribuyente(ctx, mcmp, cuit_objetivo, traza)
     return mcmp
 
 
@@ -295,7 +323,7 @@ def descargar(
             try:
                 traza.paso("login ARCA", page)
                 _comun.login(page, cuit_login, clave)
-                mcmp = _abrir_mis_comprobantes(page, ctx, traza)
+                mcmp = _abrir_mis_comprobantes(page, ctx, cuit_cliente, traza)
                 # Nombre real del contribuyente de los comprobantes (el "Representando a:" del navbar).
                 traza.paso("leer nombre del contribuyente", mcmp)
                 nombre = _comun.leer_nombre_navbar(mcmp, "text-success") or _comun.leer_nombre_navbar(
