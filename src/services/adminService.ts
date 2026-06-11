@@ -42,6 +42,15 @@ export interface AdminAuditoria {
   fecha: string;
 }
 
+export interface AdminSyncFallida {
+  fecha: string;
+  cuit: string;
+  cliente?: string | null;
+  contador_email?: string | null;
+  motivo?: string | null;
+  duracion_ms?: number | null;
+}
+
 export function listarUsuarios(): Promise<AdminUsuario[]> {
   return apiGet<AdminUsuario[]>('/admin/usuarios');
 }
@@ -63,4 +72,8 @@ export function impersonar(id: number): Promise<AuthResp> {
 
 export function listarAuditoria(): Promise<AdminAuditoria[]> {
   return apiGet<AdminAuditoria[]>('/admin/auditoria');
+}
+
+export function listarSincronizacionesFallidas(): Promise<AdminSyncFallida[]> {
+  return apiGet<AdminSyncFallida[]>('/admin/sincronizaciones/fallidas');
 }
