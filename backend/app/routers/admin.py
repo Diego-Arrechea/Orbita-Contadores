@@ -119,14 +119,37 @@ def metricas(db: Session = Depends(get_db)):
     syncs_hoy = (
         db.scalar(select(func.count()).where(models.Extraccion.fecha >= inicio_dia)) or 0
     )
-    syncs_fallidas = (
-        db.scalar(
-            select(func.count()).where(
+    # "Con problemas" = clientes que fallaron hoy y NO se recuperaron después (sin una sync exitosa
+    # posterior a su última falla). Cuenta SÓLO las no resueltas: un reintento/diagnóstico que dejó
+    # fallas pero terminó bien no infla el número. (El detalle por fila va en /sincronizaciones/fallidas.)
+    fallidas_hoy = dict(
+        db.execute(
+            select(models.Extraccion.cuit, func.max(models.Extraccion.fecha))
+            .where(
                 models.Extraccion.fecha >= inicio_dia,
                 models.Extraccion.resultado == "fallida",
             )
+            .group_by(models.Extraccion.cuit)
+        ).all()
+    )
+    exitosas = (
+        dict(
+            db.execute(
+                select(models.Extraccion.cuit, func.max(models.Extraccion.fecha))
+                .where(
+                    models.Extraccion.resultado == "exitosa",
+                    models.Extraccion.cuit.in_(fallidas_hoy.keys()),
+                )
+                .group_by(models.Extraccion.cuit)
+            ).all()
         )
-        or 0
+        if fallidas_hoy
+        else {}
+    )
+    syncs_fallidas = sum(
+        1
+        for cuit, falla in fallidas_hoy.items()
+        if not (exitosas.get(cuit) and exitosas[cuit] > falla)
     )
     nuevas_semana = (
         db.scalar(select(func.count()).where(models.Usuario.creado_en >= hace_semana)) or 0
