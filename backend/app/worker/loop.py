@@ -188,6 +188,12 @@ def _quizas_janitor() -> None:
 
 
 def main() -> None:
+    # Asegura que las tablas existan (idempotente) por si el worker arranca antes que el backend:
+    # importar WorkerHeartbeat ya registró el modelo en Base.metadata.
+    from ..db import Base, engine
+
+    Base.metadata.create_all(bind=engine)
+
     n = max(1, settings.sync_worker_concurrencia)
 
     def _parar(*_):  # SIGTERM/SIGINT → apagado ordenado (docker stop)
