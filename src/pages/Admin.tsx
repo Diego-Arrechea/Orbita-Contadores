@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ShieldCheck,
   Users,
@@ -139,28 +140,18 @@ export function Admin() {
 // --- Tab: Cuentas ---
 
 function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () => void }) {
-  const [usuarios, setUsuarios] = useState<AdminUsuario[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState('');
+  const qc = useQueryClient();
+  const {
+    data: usuarios = [],
+    isLoading,
+    error: queryError,
+    refetch,
+    isFetching,
+  } = useQuery({ queryKey: ['admin', 'usuarios'], queryFn: listarUsuarios });
   const [busqueda, setBusqueda] = useState('');
   const [accionando, setAccionando] = useState<number | null>(null);
+  const [accionError, setAccionError] = useState('');
   const [fichaId, setFichaId] = useState<number | null>(null);
-
-  async function cargar() {
-    setCargando(true);
-    setError('');
-    try {
-      setUsuarios(await listarUsuarios());
-    } catch (e) {
-      setError(mensajeDeError(e));
-    } finally {
-      setCargando(false);
-    }
-  }
-
-  useEffect(() => {
-    void cargar();
-  }, []);
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -174,12 +165,16 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
 
   async function toggleActivo(u: AdminUsuario) {
     setAccionando(u.id);
-    setError('');
+    setAccionError('');
     try {
       const actualizado = await editarUsuario(u.id, { activo: !u.activo });
-      setUsuarios(prev => prev.map(x => (x.id === u.id ? actualizado : x)));
+      // Actualiza la fila en cache (sin refetch) y revalida las métricas (cambió el conteo de activas).
+      qc.setQueryData<AdminUsuario[]>(['admin', 'usuarios'], prev =>
+        prev ? prev.map(x => (x.id === u.id ? actualizado : x)) : prev
+      );
+      void qc.invalidateQueries({ queryKey: ['admin', 'metricas'] });
     } catch (e) {
-      setError(mensajeDeError(e));
+      setAccionError(mensajeDeError(e));
     } finally {
       setAccionando(null);
     }
@@ -187,13 +182,13 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
 
   async function entrarComo(u: AdminUsuario) {
     setAccionando(u.id);
-    setError('');
+    setAccionError('');
     try {
       const auth = await impersonar(u.id);
       iniciarImpersonacion(auth);
       onImpersonar();
     } catch (e) {
-      setError(mensajeDeError(e));
+      setAccionError(mensajeDeError(e));
       setAccionando(null);
     }
   }
@@ -209,13 +204,15 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
     );
   }
 
-  if (cargando) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando cuentas…
       </div>
     );
   }
+
+  const error = accionError || (queryError ? mensajeDeError(queryError) : '');
 
   return (
     <div className="space-y-4">
@@ -229,8 +226,8 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
             className="pl-9"
           />
         </div>
-        <Button variant="outline" size="sm" onClick={() => void cargar()}>
-          <RefreshCcw className="h-4 w-4" /> Actualizar
+        <Button variant="outline" size="sm" disabled={isFetching} onClick={() => void refetch()}>
+          <RefreshCcw className={cn('h-4 w-4', isFetching && 'animate-spin')} /> Actualizar
         </Button>
       </div>
 
@@ -408,38 +405,30 @@ function ClientesTabla({
 }
 
 function TabMotor() {
-  const [m, setM] = useState<MotorEstado | null>(null);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState('');
+  // refetchInterval mantiene la tab "en vivo"; staleTime corto para que al volver muestre el cache al
+  // instante y revalide enseguida. React Query frena el polling solo cuando la tab no está montada.
+  const {
+    data: m,
+    isLoading,
+    error: queryError,
+  } = useQuery({
+    queryKey: ['admin', 'motor'],
+    queryFn: obtenerEstadoMotor,
+    refetchInterval: 8000,
+    staleTime: 4000,
+  });
 
-  async function cargar() {
-    try {
-      setM(await obtenerEstadoMotor());
-      setError('');
-    } catch (e) {
-      setError(mensajeDeError(e));
-    } finally {
-      setCargando(false);
-    }
-  }
-
-  useEffect(() => {
-    void cargar();
-    const t = setInterval(() => void cargar(), 8000); // se refresca solo para sentirse "en vivo"
-    return () => clearInterval(t);
-  }, []);
-
-  if (cargando) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando estado del motor…
       </div>
     );
   }
-  if (error || !m) {
+  if (queryError || !m) {
     return (
       <div className="flex items-center gap-2 rounded-lg bg-danger/10 text-danger px-3 py-2 text-sm">
-        <AlertCircle className="h-4 w-4" /> {error || 'No se pudo cargar el motor.'}
+        <AlertCircle className="h-4 w-4" /> {queryError ? mensajeDeError(queryError) : 'No se pudo cargar el motor.'}
       </div>
     );
   }
@@ -568,41 +557,27 @@ function MetricaCard({
 }
 
 function TabMetricas() {
-  const [m, setM] = useState<AdminMetricas | null>(null);
-  const [fallidas, setFallidas] = useState<AdminSyncFallida[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState('');
+  const { data: m, isLoading, error: queryError } = useQuery({
+    queryKey: ['admin', 'metricas'],
+    queryFn: obtenerMetricas,
+    staleTime: 10_000,
+  });
+  const { data: fallidas = [] } = useQuery({
+    queryKey: ['admin', 'fallidas'],
+    queryFn: listarSincronizacionesFallidas,
+  });
 
-  async function cargar() {
-    try {
-      const [met, fall] = await Promise.all([
-        obtenerMetricas(),
-        listarSincronizacionesFallidas(),
-      ]);
-      setM(met);
-      setFallidas(fall);
-    } catch (e) {
-      setError(mensajeDeError(e));
-    } finally {
-      setCargando(false);
-    }
-  }
-
-  useEffect(() => {
-    void cargar();
-  }, []);
-
-  if (cargando) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando métricas…
       </div>
     );
   }
-  if (error || !m) {
+  if (queryError || !m) {
     return (
       <div className="flex items-center gap-2 rounded-lg bg-danger/10 text-danger px-3 py-2 text-sm">
-        <AlertCircle className="h-4 w-4" /> {error || 'No se pudieron cargar las métricas.'}
+        <AlertCircle className="h-4 w-4" /> {queryError ? mensajeDeError(queryError) : 'No se pudieron cargar las métricas.'}
       </div>
     );
   }
@@ -629,7 +604,7 @@ function TabMetricas() {
         />
       </div>
 
-      <SyncsFallidas fallidas={fallidas} onCambio={cargar} />
+      <SyncsFallidas fallidas={fallidas} />
     </div>
   );
 }
@@ -637,13 +612,8 @@ function TabMetricas() {
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 // Log de sincronizaciones con problemas (vista de ops: motivo técnico + estado actual + reintento).
-function SyncsFallidas({
-  fallidas,
-  onCambio,
-}: {
-  fallidas: AdminSyncFallida[];
-  onCambio: () => Promise<void> | void;
-}) {
+function SyncsFallidas({ fallidas }: { fallidas: AdminSyncFallida[] }) {
+  const qc = useQueryClient();
   // Estado de reintento por cuit: 'corriendo' mientras poolea el job; mensaje de error si falló.
   const [reintentando, setReintentando] = useState<Record<string, boolean>>({});
   const [errores, setErrores] = useState<Record<string, string>>({});
@@ -663,7 +633,10 @@ function SyncsFallidas({
           break;
         }
       }
-      await onCambio(); // refresca lista + métricas (la fila puede pasar a "Resuelto")
+      // Revalida lo afectado: la fila puede pasar a "Resuelto" y cambian métricas/motor.
+      void qc.invalidateQueries({ queryKey: ['admin', 'fallidas'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'metricas'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'motor'] });
     } catch (e) {
       setErrores(prev => ({ ...prev, [cuit]: mensajeDeError(e) }));
     } finally {
@@ -784,26 +757,15 @@ function facturado12m(c: AdminCliente): number {
 }
 
 function TabClientes() {
-  const [clientes, setClientes] = useState<AdminCliente[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState('');
+  const {
+    data: clientes = [],
+    isLoading,
+    error: queryError,
+    refetch,
+    isFetching,
+  } = useQuery({ queryKey: ['admin', 'clientes'], queryFn: listarTodosLosClientes });
   const [busqueda, setBusqueda] = useState('');
-
-  async function cargar() {
-    setCargando(true);
-    setError('');
-    try {
-      setClientes(await listarTodosLosClientes());
-    } catch (e) {
-      setError(mensajeDeError(e));
-    } finally {
-      setCargando(false);
-    }
-  }
-
-  useEffect(() => {
-    void cargar();
-  }, []);
+  const error = queryError ? mensajeDeError(queryError) : '';
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -820,7 +782,7 @@ function TabClientes() {
     [filtrados]
   );
 
-  if (cargando) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando clientes…
@@ -840,8 +802,8 @@ function TabClientes() {
             className="pl-9"
           />
         </div>
-        <Button variant="outline" size="sm" onClick={() => void cargar()}>
-          <RefreshCcw className="h-4 w-4" /> Actualizar
+        <Button variant="outline" size="sm" disabled={isFetching} onClick={() => void refetch()}>
+          <RefreshCcw className={cn('h-4 w-4', isFetching && 'animate-spin')} /> Actualizar
         </Button>
       </div>
 
@@ -970,44 +932,34 @@ function FichaContador({
   onVolver: () => void;
   onImpersonar: () => void;
 }) {
-  const [ficha, setFicha] = useState<AdminContadorFicha | null>(null);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState('');
+  const { data: ficha, isLoading, error: queryError } = useQuery({
+    queryKey: ['admin', 'ficha', id],
+    queryFn: () => obtenerFichaContador(id),
+  });
   const [accionando, setAccionando] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      setCargando(true);
-      try {
-        setFicha(await obtenerFichaContador(id));
-      } catch (e) {
-        setError(mensajeDeError(e));
-      } finally {
-        setCargando(false);
-      }
-    })();
-  }, [id]);
+  const [accionError, setAccionError] = useState('');
 
   async function entrarComo() {
     setAccionando(true);
-    setError('');
+    setAccionError('');
     try {
       const auth = await impersonar(id);
       iniciarImpersonacion(auth);
       onImpersonar();
     } catch (e) {
-      setError(mensajeDeError(e));
+      setAccionError(mensajeDeError(e));
       setAccionando(false);
     }
   }
 
-  if (cargando) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando ficha…
       </div>
     );
   }
+  const error = accionError || (queryError ? mensajeDeError(queryError) : '');
   if (error || !ficha) {
     return (
       <div className="space-y-4">
@@ -1113,33 +1065,22 @@ const ACCION_LABEL: Record<string, { texto: string; variant: 'success' | 'danger
 };
 
 function TabAuditoria() {
-  const [filas, setFilas] = useState<AdminAuditoria[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState('');
+  const { data: filas = [], isLoading, error: queryError } = useQuery({
+    queryKey: ['admin', 'auditoria'],
+    queryFn: listarAuditoria,
+  });
 
-  useEffect(() => {
-    (async () => {
-      try {
-        setFilas(await listarAuditoria());
-      } catch (e) {
-        setError(mensajeDeError(e));
-      } finally {
-        setCargando(false);
-      }
-    })();
-  }, []);
-
-  if (cargando) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground">
         <Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando auditoría…
       </div>
     );
   }
-  if (error) {
+  if (queryError) {
     return (
       <div className="flex items-center gap-2 rounded-lg bg-danger/10 text-danger px-3 py-2 text-sm">
-        <AlertCircle className="h-4 w-4" /> {error}
+        <AlertCircle className="h-4 w-4" /> {mensajeDeError(queryError)}
       </div>
     );
   }
