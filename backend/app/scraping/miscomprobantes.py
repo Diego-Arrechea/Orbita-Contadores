@@ -181,46 +181,78 @@ def _volver_menu(ctx, mcmp):
     return _mcmp_tab(ctx) or mcmp
 
 
-def _entrar_seccion(ctx, mcmp, boton: str, traza: Traza):
+# Reintentos de la búsqueda de un rango: ARCA falla la consulta de forma transitoria (su "Error de
+# conexión") y deja la pantalla en Consulta sin grilla → sin botón CSV. VERIFICADO: un período
+# realmente vacío IGUAL exporta un CSV vacío, así que "no aparece el CSV" SIEMPRE es ARCA fallando,
+# nunca "no hay comprobantes". Por eso reintentamos la búsqueda (no salteamos: saltear perdería
+# comprobantes reales). Tras agotar los intentos, se propaga el error (la sync se marca fallida).
+MAX_INTENTOS_BUSQUEDA = 3
+
+
+def _entrar_seccion(ctx, mcmp, boton: str, direccion: str, traza: Traza):
     mcmp = _mcmp_tab(ctx) or mcmp
-    traza.paso(f"sección {boton}: click", mcmp)
+    traza.paso(f"sección {direccion}s ({boton}): click", mcmp)
     mcmp.wait_for_selector(boton, timeout=15000)
     mcmp.locator(boton).first.click()
     mcmp.wait_for_timeout(6000)
     mcmp = _mcmp_tab(ctx) or mcmp
-    traza.paso(f"sección {boton}: esperar #fechaEmision", mcmp)
+    traza.paso(f"sección {direccion}s ({boton}): esperar #fechaEmision", mcmp)
     mcmp.wait_for_selector("#fechaEmision", state="attached", timeout=15000)
     return mcmp
 
 
-def _exportar_rango(ctx, mcmp, desde: str, hasta: str, traza: Traza) -> bytes:
-    """Setea el rango, busca y exporta el CSV (zip). Devuelve los bytes del zip."""
-    mcmp = _mcmp_tab(ctx) or mcmp
-    # Solapa "Consulta" activa (tras una búsqueda previa quedamos en "Resultados").
-    try:
-        mcmp.locator('a[href="#tabConsulta"]').first.click()
-        mcmp.wait_for_timeout(800)
-    except Exception:  # noqa: BLE001
-        pass
-    traza.paso(f"rango {desde}-{hasta}: setear fechas", mcmp)
-    mcmp.wait_for_selector("#fechaEmision", state="attached", timeout=15000)
-    mcmp.evaluate("(v)=>{document.getElementById('fechaEmision').value=v;}", f"{desde} - {hasta}")
-    mcmp.wait_for_timeout(500)
-    traza.paso(f"rango {desde}-{hasta}: buscar", mcmp)
-    mcmp.get_by_role("button", name=re.compile("buscar", re.I)).first.click()
-    mcmp = _mcmp_tab(ctx) or mcmp
-    try:
-        mcmp.get_by_text(re.compile("total de", re.I)).first.wait_for(timeout=90000)
-    except Exception:  # noqa: BLE001
-        mcmp.wait_for_timeout(8000)
-    traza.paso(f"rango {desde}-{hasta}: esperar botón CSV", mcmp)
-    btn = mcmp.get_by_text("CSV", exact=True).first
-    btn.wait_for(state="visible", timeout=30000)
-    mcmp.wait_for_timeout(1000)
-    traza.paso(f"rango {desde}-{hasta}: descargar CSV", mcmp)
-    with mcmp.expect_download(timeout=60000) as dl:
-        btn.click()
-    return Path(dl.value.path()).read_bytes()
+def _exportar_rango(ctx, mcmp, desde: str, hasta: str, direccion: str, traza: Traza) -> bytes:
+    """Setea el rango, busca y exporta el CSV (zip). Devuelve los bytes del zip.
+
+    Reintenta la búsqueda si ARCA no devuelve la grilla de resultados (botón CSV nunca visible):
+    es su fallo transitorio de conexión, no un período vacío (ver MAX_INTENTOS_BUSQUEDA). Backoff
+    incremental entre intentos. Si tras todos los intentos no aparece el CSV, propaga el error."""
+    ultimo_error: Exception | None = None
+    for intento in range(1, MAX_INTENTOS_BUSQUEDA + 1):
+        suf = f" (intento {intento}/{MAX_INTENTOS_BUSQUEDA})" if intento > 1 else ""
+        mcmp = _mcmp_tab(ctx) or mcmp
+        try:
+            # Solapa "Consulta" activa (tras una búsqueda previa quedamos en "Resultados"; tras un
+            # fallo de ARCA ya estamos en Consulta, pero el click es idempotente).
+            try:
+                mcmp.locator('a[href="#tabConsulta"]').first.click()
+                mcmp.wait_for_timeout(800)
+            except Exception:  # noqa: BLE001
+                pass
+            traza.paso(f"{direccion} {desde}-{hasta}: setear fechas{suf}", mcmp)
+            mcmp.wait_for_selector("#fechaEmision", state="attached", timeout=15000)
+            mcmp.evaluate(
+                "(v)=>{document.getElementById('fechaEmision').value=v;}", f"{desde} - {hasta}"
+            )
+            mcmp.wait_for_timeout(500)
+            traza.paso(f"{direccion} {desde}-{hasta}: buscar{suf}", mcmp)
+            mcmp.get_by_role("button", name=re.compile("buscar", re.I)).first.click()
+            mcmp = _mcmp_tab(ctx) or mcmp
+            try:
+                mcmp.get_by_text(re.compile("total de", re.I)).first.wait_for(timeout=90000)
+            except Exception:  # noqa: BLE001
+                mcmp.wait_for_timeout(8000)
+            traza.paso(f"{direccion} {desde}-{hasta}: esperar botón CSV{suf}", mcmp)
+            btn = mcmp.get_by_text("CSV", exact=True).first
+            btn.wait_for(state="visible", timeout=30000)
+            mcmp.wait_for_timeout(1000)
+            traza.paso(f"{direccion} {desde}-{hasta}: descargar CSV{suf}", mcmp)
+            with mcmp.expect_download(timeout=60000) as dl:
+                btn.click()
+            return Path(dl.value.path()).read_bytes()
+        except Exception as e:  # noqa: BLE001 — ARCA no respondió la búsqueda; reintentamos
+            ultimo_error = e
+            if intento < MAX_INTENTOS_BUSQUEDA:
+                traza.paso(f"{direccion} {desde}-{hasta}: ARCA no respondió, reintentando", mcmp)
+                try:
+                    mcmp = _mcmp_tab(ctx) or mcmp
+                    mcmp.wait_for_timeout(3000 * intento)  # backoff incremental: 3s, 6s
+                except Exception:  # noqa: BLE001
+                    pass
+    raise RuntimeError(
+        f"ARCA no devolvió resultados para {direccion} {desde}-{hasta} "
+        f"tras {MAX_INTENTOS_BUSQUEDA} intentos: {ultimo_error}"
+    )
 
 
 def descargar(
@@ -278,7 +310,7 @@ def descargar(
                     if not primera:
                         mcmp = _volver_menu(ctx, mcmp)
                     primera = False
-                    mcmp = _entrar_seccion(ctx, mcmp, p["boton"], traza)
+                    mcmp = _entrar_seccion(ctx, mcmp, p["boton"], p["direccion"], traza)
                     vistos: set[tuple] = set()
                     comps: list[dict] = []
                     for desde, hasta in p["rangos"]:
@@ -286,7 +318,8 @@ def descargar(
                             paso += 1
                             on_progress(paso, total, f"{p['direccion']}s {desde} a {hasta}")
                         for c in parsear_csv_zip(
-                            _exportar_rango(ctx, mcmp, desde, hasta, traza), p["contraparte"]
+                            _exportar_rango(ctx, mcmp, desde, hasta, p["direccion"], traza),
+                            p["contraparte"],
                         ):
                             k = (c["punto_venta"], c["cbte_tipo"], c["numero"])
                             if k not in vistos:

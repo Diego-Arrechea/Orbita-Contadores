@@ -39,6 +39,11 @@ services:
       - TZ=${TZ:-America/Argentina/Buenos_Aires}
     expose:
       - "8000"
+    volumes:
+      # Diagnóstico del scraping (traza/screenshot/HTML/trace.zip de cada fallo): en un volumen del
+      # host para que SOBREVIVA a los rebuilds del contenedor (data/ es efímero). Nombres por-CUIT
+      # (se pisan), así que no crece sin control.
+      - /opt/orbita-contadores_diag:/app/data/diag
     depends_on:
       db:
         condition: service_healthy

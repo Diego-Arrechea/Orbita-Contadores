@@ -7,6 +7,7 @@ POST /api/sincronizar-todos (útil para probar o para un cron externo).
 from __future__ import annotations
 
 import logging
+import time
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import select
@@ -20,6 +21,33 @@ logger = logging.getLogger("orbita.scheduler")
 
 _scheduler: BackgroundScheduler | None = None
 
+# Reintentos a nivel cliente ante fallos transitorios de ARCA (login/sesión/navegador). Es el
+# backstop del sync diario: los fallos puntuales de UNA búsqueda ya los reintenta el scraper
+# internamente (ver miscomprobantes.MAX_INTENTOS_BUSQUEDA); esto cubre cuando se cae la sesión
+# entera. Backoff incremental antes de cada reintento.
+SYNC_REINTENTOS = 2
+SYNC_BACKOFF_SEG = (30, 90)
+
+
+def _sincronizar_con_reintento(db, cuit: str) -> int:
+    """Sincroniza un cliente reintentando ante fallos (cada fallo deja su fila en `extracciones`;
+    el panel marca la falla como resuelta si un intento posterior sale bien). Propaga el último
+    error si se agotan los intentos."""
+    ultimo: Exception | None = None
+    for intento in range(SYNC_REINTENTOS + 1):
+        try:
+            return sincronizar(db, cuit)
+        except Exception as e:  # noqa: BLE001
+            ultimo = e
+            if intento < SYNC_REINTENTOS:
+                espera = SYNC_BACKOFF_SEG[min(intento, len(SYNC_BACKOFF_SEG) - 1)]
+                logger.warning(
+                    "  %s falló (intento %d/%d), reintento en %ds: %s",
+                    cuit, intento + 1, SYNC_REINTENTOS + 1, espera, e,
+                )
+                time.sleep(espera)
+    raise ultimo  # type: ignore[misc]
+
 
 def sincronizar_todos() -> dict[str, object]:
     """Sincroniza todos los clientes registrados. Un cliente que falla no frena al resto."""
@@ -30,11 +58,11 @@ def sincronizar_todos() -> dict[str, object]:
         logger.info("sync de %d cliente(s)", len(cuits))
         for cuit in cuits:
             try:
-                resumen[cuit] = sincronizar(db, cuit)
+                resumen[cuit] = _sincronizar_con_reintento(db, cuit)
                 logger.info("  %s -> %s comprobantes", cuit, resumen[cuit])
             except Exception as e:  # noqa: BLE001
                 resumen[cuit] = f"error: {e}"
-                logger.warning("  %s FALLÓ: %s", cuit, e)
+                logger.warning("  %s FALLÓ tras reintentos: %s", cuit, e)
     finally:
         db.close()
 
