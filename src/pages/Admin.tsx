@@ -19,6 +19,9 @@ import {
   ArrowLeft,
   Receipt,
   ChevronRight,
+  Cpu,
+  Clock,
+  Zap,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -44,15 +47,19 @@ import {
   estadoSync,
   listarTodosLosClientes,
   obtenerFichaContador,
+  obtenerEstadoMotor,
   type AdminUsuario,
   type AdminMetricas,
   type AdminAuditoria,
   type AdminSyncFallida,
   type AdminCliente,
   type AdminContadorFicha,
+  type MotorEstado,
+  type MotorCliente,
 } from '@/services/adminService';
 import { mensajeDeError } from '@/services/authService';
 import { iniciarImpersonacion, usuarioActual } from '@/lib/cuenta';
+import { cn } from '@/lib/utils';
 
 function fechaCorta(iso?: string | null): string {
   if (!iso) return '—';
@@ -98,6 +105,9 @@ export function Admin() {
           <TabsTrigger value="clientes">
             <Building2 className="h-4 w-4" /> Clientes
           </TabsTrigger>
+          <TabsTrigger value="motor">
+            <Cpu className="h-4 w-4" /> Motor
+          </TabsTrigger>
           <TabsTrigger value="metricas">
             <Activity className="h-4 w-4" /> Métricas
           </TabsTrigger>
@@ -111,6 +121,9 @@ export function Admin() {
         </TabsContent>
         <TabsContent value="clientes">
           <TabClientes />
+        </TabsContent>
+        <TabsContent value="motor">
+          <TabMotor />
         </TabsContent>
         <TabsContent value="metricas">
           <TabMetricas />
@@ -312,6 +325,215 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
           </TableBody>
         </Table>
       </Card>
+    </div>
+  );
+}
+
+// --- Tab: Motor de sincronización ---
+
+function haceTexto(h?: number | null): string {
+  if (h == null) return 'nunca';
+  if (h < 1) return `hace ${Math.round(h * 60)} min`;
+  if (h < 48) return `hace ${h.toFixed(1)} h`;
+  return `hace ${Math.round(h / 24)} d`;
+}
+
+function ClientesTabla({
+  filas,
+  modo,
+}: {
+  filas: MotorCliente[];
+  modo: 'cola' | 'actividad';
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Cliente</TableHead>
+            <TableHead>Contador</TableHead>
+            {modo === 'actividad' ? (
+              <>
+                <TableHead className="text-center">Resultado</TableHead>
+                <TableHead className="text-right">Comprob.</TableHead>
+                <TableHead className="text-right">Cuándo</TableHead>
+              </>
+            ) : (
+              <TableHead className="text-right">Última sync</TableHead>
+            )}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filas.map((f, i) => (
+            <TableRow key={`${f.cuit}-${i}`}>
+              <TableCell className="text-sm">
+                <div>{f.cliente || '—'}</div>
+                <div className="text-xs text-muted-foreground tabular-nums">{f.cuit}</div>
+              </TableCell>
+              <TableCell className="text-sm">{f.contador_email || '—'}</TableCell>
+              {modo === 'actividad' ? (
+                <>
+                  <TableCell className="text-center">
+                    {f.resultado === 'exitosa' ? (
+                      <Badge variant="success">OK</Badge>
+                    ) : (
+                      <Badge variant="danger">Falló</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right text-sm tabular-nums">
+                    {f.comprobantes ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap">
+                    {haceTexto(f.horas_desde)}
+                  </TableCell>
+                </>
+              ) : (
+                <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap">
+                  {haceTexto(f.horas_desde)}
+                </TableCell>
+              )}
+            </TableRow>
+          ))}
+          {filas.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={modo === 'actividad' ? 5 : 3} className="text-center text-muted-foreground py-8">
+                {modo === 'cola' ? 'No hay clientes pendientes: está todo al día. 🎉' : 'Sin actividad reciente.'}
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </Card>
+  );
+}
+
+function TabMotor() {
+  const [m, setM] = useState<MotorEstado | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState('');
+
+  async function cargar() {
+    try {
+      setM(await obtenerEstadoMotor());
+      setError('');
+    } catch (e) {
+      setError(mensajeDeError(e));
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  useEffect(() => {
+    void cargar();
+    const t = setInterval(() => void cargar(), 8000); // se refresca solo para sentirse "en vivo"
+    return () => clearInterval(t);
+  }, []);
+
+  if (cargando) {
+    return (
+      <div className="flex items-center justify-center py-16 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando estado del motor…
+      </div>
+    );
+  }
+  if (error || !m) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg bg-danger/10 text-danger px-3 py-2 text-sm">
+        <AlertCircle className="h-4 w-4" /> {error || 'No se pudo cargar el motor.'}
+      </div>
+    );
+  }
+
+  const exito = m.syncs_24h ? Math.round((m.exitosas_24h / m.syncs_24h) * 100) : null;
+
+  return (
+    <div className="space-y-6">
+      {/* Estado del worker */}
+      <Card className="p-5">
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                'inline-block h-2.5 w-2.5 rounded-full',
+                m.worker_vivo ? 'bg-success animate-pulse' : 'bg-danger'
+              )}
+            />
+            <span className="font-semibold">
+              {m.worker_vivo ? 'Motor activo' : 'Motor caído'}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              último latido {haceTexto((Date.now() - new Date(m.worker_actualizado ?? 0).getTime()) / 3600000)}
+            </span>
+          </div>
+          <div className="text-sm text-muted-foreground">
+            Concurrencia <span className="font-medium text-foreground">{m.concurrencia}</span> · Refresco cada{' '}
+            <span className="font-medium text-foreground">{m.intervalo_horas} h</span>
+          </div>
+        </div>
+
+        {/* Sincronizando ahora */}
+        <div className="mt-4 border-t border-border/60 pt-4">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-2">
+            Sincronizando ahora ({m.en_vuelo.length})
+          </div>
+          {m.en_vuelo.length === 0 ? (
+            <div className="text-sm text-muted-foreground">El motor está en reposo en este momento.</div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {m.en_vuelo.map(c => (
+                <Badge key={c.cuit} variant="default" className="gap-1.5">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {c.cliente || c.cuit}
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Cobertura */}
+      <div>
+        <h2 className="text-sm font-semibold mb-3">Cobertura</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          <MetricaCard icon={Building2} label="Clientes totales" valor={m.total_clientes} />
+          <MetricaCard icon={CheckCircle2} label="Al día (<12h)" valor={m.frescos} />
+          <MetricaCard icon={Clock} label="Pendientes" valor={m.pendientes} />
+          <MetricaCard icon={RefreshCcw} label="Nunca sincronizados" valor={m.nunca} />
+          <MetricaCard icon={AlertTriangle} label="Con falla actual" valor={m.con_falla_actual} />
+        </div>
+      </div>
+
+      {/* Rendimiento */}
+      <div>
+        <h2 className="text-sm font-semibold mb-3">Rendimiento</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <MetricaCard icon={Zap} label="Syncs última hora" valor={m.syncs_1h} />
+          <MetricaCard icon={Activity} label="Syncs últimas 24h" valor={m.syncs_24h} />
+          <MetricaCard
+            icon={CheckCircle2}
+            label="Tasa de éxito 24h"
+            valor={exito == null ? '—' : `${exito}%`}
+            hint={`${m.exitosas_24h} ok · ${m.fallidas_24h} con falla`}
+          />
+          <MetricaCard icon={Clock} label="En cola" valor={m.proximos.length} hint="próximos a sincronizar" />
+        </div>
+      </div>
+
+      {/* Próximos + Actividad */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground" /> Próximos a sincronizar
+          </h2>
+          <ClientesTabla filas={m.proximos} modo="cola" />
+        </div>
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <Activity className="h-4 w-4 text-muted-foreground" /> Actividad reciente
+          </h2>
+          <ClientesTabla filas={m.actividad} modo="actividad" />
+        </div>
+      </div>
     </div>
   );
 }

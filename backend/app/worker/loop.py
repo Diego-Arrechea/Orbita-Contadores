@@ -15,6 +15,7 @@ Reglas clave:
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import queue
 import signal
@@ -25,7 +26,7 @@ from sqlalchemy import func, or_, select
 
 from ..config import settings
 from ..db import SessionLocal
-from ..models import ClienteARCA, Extraccion
+from ..models import ClienteARCA, Extraccion, WorkerHeartbeat
 from ..services.alertas import evaluar_y_notificar
 from ..services.scheduler import _sincronizar_con_reintento
 from ..services.sincronizacion import sincronizar_padron
@@ -147,6 +148,29 @@ def _quizas_pasar_alertas() -> None:
         db.close()
 
 
+def _latir() -> None:
+    """Pisa la fila de heartbeat (id=1) con el estado actual: cuándo, qué hay en vuelo y la config.
+    El panel admin lo lee para mostrar si el motor está vivo y qué sincroniza ahora."""
+    db = SessionLocal()
+    try:
+        with _lock:
+            en_vuelo = json.dumps(sorted(_en_vuelo_cuits))
+        ahora = dt.datetime.now(dt.timezone.utc)
+        hb = db.get(WorkerHeartbeat, 1)
+        if hb is None:
+            hb = WorkerHeartbeat(id=1)
+            db.add(hb)
+        hb.actualizado_en = ahora
+        hb.en_vuelo = en_vuelo
+        hb.concurrencia = settings.sync_worker_concurrencia
+        hb.intervalo_horas = settings.sync_intervalo_horas
+        db.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning("latido falló", exc_info=True)
+    finally:
+        db.close()
+
+
 _ultimo_janitor = 0.0
 
 
@@ -191,6 +215,7 @@ def main() -> None:
                 logger.info("despachados %d cliente(s) vencido(s)", encolados)
         except Exception:  # noqa: BLE001
             logger.warning("despachar falló", exc_info=True)
+        _latir()  # registra el latido (vivo + en vuelo) para el panel admin
         _quizas_pasar_alertas()
         _quizas_janitor()
         _stop.wait(settings.sync_poll_segundos)

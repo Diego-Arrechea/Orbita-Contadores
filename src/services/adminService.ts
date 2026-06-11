@@ -147,3 +147,40 @@ export interface AdminContadorFicha {
 export function obtenerFichaContador(id: number): Promise<AdminContadorFicha> {
   return apiGet<AdminContadorFicha>(`/admin/usuarios/${id}/ficha`);
 }
+
+// --- Motor de sincronización continua ---
+
+export interface MotorCliente {
+  cuit: string;
+  cliente?: string | null;
+  contador_email?: string | null;
+  ultima?: string | null;
+  horas_desde?: number | null;
+  resultado?: string | null; // exitosa | fallida
+  comprobantes?: number | null;
+  duracion_seg?: number | null;
+}
+
+export interface MotorEstado {
+  worker_vivo: boolean;
+  worker_actualizado?: string | null;
+  en_vuelo: MotorCliente[];
+  concurrencia: number;
+  intervalo_horas: number;
+  total_clientes: number;
+  frescos: number;
+  pendientes: number;
+  nunca: number;
+  con_falla_actual: number;
+  syncs_1h: number;
+  syncs_24h: number;
+  exitosas_24h: number;
+  fallidas_24h: number;
+  proximos: MotorCliente[];
+  actividad: MotorCliente[];
+}
+
+/** Estado del motor de sincronización continua (latido del worker + cobertura + actividad). */
+export function obtenerEstadoMotor(): Promise<MotorEstado> {
+  return apiGet<MotorEstado>('/admin/motor');
+}

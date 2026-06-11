@@ -11,6 +11,7 @@ from .config import settings
 from .db import Base, asegurar_columnas, engine
 from .routers import (
     admin,
+    admin_sync,
     auth,
     clientes,
     configuracion,
@@ -47,6 +48,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(admin_sync.router)
 app.include_router(clientes.router)
 app.include_router(configuracion.router)
 app.include_router(movimientos.router)
