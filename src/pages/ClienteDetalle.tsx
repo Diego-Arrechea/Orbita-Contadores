@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -35,10 +35,9 @@ import { calcularCliente } from '@/lib/monotributo';
 import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
 import { formatCuit, formatDate, cn } from '@/lib/utils';
 import { useSync } from '@/context/SyncContext';
-import { getClienteReal } from '@/services/clientesService';
+import { useClienteReal } from '@/lib/queries';
 import { EditarClienteDialog } from '@/components/cliente/EditarClienteDialog';
 import { EliminarClienteDialog } from '@/components/cliente/EliminarClienteDialog';
-import type { Cliente } from '@/types';
 
 const tabsListClass =
   'bg-transparent p-0 h-auto rounded-none gap-7 overflow-x-auto scrollbar-thin justify-start';
@@ -50,35 +49,14 @@ export function ClienteDetalle() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const clienteMock = id ? getCliente(id) : undefined;
-  const [clienteReal, setClienteReal] = useState<Cliente | null>(null);
-  const [buscandoReal, setBuscandoReal] = useState(!clienteMock);
+  // Cliente real cacheado (React Query); comparte cache con el reporte (misma key). El refetch (al
+  // editar) mantiene visibles los datos previos mientras recarga, sin parpadeo. `enabled` evita
+  // pedir cuando se usa el mock. El InvalidadorCache global lo re-trae al terminar su sincronización.
+  const { data: clienteReal = null, isLoading: buscandoReal, refetch: refetchCliente } =
+    useClienteReal(id, !clienteMock);
   const [editarOpen, setEditarOpen] = useState(false);
   const [eliminarOpen, setEliminarOpen] = useState(false);
   const { config } = useConfig();
-
-  // Carga (o recarga) el cliente real COMPLETO: trae sus comprobantes y recalcula todo lo derivado
-  // (situación, histórico, causales). Una sola fuente de verdad, reusada en montaje y al sincronizar.
-  const cargarClienteReal = useCallback(
-    async (silencioso = false) => {
-      if (clienteMock || !id) return;
-      if (!silencioso) setBuscandoReal(true);
-      try {
-        // No vaciamos clienteReal antes: así la ficha no parpadea mientras recarga.
-        setClienteReal(await getClienteReal(id));
-      } finally {
-        if (!silencioso) setBuscandoReal(false);
-      }
-    },
-    [clienteMock, id],
-  );
-
-  useEffect(() => {
-    if (clienteMock || !id) {
-      setBuscandoReal(false);
-      return;
-    }
-    void cargarClienteReal();
-  }, [clienteMock, id, cargarClienteReal]);
 
   // El backend ya aplica las ediciones del contador sobre el dato de ARCA; el front sólo elige mock o
   // real. Al guardar una edición se re-trae el cliente con cargarClienteReal (ver onGuardado).
@@ -101,13 +79,6 @@ export function ClienteDetalle() {
     if (!esReal || !cuit) return;
     sincronizar(cuit, cliente?.nombre ?? cuit);
   }, [esReal, cuit, cliente?.nombre, sincronizar]);
-
-  // Al terminar la sincronización de ESTE cliente, recargamos su ficha (comprobantes + derivados).
-  const sincRef = useRef(sincronizando);
-  useEffect(() => {
-    if (sincRef.current && !sincronizando) void cargarClienteReal(true);
-    sincRef.current = sincronizando;
-  }, [sincronizando, cargarClienteReal]);
 
   if (!cliente) {
     return (
@@ -242,7 +213,7 @@ export function ClienteDetalle() {
                 {/* Diálogos controlados desde el menú (sin trigger propio) */}
                 <EditarClienteDialog
                   cliente={cliente}
-                  onGuardado={() => void cargarClienteReal(true)}
+                  onGuardado={() => void refetchCliente()}
                   open={editarOpen}
                   onOpenChange={setEditarOpen}
                 />

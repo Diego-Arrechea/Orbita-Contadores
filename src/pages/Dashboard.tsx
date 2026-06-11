@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   AlertCircle,
@@ -38,12 +38,10 @@ import { useConfig } from '@/context/ConfigContext';
 import { calcularCliente } from '@/lib/monotributo';
 import { esMonotributista, etiquetaRegimenCorta } from '@/lib/regimen';
 import { derivarAlertas, estadoDesdeAlertas } from '@/lib/alertas';
-import { getClientesReales } from '@/services/clientesService';
+import { useClientesReales } from '@/lib/queries';
 import { cuentaActual } from '@/lib/cuenta';
-import { useCargas } from '@/context/CargasContext';
-import { useSync } from '@/context/SyncContext';
 import { formatCuit, formatPercent, formatDate } from '@/lib/utils';
-import type { EstadoAlerta, TipoActividad, Cliente } from '@/types';
+import type { EstadoAlerta, TipoActividad } from '@/types';
 
 const orden: Record<EstadoAlerta, number> = { rojo: 0, gris: 1, amarillo: 2, verde: 3 };
 
@@ -51,22 +49,10 @@ export function Dashboard() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroAlerta, setFiltroAlerta] = useState<EstadoAlerta | 'todos'>('todos');
   const [filtroActividad, setFiltroActividad] = useState<TipoActividad | 'todos'>('todos');
-  const [reales, setReales] = useState<Cliente[]>([]);
-  const [recargando, setRecargando] = useState(false);
-  const [reload, setReload] = useState(0); // se incrementa para forzar un refresco manual
   const cuenta = cuentaActual();
-  const { version } = useCargas();
-  const { version: syncVersion } = useSync();
-
-  useEffect(() => {
-    setRecargando(true);
-    getClientesReales()
-      .then(setReales) // el backend ya devuelve sólo los clientes de este contador
-      .catch(() => {}) // si el backend no está, se muestran sólo los mock
-      .finally(() => setRecargando(false));
-    // `version`/`syncVersion` cambian al terminar una carga/sincronización en segundo plano, y
-    // `reload` al apretar el botón de refrescar → re-trae la cartera sin recargar la página.
-  }, [version, syncVersion, reload]);
+  // Cartera cacheada (React Query). El InvalidadorCache global la re-trae al terminar una carga o
+  // sincronización en segundo plano; el botón de refrescar usa refetch(). Sin backend → [] + mock.
+  const { data: reales = [], isFetching: recargando, refetch } = useClientesReales();
 
   // La cartera de ejemplo (mock) sólo se ve en cuentas "de ejemplo"; una cuenta nueva arranca vacía.
   const mock = cuenta?.datosEjemplo ? CLIENTES : [];
@@ -203,7 +189,7 @@ export function Dashboard() {
               variant="outline"
               size="icon"
               className="shrink-0 bg-card"
-              onClick={() => setReload(r => r + 1)}
+              onClick={() => void refetch()}
               disabled={recargando}
               title="Refrescar la lista de clientes"
               aria-label="Refrescar la lista de clientes"

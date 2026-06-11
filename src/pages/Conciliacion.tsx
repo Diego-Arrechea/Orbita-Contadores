@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Loader2,
@@ -50,7 +50,7 @@ import {
   type DesgloseCategoria,
   type CategoriaPdf,
 } from '@/lib/parsearPdf';
-import { getClientesReales } from '@/services/clientesService';
+import { useClientesReales } from '@/lib/queries';
 import {
   procesarExtractos,
   type AsignacionExtracto,
@@ -99,20 +99,13 @@ function filasDePdf(movs: MovimientoPdf[], extra: CategoriaPdf[]): MovimientoNor
  * la revisión y clasificación transacción-por-transacción se hace allá, NO acá.
  */
 export function Conciliacion() {
-  const [cartera, setCartera] = useState<Cliente[]>([]);
-  const [cargandoCartera, setCargandoCartera] = useState(true);
+  // Cartera cacheada (compartida con Dashboard). Sin backend → [] (la página igual funciona).
+  const { data: cartera = [], isLoading: cargandoCartera } = useClientesReales();
   const [extractos, setExtractos] = useState<ExtractoCargado[]>([]);
   const [procesando, setProcesando] = useState(false);
   const [resultados, setResultados] = useState<ResultadoExtracto[] | null>(null);
   const [errorGeneral, setErrorGeneral] = useState<string | null>(null);
   const nextId = useRef(0);
-
-  useEffect(() => {
-    getClientesReales()
-      .then(setCartera)
-      .catch(() => {}) // sin backend: la página queda lista pero sin cartera
-      .finally(() => setCargandoCartera(false));
-  }, []);
 
   // Parsea cada archivo soltado, lo normaliza e intenta identificar a su cliente automáticamente.
   const onFiles = useCallback(
