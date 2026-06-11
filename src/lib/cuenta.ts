@@ -50,6 +50,16 @@ export function iniciarSesion(auth: AuthResp): Cuenta {
   return usuarioToCuenta(auth.usuario);
 }
 
+/** Actualiza el usuario guardado (sin tocar el token). Lo usa el refresh de sesión al cargar la app
+ * (getMe) para traer datos frescos —p.ej. los días de prueba restantes— sin obligar a re-loguear. */
+export function actualizarUsuarioGuardado(u: Usuario): void {
+  try {
+    localStorage.setItem(LS_USUARIO, JSON.stringify(u));
+  } catch {
+    /* ignore */
+  }
+}
+
 /** El usuario logueado completo (todos sus datos), o null si no hay sesión. */
 export function usuarioActual(): Usuario | null {
   try {

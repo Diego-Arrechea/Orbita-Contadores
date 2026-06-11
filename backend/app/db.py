@@ -55,6 +55,7 @@ def _migrar_usuarios(conn) -> None:
         "rol": "VARCHAR(20) DEFAULT 'contador'",
         "activo": "BOOLEAN DEFAULT TRUE" if not es_sqlite else "BOOLEAN DEFAULT 1",
         "ultimo_acceso": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
+        "trial_fin": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
     }
     for nombre, tipo in nuevas.items():
         if nombre not in cols:
@@ -66,6 +67,13 @@ def _migrar_usuarios(conn) -> None:
         text("UPDATE usuarios SET activo = TRUE WHERE activo IS NULL")
         if not es_sqlite
         else text("UPDATE usuarios SET activo = 1 WHERE activo IS NULL")
+    )
+    # Período de prueba: las cuentas previas a la feature (sin fin de trial) arrancan 30 días desde
+    # HOY. Las nuevas lo setean en el registro. Idempotente (sólo toca las NULL).
+    conn.execute(
+        text("UPDATE usuarios SET trial_fin = NOW() + INTERVAL '30 days' WHERE trial_fin IS NULL")
+        if not es_sqlite
+        else text("UPDATE usuarios SET trial_fin = datetime('now', '+30 days') WHERE trial_fin IS NULL")
     )
     for email in ADMINS_SEMILLA:
         conn.execute(

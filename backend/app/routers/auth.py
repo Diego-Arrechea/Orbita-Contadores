@@ -10,11 +10,14 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..db import get_db
-from ..schemas import AuthOut, LoginIn, RegistroIn, UsuarioOut
+from ..schemas import AuthOut, LoginIn, RegistroIn, UsuarioOut, dias_restantes_trial
 from ..security import crear_token, hashear_password, usuario_actual, verificar_password
 from ..services import crisp
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# Duración del período de prueba gratis para cada cuenta nueva.
+TRIAL_DIAS = 30
 
 
 def _usuario_out(u: models.Usuario) -> UsuarioOut:
@@ -29,6 +32,8 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         estudio=u.estudio,
         matricula=u.matricula,
         rol=u.rol,
+        trial_fin=u.trial_fin.isoformat() if u.trial_fin else None,
+        trial_dias_restantes=dias_restantes_trial(u.trial_fin),
     )
 
 
@@ -59,6 +64,8 @@ def registrar(datos: RegistroIn, db: Session = Depends(get_db)):
         # El registro ya deja al contador logueado (devuelve token): contamos eso como su primer
         # acceso, si no la cuenta figura como "nunca entró" hasta que pase por la pantalla de login.
         ultimo_acceso=dt.datetime.now(dt.timezone.utc),
+        # Período de prueba gratis de 30 días desde el alta.
+        trial_fin=dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=TRIAL_DIAS),
     )
     db.add(usuario)
     try:
