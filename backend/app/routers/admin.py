@@ -14,6 +14,7 @@ from .. import models
 from ..db import get_db
 from ..schemas import (
     AdminAuditoriaOut,
+    AdminClienteOut,
     AdminMetricasOut,
     AdminSyncFallidaOut,
     AdminUsuarioOut,
@@ -24,7 +25,7 @@ from ..schemas import (
 )
 from ..scraping import jobs
 from ..security import admin_actual, crear_token
-from .clientes import _correr_sync
+from .clientes import _correr_sync, construir_cliente_out
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(admin_actual)])
 
@@ -212,6 +213,40 @@ def sincronizaciones_fallidas(db: Session = Depends(get_db), limite: int = 50):
                 # Resuelto si hay una sync exitosa POSTERIOR a esta falla puntual.
                 resuelto=ok_fecha is not None and ok_fecha > e.fecha,
                 ultima_sync_ok=_iso(ok_fecha),
+            )
+        )
+    return out
+
+
+@router.get("/clientes", response_model=list[AdminClienteOut])
+def todos_los_clientes(db: Session = Depends(get_db)):
+    """TODOS los clientes de TODAS las cuentas (vista global read-only del superadmin). Cada uno trae
+    el MISMO dato que ve su contador (régimen, categoría, facturación, última sync) + de quién es y
+    cuántos comprobantes tiene cacheados. Es sólo lectura: no modifica nada (leer no dispara ningún
+    scraping, los datos ya están en la base)."""
+    # Conteo de comprobantes por cuit en UNA sola query (evita N counts).
+    conteos = dict(
+        db.execute(
+            select(models.ComprobanteEmitido.cuit, func.count()).group_by(
+                models.ComprobanteEmitido.cuit
+            )
+        ).all()
+    )
+    filas = db.execute(
+        select(models.ClienteARCA, models.Usuario)
+        .outerjoin(models.Usuario, models.Usuario.id == models.ClienteARCA.usuario_id)
+        .order_by(models.Usuario.email, models.ClienteARCA.nombre)
+    ).all()
+    out: list[AdminClienteOut] = []
+    for c, u in filas:
+        base = construir_cliente_out(db, c)
+        out.append(
+            AdminClienteOut(
+                **base.model_dump(),
+                contador_id=u.id if u else None,
+                contador_email=u.email if u else None,
+                contador_nombre=(f"{u.nombre} {u.apellido}".strip() if u else None),
+                cantidad_comprobantes=conteos.get(c.cuit, 0),
             )
         )
     return out

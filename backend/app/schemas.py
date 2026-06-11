@@ -422,6 +422,17 @@ class AdminSyncFallidaOut(BaseModel):
     ultima_sync_ok: str | None = None  # ISO de la última sync exitosa del cliente (contexto)
 
 
+class AdminClienteOut(ClienteOut):
+    """Cliente visto desde el panel superadmin (vista global read-only): el ClienteOut completo —el
+    MISMO dato que ve su contador— más de qué contador es y cuántos comprobantes tiene cacheados.
+    Sólo para oversight; no se edita desde acá."""
+
+    contador_id: int | None = None
+    contador_email: str | None = None
+    contador_nombre: str | None = None
+    cantidad_comprobantes: int = 0
+
+
 class JobIdOut(BaseModel):
     """Devuelve el id de un job en background (p.ej. un reintento de sincronización)."""
 

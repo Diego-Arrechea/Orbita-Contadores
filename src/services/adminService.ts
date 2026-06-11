@@ -60,6 +60,33 @@ export interface JobEstado {
   error?: string | null;
 }
 
+export interface AdminClienteHistorialMes {
+  mes: string;
+  emitidasNetas: number;
+  recibidas: number;
+}
+
+/** Un cliente en la vista global del panel (read-only): mismo dato que ve su contador + de quién es. */
+export interface AdminCliente {
+  cuit: string;
+  nombre: string;
+  regimen?: string | null;
+  categoria?: string | null;
+  cuota_estado?: string | null;
+  prox_venc_fecha?: string | null;
+  facturacion_12m?: number | null;
+  tope_categoria?: number | null;
+  ultima_extraccion?: string | null;
+  resultado_ultima_extraccion?: string | null; // exitosa | fallida | null
+  motivo_ultima_extraccion?: string | null;
+  tiene_comprobantes: boolean;
+  historial_mensual: AdminClienteHistorialMes[];
+  contador_id?: number | null;
+  contador_email?: string | null;
+  contador_nombre?: string | null;
+  cantidad_comprobantes: number;
+}
+
 export function listarUsuarios(): Promise<AdminUsuario[]> {
   return apiGet<AdminUsuario[]>('/admin/usuarios');
 }
@@ -95,4 +122,9 @@ export function reintentarSync(cuit: string): Promise<{ job_id: string }> {
 /** Estado de un job de sincronización en background (mismo endpoint que usa el contador). */
 export function estadoSync(jobId: string): Promise<JobEstado> {
   return apiGet<JobEstado>(`/sincronizaciones/${jobId}`);
+}
+
+/** TODOS los clientes de TODAS las cuentas (vista global read-only del superadmin). */
+export function listarTodosLosClientes(): Promise<AdminCliente[]> {
+  return apiGet<AdminCliente[]>('/admin/clientes');
 }

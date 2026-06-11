@@ -39,10 +39,12 @@ import {
   listarSincronizacionesFallidas,
   reintentarSync,
   estadoSync,
+  listarTodosLosClientes,
   type AdminUsuario,
   type AdminMetricas,
   type AdminAuditoria,
   type AdminSyncFallida,
+  type AdminCliente,
 } from '@/services/adminService';
 import { mensajeDeError } from '@/services/authService';
 import { iniciarImpersonacion, usuarioActual } from '@/lib/cuenta';
@@ -88,6 +90,9 @@ export function Admin() {
           <TabsTrigger value="cuentas">
             <Users className="h-4 w-4" /> Cuentas
           </TabsTrigger>
+          <TabsTrigger value="clientes">
+            <Building2 className="h-4 w-4" /> Clientes
+          </TabsTrigger>
           <TabsTrigger value="metricas">
             <Activity className="h-4 w-4" /> Métricas
           </TabsTrigger>
@@ -98,6 +103,9 @@ export function Admin() {
 
         <TabsContent value="cuentas">
           <TabCuentas miId={yo?.id} onImpersonar={() => navigate('/')} />
+        </TabsContent>
+        <TabsContent value="clientes">
+          <TabClientes />
         </TabsContent>
         <TabsContent value="metricas">
           <TabMetricas />
@@ -501,6 +509,177 @@ function SyncsFallidas({
           </Table>
         </Card>
       )}
+    </div>
+  );
+}
+
+// --- Tab: Clientes (vista global read-only de todos los clientes de todas las cuentas) ---
+
+function pesos(n?: number | null): string {
+  if (n == null) return '—';
+  return n.toLocaleString('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: 0,
+  });
+}
+
+function regimenCorto(r?: string | null): string {
+  if (r === 'monotributo') return 'Monotributo';
+  if (r === 'responsable_inscripto') return 'Resp. Inscripto';
+  if (r === 'no_monotributo') return 'No monotributo';
+  return '—';
+}
+
+/** Facturado de los últimos 12m calculado de los comprobantes (emitidas netas), igual que el dashboard. */
+function facturado12m(c: AdminCliente): number {
+  return (c.historial_mensual || []).reduce((s, m) => s + (m.emitidasNetas || 0), 0);
+}
+
+function TabClientes() {
+  const [clientes, setClientes] = useState<AdminCliente[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState('');
+  const [busqueda, setBusqueda] = useState('');
+
+  async function cargar() {
+    setCargando(true);
+    setError('');
+    try {
+      setClientes(await listarTodosLosClientes());
+    } catch (e) {
+      setError(mensajeDeError(e));
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  useEffect(() => {
+    void cargar();
+  }, []);
+
+  const filtrados = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return clientes;
+    return clientes.filter(c =>
+      [c.nombre, c.cuit, c.contador_email, c.contador_nombre, c.categoria].some(x =>
+        (x ?? '').toLowerCase().includes(q)
+      )
+    );
+  }, [clientes, busqueda]);
+
+  const totalFacturado = useMemo(
+    () => filtrados.reduce((s, c) => s + facturado12m(c), 0),
+    [filtrados]
+  );
+
+  if (cargando) {
+    return (
+      <div className="flex items-center justify-center py-16 text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando clientes…
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            placeholder="Buscar por cliente, CUIT, contador o categoría…"
+            className="pl-9"
+          />
+        </div>
+        <Button variant="outline" size="sm" onClick={() => void cargar()}>
+          <RefreshCcw className="h-4 w-4" /> Actualizar
+        </Button>
+      </div>
+
+      <div className="text-xs text-muted-foreground">
+        {filtrados.length} cliente(s) · facturado 12m sumado: {pesos(totalFacturado)} · sólo lectura
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg bg-danger/10 text-danger px-3 py-2 text-sm">
+          <AlertCircle className="h-4 w-4" /> {error}
+        </div>
+      )}
+
+      <Card className="overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Cliente</TableHead>
+              <TableHead>Contador</TableHead>
+              <TableHead className="text-center">Régimen / Cat.</TableHead>
+              <TableHead className="text-right">Facturado 12m</TableHead>
+              <TableHead className="text-center">Comprob.</TableHead>
+              <TableHead className="text-center">Cuota</TableHead>
+              <TableHead>Última sincronización</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtrados.map(c => (
+              <TableRow key={c.cuit}>
+                <TableCell>
+                  <div className="font-medium">{c.nombre}</div>
+                  <div className="text-xs text-muted-foreground tabular-nums">{c.cuit}</div>
+                </TableCell>
+                <TableCell className="text-sm">{c.contador_email || '—'}</TableCell>
+                <TableCell className="text-center text-sm">
+                  {regimenCorto(c.regimen)}
+                  {c.categoria ? <span className="text-muted-foreground"> · {c.categoria}</span> : ''}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{pesos(facturado12m(c))}</TableCell>
+                <TableCell className="text-center tabular-nums">{c.cantidad_comprobantes}</TableCell>
+                <TableCell className="text-center">
+                  {c.cuota_estado === 'al-dia' ? (
+                    <Badge variant="success">al día</Badge>
+                  ) : c.cuota_estado === 'con-deuda' ? (
+                    <Badge variant="warning">con deuda</Badge>
+                  ) : (
+                    <span className="text-muted-foreground text-xs">—</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-sm">
+                  <div className="flex items-center gap-2">
+                    {c.resultado_ultima_extraccion === 'exitosa' ? (
+                      <Badge variant="success">
+                        <CheckCircle2 className="h-3 w-3" /> OK
+                      </Badge>
+                    ) : c.resultado_ultima_extraccion === 'fallida' ? (
+                      <Badge variant="danger">falló</Badge>
+                    ) : (
+                      <Badge variant="muted">sin datos</Badge>
+                    )}
+                    <span className="text-muted-foreground whitespace-nowrap">
+                      {fechaCorta(c.ultima_extraccion)}
+                    </span>
+                  </div>
+                  {c.resultado_ultima_extraccion === 'fallida' && c.motivo_ultima_extraccion && (
+                    <div
+                      className="text-xs text-danger truncate max-w-xs"
+                      title={c.motivo_ultima_extraccion}
+                    >
+                      {c.motivo_ultima_extraccion.split('\n')[0]}
+                    </div>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+            {filtrados.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                  No hay clientes que coincidan con la búsqueda.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </Card>
     </div>
   );
 }

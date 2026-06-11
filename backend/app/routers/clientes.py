@@ -105,6 +105,51 @@ def _cliente_propio(db: Session, cuit: str, usuario: models.Usuario) -> models.C
     return cliente
 
 
+def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
+    """Arma el ClienteOut de un cliente: combina el dato crudo de ARCA con el override manual del
+    contador (edicion_json), el régimen resuelto, el historial 12m y la última extracción. Lo usan
+    tanto la lista del contador (listar_clientes) como la vista global del panel superadmin."""
+    ult = sincronizacion.ultima_extraccion(db, c.cuit)
+    tipos_emit = set(
+        db.scalars(
+            select(distinct(models.ComprobanteEmitido.cbte_tipo)).where(
+                models.ComprobanteEmitido.cuit == c.cuit,
+                models.ComprobanteEmitido.direccion == "emitido",
+            )
+        ).all()
+    )
+    # Ediciones manuales del contador (override): ganan sobre el dato crudo de ARCA. Viven en
+    # edicion_json (separado), así sobreviven a la sincronización que pisa las columnas crudas.
+    edic = json.loads(c.edicion_json) if c.edicion_json else {}
+    historial, tiene_comps = _historial_12m(db, c.cuit)
+    return ClienteOut(
+        cuit=c.cuit,
+        nombre=edic.get("nombre") or c.nombre,
+        # Régimen autoritativo del padrón (c.regimen) combinado con el inferido de los
+        # comprobantes; nunca asume monotributo sin evidencia (ver resolver_regimen).
+        regimen=resolver_regimen(c.regimen, clasificar_regimen(tipos_emit)),
+        categoria=edic.get("categoria") or c.categoria,
+        actividad=edic.get("tipoActividad") or c.actividad,
+        prox_recategorizacion=c.prox_recategorizacion,
+        cuota_estado=edic.get("estadoCuotaMesActual") or c.cuota_estado,
+        cuota_deuda=float(c.cuota_deuda) if c.cuota_deuda is not None else None,
+        cuota_saldo_favor=float(c.cuota_saldo_favor) if c.cuota_saldo_favor is not None else None,
+        prox_venc_fecha=c.prox_venc_fecha,
+        prox_venc_importe=float(c.prox_venc_importe) if c.prox_venc_importe is not None else None,
+        debito_automatico=c.debito_automatico,
+        facturacion_12m=float(c.facturacion_12m) if c.facturacion_12m is not None else None,
+        tope_categoria=float(c.tope_categoria) if c.tope_categoria is not None else None,
+        facturometro_actualizado=c.facturometro_actualizado,
+        ultima_extraccion=_iso_utc(ult.fecha) if ult else None,
+        resultado_ultima_extraccion=ult.resultado if ult else None,
+        motivo_ultima_extraccion=ult.motivo if ult else None,
+        notas=edic.get("notas"),
+        fecha_inicio=edic.get("fechaInicio"),
+        historial_mensual=historial,
+        tiene_comprobantes=tiene_comps,
+    )
+
+
 @router.get("/clientes", response_model=list[ClienteOut])
 def listar_clientes(
     db: Session = Depends(get_db), usuario: models.Usuario = Depends(usuario_actual)
@@ -112,54 +157,7 @@ def listar_clientes(
     clientes = db.scalars(
         select(models.ClienteARCA).where(models.ClienteARCA.usuario_id == usuario.id)
     ).all()
-    out: list[ClienteOut] = []
-    for c in clientes:
-        ult = sincronizacion.ultima_extraccion(db, c.cuit)
-        tipos_emit = set(
-            db.scalars(
-                select(distinct(models.ComprobanteEmitido.cbte_tipo)).where(
-                    models.ComprobanteEmitido.cuit == c.cuit,
-                    models.ComprobanteEmitido.direccion == "emitido",
-                )
-            ).all()
-        )
-        # Ediciones manuales del contador (override): ganan sobre el dato crudo de ARCA. Viven en
-        # edicion_json (separado), así sobreviven a la sincronización que pisa las columnas crudas.
-        edic = json.loads(c.edicion_json) if c.edicion_json else {}
-        historial, tiene_comps = _historial_12m(db, c.cuit)
-        out.append(
-            ClienteOut(
-                cuit=c.cuit,
-                nombre=edic.get("nombre") or c.nombre,
-                # Régimen autoritativo del padrón (c.regimen) combinado con el inferido de los
-                # comprobantes; nunca asume monotributo sin evidencia (ver resolver_regimen).
-                regimen=resolver_regimen(c.regimen, clasificar_regimen(tipos_emit)),
-                categoria=edic.get("categoria") or c.categoria,
-                actividad=edic.get("tipoActividad") or c.actividad,
-                prox_recategorizacion=c.prox_recategorizacion,
-                cuota_estado=edic.get("estadoCuotaMesActual") or c.cuota_estado,
-                cuota_deuda=float(c.cuota_deuda) if c.cuota_deuda is not None else None,
-                cuota_saldo_favor=float(c.cuota_saldo_favor)
-                if c.cuota_saldo_favor is not None
-                else None,
-                prox_venc_fecha=c.prox_venc_fecha,
-                prox_venc_importe=float(c.prox_venc_importe)
-                if c.prox_venc_importe is not None
-                else None,
-                debito_automatico=c.debito_automatico,
-                facturacion_12m=float(c.facturacion_12m) if c.facturacion_12m is not None else None,
-                tope_categoria=float(c.tope_categoria) if c.tope_categoria is not None else None,
-                facturometro_actualizado=c.facturometro_actualizado,
-                ultima_extraccion=_iso_utc(ult.fecha) if ult else None,
-                resultado_ultima_extraccion=ult.resultado if ult else None,
-                motivo_ultima_extraccion=ult.motivo if ult else None,
-                notas=edic.get("notas"),
-                fecha_inicio=edic.get("fechaInicio"),
-                historial_mensual=historial,
-                tiene_comprobantes=tiene_comps,
-            )
-        )
-    return out
+    return [construir_cliente_out(db, c) for c in clientes]
 
 
 @router.put("/clientes/{cuit}/edicion")
