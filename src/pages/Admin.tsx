@@ -413,7 +413,7 @@ function ClientesTabla({
             {modo === 'actividad' ? (
               <>
                 <TableHead className="text-center">Resultado</TableHead>
-                <TableHead className="text-right">Comprob.</TableHead>
+                <TableHead className="text-right">Nuevos</TableHead>
                 <TableHead className="text-right">Cuándo</TableHead>
               </>
             ) : (

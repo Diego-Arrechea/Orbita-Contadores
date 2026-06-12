@@ -160,8 +160,10 @@ def ultima_extraccion(db: Session, cuit: str) -> "models.Extraccion | None":
 
 def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progress=None) -> int:
     """Trae emitidos + recibidos del CUIT desde Mis Comprobantes (incremental) y hace upsert.
-    Devuelve cuántos comprobantes NUEVOS se trajeron en esta corrida (inserts; la bitácora de
-    extracciones registra aparte el total procesado)."""
+    Devuelve cuántos comprobantes NUEVOS se trajeron en esta corrida (inserts), que es también lo
+    que registra la bitácora de extracciones en `comprobantes`. OJO: la ventana incremental re-barre
+    meses ya conocidos, pero esos no son novedad — sólo contamos/reportamos los que NO existían, que
+    es lo que el panel debe mostrar ('cuántos trajo', no 'cuántos revisó')."""
     cliente = db.get(models.ClienteARCA, cuit)
     if cliente is None:
         raise ValueError(f"Cliente {cuit} no registrado")
@@ -181,18 +183,16 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
         )
         if nombre:  # nombre real del contribuyente desde el navbar de Mis Comprobantes
             cliente.nombre = nombre
-        procesados = 0
         nuevos = 0
         for direccion, crudos in datos.items():
-            p, nv = _upsert(db, cuit, direccion, crudos)
-            procesados += p
+            _, nv = _upsert(db, cuit, direccion, crudos)
             nuevos += nv
         db.commit()
     except Exception as e:  # noqa: BLE001 — registra la extracción fallida y re-lanza
         db.rollback()
         _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
         raise
-    _registrar_extraccion(db, cuit, "exitosa", procesados, _ms(inicio))
+    _registrar_extraccion(db, cuit, "exitosa", nuevos, _ms(inicio))
     return nuevos
 
 

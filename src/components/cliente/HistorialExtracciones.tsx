@@ -30,7 +30,7 @@ export function HistorialExtracciones({ cliente }: Props) {
           <TableRow>
             <TableHead>Fecha y hora</TableHead>
             <TableHead>Resultado</TableHead>
-            <TableHead>Comprobantes</TableHead>
+            <TableHead>Nuevos</TableHead>
             <TableHead>Duración</TableHead>
             <TableHead>Detalles</TableHead>
           </TableRow>
@@ -62,12 +62,12 @@ export function HistorialExtracciones({ cliente }: Props) {
                 {e.resultado === 'exitosa' && typeof e.comprobantes === 'number' ? (
                   <span className="text-sm tabular-nums">
                     {e.comprobantes === 0 ? (
-                      <span className="text-muted-foreground">Sin comprobantes</span>
+                      <span className="text-muted-foreground">Sin novedades</span>
                     ) : (
                       <>
                         {e.comprobantes}{' '}
                         <span className="text-muted-foreground">
-                          comprobante{e.comprobantes === 1 ? '' : 's'}
+                          nuevo{e.comprobantes === 1 ? '' : 's'}
                         </span>
                       </>
                     )}
