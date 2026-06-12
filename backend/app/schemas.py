@@ -246,6 +246,24 @@ class RegistroIn(BaseModel):
     password: str = Field(min_length=8, max_length=72)  # bcrypt opera sobre <= 72 bytes
     acepto_terminos: bool
 
+    @field_validator("telefono")
+    @classmethod
+    def _val_telefono(cls, v: str) -> str:
+        # Saca todo lo que no sea dígito y los prefijos (país 54, el 9 de celular, el 0 de larga
+        # distancia y el 15) para quedarse con el celular canónico: código de área + número = 10
+        # dígitos. El front ya manda "+549" + 10 dígitos; esto lo vuelve idempotente y blinda
+        # contra hits directos a la API con cualquier formato.
+        d = _solo_digitos(v)
+        for prefijo in ("54", "9", "0", "15"):
+            if d.startswith(prefijo):
+                d = d[len(prefijo):]
+        if len(d) != 10:
+            raise ValueError(
+                "Teléfono inválido: el celular tiene que tener 10 dígitos "
+                "(código de área + número, sin el 0 ni el 15)."
+            )
+        return "+549" + d
+
     @field_validator("dni")
     @classmethod
     def _val_dni(cls, v: str) -> str:
