@@ -76,7 +76,12 @@ export function Sidebar() {
       </button>
 
       {/* Logo */}
-      <div className={cn('mb-9 flex items-center gap-3', colapsada ? 'justify-center px-0' : 'px-3')}>
+      <div
+        className={cn(
+          'flex items-center gap-3',
+          colapsada ? 'mb-6 justify-center px-0' : 'mb-9 px-3'
+        )}
+      >
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
           <Orbit className="h-5 w-5" />
         </div>
@@ -96,7 +101,7 @@ export function Sidebar() {
         </div>
       )}
 
-      <nav className="flex-1 space-y-1">
+      <nav className={cn('flex-1', colapsada ? 'flex flex-col items-center gap-2' : 'space-y-1')}>
         {items.map(item => {
           const link = (
             <NavLink
@@ -104,15 +109,15 @@ export function Sidebar() {
               end={item.end}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-colors',
-                  colapsada ? 'justify-center px-0' : 'px-3.5',
+                  'flex items-center rounded-xl font-medium transition-colors',
+                  colapsada ? 'h-11 w-11 justify-center' : 'gap-3 px-3.5 py-2.5 text-sm',
                   isActive
                     ? 'bg-primary text-primary-foreground shadow-sm'
                     : 'text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-white'
                 )
               }
             >
-              <item.icon className="h-4 w-4 shrink-0" />
+              <item.icon className={cn('shrink-0', colapsada ? 'h-5 w-5' : 'h-4 w-4')} />
               {!colapsada && item.label}
             </NavLink>
           );
