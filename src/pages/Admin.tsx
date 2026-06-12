@@ -271,11 +271,10 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
           <TableHeader>
             <TableRow>
               <TableHead>Contador</TableHead>
-              <TableHead>Estudio</TableHead>
+              <TableHead className="text-center">Prueba</TableHead>
               <TableHead className="text-center">Clientes</TableHead>
               <TableHead>Alta</TableHead>
               <TableHead>Último acceso</TableHead>
-              <TableHead className="text-center">Prueba</TableHead>
               <TableHead className="text-center">Estado</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
@@ -302,13 +301,12 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                     <div className="text-xs text-muted-foreground">{u.email}</div>
                   </button>
                 </TableCell>
-                <TableCell className="text-sm">{u.estudio || '—'}</TableCell>
-                <TableCell className="text-center tabular-nums">{u.clientes}</TableCell>
-                <TableCell className="text-sm">{fechaCorta(u.creado_en)}</TableCell>
-                <TableCell className="text-sm">{fechaHora(u.ultimo_acceso)}</TableCell>
                 <TableCell className="text-center">
                   <TrialBadge trialFin={u.trial_fin} rol={u.rol} />
                 </TableCell>
+                <TableCell className="text-center tabular-nums">{u.clientes}</TableCell>
+                <TableCell className="text-sm">{fechaCorta(u.creado_en)}</TableCell>
+                <TableCell className="text-sm">{fechaHora(u.ultimo_acceso)}</TableCell>
                 <TableCell className="text-center">
                   {u.activo ? (
                     <Badge variant="success">Activa</Badge>
@@ -347,7 +345,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
             ))}
             {filtrados.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
+                <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
                   No hay cuentas que coincidan con la búsqueda.
                 </TableCell>
               </TableRow>
