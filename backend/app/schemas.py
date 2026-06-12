@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import math
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -277,13 +276,15 @@ class LoginIn(BaseModel):
 
 
 def dias_restantes_trial(trial_fin: "dt.datetime | None") -> int | None:
-    """Días que faltan para que termine el período de prueba (redondeo hacia arriba; 0 si ya venció).
-    None si la cuenta no tiene trial definido."""
+    """Días que faltan para que termine la prueba, contados por CALENDARIO (fecha contra fecha), no
+    por timestamp: así la hora del día no infla el número (un trial de 30 días muestra 30 el día que
+    arranca y 29 al siguiente). 0 si ya venció; None si la cuenta no tiene trial. El front recalcula
+    desde trial_fin (con la fecha LOCAL del contador); esto es sólo el snapshot."""
     if trial_fin is None:
         return None
     ahora = dt.datetime.now(dt.timezone.utc)
     fin = trial_fin if trial_fin.tzinfo else trial_fin.replace(tzinfo=dt.timezone.utc)
-    return max(0, math.ceil((fin - ahora).total_seconds() / 86400))
+    return max(0, (fin.date() - ahora.date()).days)
 
 
 class UsuarioOut(BaseModel):

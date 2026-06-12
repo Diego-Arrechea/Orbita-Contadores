@@ -1,5 +1,6 @@
 import { Clock } from 'lucide-react';
 import { usuarioActual } from '@/lib/cuenta';
+import { diasDeTrial } from '@/lib/trial';
 
 /**
  * Badge del período de prueba GRATIS en el header. Calcula los días restantes desde `trial_fin`
@@ -10,10 +11,8 @@ export function TrialIndicator() {
   const u = usuarioActual();
   if (!u || u.rol === 'admin' || !u.trial_fin) return null;
 
-  const fin = new Date(u.trial_fin).getTime();
-  if (Number.isNaN(fin)) return null;
-
-  const dias = Math.max(0, Math.ceil((fin - Date.now()) / 86400000));
+  const dias = diasDeTrial(u.trial_fin);
+  if (dias === null) return null;
   const vencido = dias <= 0;
   const porVencer = !vencido && dias <= 5;
   const finFecha = new Date(u.trial_fin).toLocaleDateString('es-AR', {
