@@ -383,6 +383,8 @@ class AdminUsuarioOut(BaseModel):
     creado_en: str | None = None  # ISO
     ultimo_acceso: str | None = None  # ISO; None = nunca inició sesión
     clientes: int = 0  # cuántos clientes tiene cargados
+    trial_fin: str | None = None  # ISO: fin del período de prueba gratis
+    trial_dias_restantes: int | None = None  # días que faltan (0 = vencida)
 
 
 class AdminUsuarioPatch(BaseModel):

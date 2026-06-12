@@ -69,6 +69,8 @@ def _admin_usuario_out(u: models.Usuario, clientes: int) -> AdminUsuarioOut:
         creado_en=_iso(u.creado_en),
         ultimo_acceso=_iso(u.ultimo_acceso),
         clientes=clientes,
+        trial_fin=_iso(u.trial_fin),
+        trial_dias_restantes=dias_restantes_trial(u.trial_fin),
     )
 
 

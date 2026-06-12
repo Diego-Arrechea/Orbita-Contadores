@@ -83,6 +83,34 @@ function fechaHora(iso?: string | null): string {
   });
 }
 
+/** Días que faltan para que termine la prueba (desde el ISO de fin), o null si no aplica. */
+function diasTrial(trialFin?: string | null): number | null {
+  if (!trialFin) return null;
+  const fin = new Date(trialFin).getTime();
+  if (Number.isNaN(fin)) return null;
+  return Math.max(0, Math.ceil((fin - Date.now()) / 86400000));
+}
+
+/** Badge del estado de la prueba gratis de una cuenta (para el panel). Los admins no tienen trial. */
+function TrialBadge({ trialFin, rol }: { trialFin?: string | null; rol?: string }) {
+  if (rol === 'admin') return <span className="text-muted-foreground text-xs">—</span>;
+  const dias = diasTrial(trialFin);
+  if (dias === null) return <span className="text-muted-foreground text-xs">—</span>;
+  const fecha = fechaCorta(trialFin);
+  if (dias <= 0) {
+    return (
+      <Badge variant="danger" title={`Venció el ${fecha}`}>
+        Vencida
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant={dias <= 5 ? 'warning' : 'muted'} title={`Hasta el ${fecha}`}>
+      {dias} {dias === 1 ? 'día' : 'días'}
+    </Badge>
+  );
+}
+
 export function Admin() {
   const navigate = useNavigate();
   const yo = usuarioActual();
@@ -247,6 +275,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
               <TableHead className="text-center">Clientes</TableHead>
               <TableHead>Alta</TableHead>
               <TableHead>Último acceso</TableHead>
+              <TableHead className="text-center">Prueba</TableHead>
               <TableHead className="text-center">Estado</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
@@ -277,6 +306,9 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                 <TableCell className="text-center tabular-nums">{u.clientes}</TableCell>
                 <TableCell className="text-sm">{fechaCorta(u.creado_en)}</TableCell>
                 <TableCell className="text-sm">{fechaHora(u.ultimo_acceso)}</TableCell>
+                <TableCell className="text-center">
+                  <TrialBadge trialFin={u.trial_fin} rol={u.rol} />
+                </TableCell>
                 <TableCell className="text-center">
                   {u.activo ? (
                     <Badge variant="success">Activa</Badge>
@@ -315,7 +347,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
             ))}
             {filtrados.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
                   No hay cuentas que coincidan con la búsqueda.
                 </TableCell>
               </TableRow>
@@ -1040,6 +1072,7 @@ function FichaContador({
               ) : (
                 <Badge variant="muted">Inhabilitada</Badge>
               )}
+              <TrialBadge trialFin={u.trial_fin} rol={u.rol} />
             </div>
           </div>
         </div>
