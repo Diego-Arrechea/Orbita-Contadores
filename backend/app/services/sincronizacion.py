@@ -12,7 +12,7 @@ import datetime as dt
 import json
 import time
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -123,6 +123,24 @@ def _upsert(db: Session, cuit: str, direccion: str, crudos: list[dict]) -> tuple
     return procesados, nuevos
 
 
+def _intentar_lock_cuit(db: Session, cuit: str) -> bool:
+    """Toma un lock de sincronización por CUIT COMPARTIDO ENTRE PROCESOS (API + motor 24/7) vía
+    advisory locks de Postgres. Devuelve True si lo tomó (nadie más está sincronizando este CUIT en
+    todo el sistema) o False si ya hay una corrida en curso en otro proceso/hilo.
+
+    Por qué a nivel DB y no en memoria: el motor continuo corre en OTRO contenedor que la API, así
+    que sus sets `_en_vuelo_cuits` no se ven entre sí. Si ambos caen sobre el mismo cliente a la vez,
+    los dos bajan los mismos comprobantes y el segundo `commit` choca con el índice único
+    (uq_comprobante) → UniqueViolation. El advisory lock es el único candado que ven los dos procesos.
+
+    Es a nivel TRANSACCIÓN (`pg_try_advisory_xact_lock`): se libera solo al commit/rollback de la
+    sync, sin soltarlo a mano. En SQLite (dev) no hay advisory locks ni motor concurrente → True."""
+    if db.get_bind().dialect.name != "postgresql":
+        return True
+    # El CUIT es numérico de 11 dígitos → entra cómodo en el bigint del advisory lock (clave estable).
+    return bool(db.scalar(text("SELECT pg_try_advisory_xact_lock(:k)"), {"k": int(cuit)}))
+
+
 def _ms(inicio: float) -> int:
     return int((time.monotonic() - inicio) * 1000)
 
@@ -171,6 +189,14 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
     if contador is None:
         raise ValueError(f"El cliente {cuit} no tiene un contador con clave guardada")
     clave = descifrar(contador.clave_cifrada).decode()
+
+    # Una sola sincronización por CUIT en simultáneo EN TODO EL SISTEMA. Si otra corrida (el motor
+    # 24/7, un sync manual, "sincronizar todos"…) ya está sobre este cliente, nos vamos sin hacer
+    # nada: scrapear de nuevo bajaría los mismos comprobantes y el commit chocaría con uq_comprobante.
+    # La corrida en curso ya trae los datos y registra su propia extracción. Devolvemos 0 nuevos (esta
+    # corrida no aportó) y NO registramos una extracción (no es una falla ni una corrida real).
+    if not _intentar_lock_cuit(db, cuit):
+        return 0
 
     plan = [
         {**miscomprobantes.PLAN_EMITIDOS, "rangos": _ventanas(db, cuit, "emitido")},
