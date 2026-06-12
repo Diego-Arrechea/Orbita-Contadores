@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -32,6 +32,8 @@ import {
   type JobProgreso,
 } from '@/services/onboardingService';
 import { useCargas } from '@/context/CargasContext';
+import { useClientesReales } from '@/lib/queries';
+import { usuarioActual } from '@/lib/cuenta';
 
 type Paso = 'credenciales' | 'listando' | 'elegir' | 'monitoreando';
 
@@ -49,6 +51,17 @@ export function NuevoCliente() {
   const { cargas, registrarCarga } = useCargas();
   // El progreso se lee del contexto global: así sigue corriendo aunque el contador navegue.
   const progreso = jobId ? cargas.find(c => c.jobId === jobId) ?? null : null;
+
+  // Sugerencias del campo CUIT: SOLO CUITs (el del contador + los que ya usó), nunca emails/cuentas.
+  // El navegador, por su cuenta, ofrecía el email de login y las cuentas guardadas: lo desactivamos
+  // con autoComplete y damos esta lista propia.
+  const { data: clientes = [] } = useClientesReales();
+  const cuitsSugeridos = useMemo(() => {
+    const todos = [usuarioActual()?.cuit, ...clientes.map(c => c.cuit)]
+      .map(c => (c ?? '').replace(/\D/g, ''))
+      .filter(c => c.length === 11);
+    return [...new Set(todos)];
+  }, [clientes]);
 
   const puedeConectar = cuit.replace(/\D/g, '').length >= 10 && clave.length >= 4;
   const elegidos = representados.filter(r => seleccionados.has(r.cuit));
@@ -169,23 +182,34 @@ export function NuevoCliente() {
               <Label htmlFor="cuit">CUIT</Label>
               <Input
                 id="cuit"
+                name="cuit-arca"
                 value={cuit}
                 onChange={e => setCuit(e.target.value)}
                 placeholder="Tu CUIT (sin guiones)"
                 disabled={paso === 'listando'}
+                inputMode="numeric"
+                autoComplete="off"
+                list="orbita-cuits"
               />
+              <datalist id="orbita-cuits">
+                {cuitsSugeridos.map(c => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="clave">Clave fiscal</Label>
               <div className="relative">
                 <Input
                   id="clave"
+                  name="clave-arca"
                   value={clave}
                   onChange={e => setClave(e.target.value)}
                   type={mostrar ? 'text' : 'password'}
                   placeholder="••••••••"
                   disabled={paso === 'listando'}
                   className="pr-10"
+                  autoComplete="new-password"
                 />
                 <button
                   type="button"
@@ -460,18 +484,23 @@ function SubirCertForm({ onListo }: { onListo: () => void }) {
             <Label htmlFor="cuit-c">CUIT del cliente</Label>
             <Input
               id="cuit-c"
+              name="cuit-cliente"
               value={cuit}
               onChange={e => setCuit(e.target.value)}
               placeholder="Sin guiones"
+              inputMode="numeric"
+              autoComplete="off"
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="nombre-c">Nombre / Razón social</Label>
             <Input
               id="nombre-c"
+              name="nombre-cliente"
               value={nombre}
               onChange={e => setNombre(e.target.value)}
               placeholder="Ej. Juan Pérez"
+              autoComplete="off"
             />
           </div>
         </div>
