@@ -1,7 +1,5 @@
 import { CargasIndicator } from './CargasIndicator';
-import { SyncIndicator } from './SyncIndicator';
 import { NotificacionesIndicator } from './NotificacionesIndicator';
-import { SincronizarTodo } from './SincronizarTodo';
 import { TrialIndicator } from './TrialIndicator';
 
 export function Topbar() {
@@ -10,9 +8,7 @@ export function Topbar() {
       <div className="ml-auto flex items-center gap-4">
         <TrialIndicator />
         <CargasIndicator />
-        <SyncIndicator />
         <NotificacionesIndicator />
-        <SincronizarTodo />
       </div>
     </header>
   );
