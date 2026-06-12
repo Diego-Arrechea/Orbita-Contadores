@@ -107,6 +107,13 @@ export function esAdmin(): boolean {
   return usuarioActual()?.rol === 'admin';
 }
 
+/** ¿El usuario REAL detrás de la sesión es admin? Sigue siendo true mientras "entra como" otro
+ * contador (la sesión de admin queda respaldada en LS_IMP_*). Útil para diagnósticos que sólo debe
+ * ver el superadmin aunque esté mirando la cartera de un contador impersonado. */
+export function esAdminReal(): boolean {
+  return esAdmin() || impersonando() !== null;
+}
+
 /**
  * Empieza a "entrar como" otro contador: respalda la sesión de admin y activa la del contador.
  * Mientras dure, esAdmin() refleja al contador impersonado (no muestra el panel) y un banner global

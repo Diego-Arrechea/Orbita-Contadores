@@ -5,6 +5,7 @@ import { ProgresoTope } from '@/components/shared/ProgresoTope';
 import { formatCurrency, formatDate, formatPercent } from '@/lib/utils';
 import { getCategoria } from '@/data/categorias';
 import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
+import { esAdminReal } from '@/lib/cuenta';
 import type { CalculoCliente } from '@/lib/monotributo';
 import type { Cliente } from '@/types';
 
@@ -96,7 +97,10 @@ export function SituacionActual({ cliente, calc }: Props) {
           <div className="mt-1 text-[11px] text-muted-foreground">
             Según ARCA
             {cliente.facturometroActualizado ? ` · al ${cliente.facturometroActualizado}` : ''}
-            {Math.abs(calc.facturacionUltimos12 - facturacionMostrada) > 1 && (
+            {/* "Órbita estima ..." es un diagnóstico interno (sirve para chequear que los
+                comprobantes se trajeron bien comparando contra el dato oficial): sólo el superadmin
+                lo ve, aunque esté impersonando a un contador. */}
+            {esAdminReal() && Math.abs(calc.facturacionUltimos12 - facturacionMostrada) > 1 && (
               <span> · Órbita estima {formatCurrency(calc.facturacionUltimos12)} al día de hoy</span>
             )}
           </div>
