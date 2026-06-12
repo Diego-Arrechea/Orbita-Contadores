@@ -62,6 +62,7 @@ import {
 import { mensajeDeError } from '@/services/authService';
 import { iniciarImpersonacion, usuarioActual } from '@/lib/cuenta';
 import { cn } from '@/lib/utils';
+import { diasDeTrial } from '@/lib/trial';
 
 function fechaCorta(iso?: string | null): string {
   if (!iso) return '—';
@@ -83,18 +84,10 @@ function fechaHora(iso?: string | null): string {
   });
 }
 
-/** Días que faltan para que termine la prueba (desde el ISO de fin), o null si no aplica. */
-function diasTrial(trialFin?: string | null): number | null {
-  if (!trialFin) return null;
-  const fin = new Date(trialFin).getTime();
-  if (Number.isNaN(fin)) return null;
-  return Math.max(0, Math.ceil((fin - Date.now()) / 86400000));
-}
-
 /** Badge del estado de la prueba gratis de una cuenta (para el panel). Los admins no tienen trial. */
 function TrialBadge({ trialFin, rol }: { trialFin?: string | null; rol?: string }) {
   if (rol === 'admin') return <span className="text-muted-foreground text-xs">—</span>;
-  const dias = diasTrial(trialFin);
+  const dias = diasDeTrial(trialFin);
   if (dias === null) return <span className="text-muted-foreground text-xs">—</span>;
   const fecha = fechaCorta(trialFin);
   if (dias <= 0) {
