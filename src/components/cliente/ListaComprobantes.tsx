@@ -29,8 +29,30 @@ interface Props {
 
 const POR_PAGINA = 20;
 
+// Clasifica un comprobante por su tipo (string) para el filtro. Por exclusión: lo que no es
+// nota de crédito/débito ni recibo es factura (cubre Factura A/B/C/E/M, FCE y tiques).
+type TipoFiltro = 'todos' | 'facturas' | 'nc' | 'nd' | 'recibos';
+function coincideTipo(tipoComprobante: string, filtro: TipoFiltro): boolean {
+  const esNC = tipoComprobante.includes('Nota Crédito');
+  const esND = tipoComprobante.includes('Nota Débito');
+  const esRecibo = tipoComprobante.includes('Recibo');
+  switch (filtro) {
+    case 'todos':
+      return true;
+    case 'nc':
+      return esNC;
+    case 'nd':
+      return esND;
+    case 'recibos':
+      return esRecibo;
+    case 'facturas':
+      return !esNC && !esND && !esRecibo;
+  }
+}
+
 export function ListaComprobantes({ cliente }: Props) {
   const [direccion, setDireccion] = useState<'todos' | 'emitido' | 'recibido'>('todos');
+  const [tipo, setTipo] = useState<TipoFiltro>('todos');
   const [busqueda, setBusqueda] = useState('');
   const [pagina, setPagina] = useState(1);
 
@@ -38,6 +60,7 @@ export function ListaComprobantes({ cliente }: Props) {
     () =>
       cliente.comprobantes
         .filter(c => (direccion === 'todos' ? true : c.direccion === direccion))
+        .filter(c => coincideTipo(c.tipo, tipo))
         .filter(c => {
           if (!busqueda) return true;
           const q = busqueda.toLowerCase();
@@ -55,11 +78,11 @@ export function ListaComprobantes({ cliente }: Props) {
             b.puntoVenta - a.puntoVenta ||
             b.numero.localeCompare(a.numero),
         ),
-    [cliente.comprobantes, direccion, busqueda],
+    [cliente.comprobantes, direccion, tipo, busqueda],
   );
 
   // Al cambiar los filtros, volver a la primera página.
-  useEffect(() => setPagina(1), [direccion, busqueda]);
+  useEffect(() => setPagina(1), [direccion, tipo, busqueda]);
 
   const totalPaginas = Math.max(1, Math.ceil(comprobantes.length / POR_PAGINA));
   const paginaActual = Math.min(pagina, totalPaginas);
@@ -79,13 +102,25 @@ export function ListaComprobantes({ cliente }: Props) {
           />
         </div>
         <Select value={direccion} onValueChange={(v) => setDireccion(v as typeof direccion)}>
-          <SelectTrigger className="w-[180px] bg-card">
+          <SelectTrigger className="w-[160px] bg-card">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos</SelectItem>
             <SelectItem value="emitido">Emitidos</SelectItem>
             <SelectItem value="recibido">Recibidos</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={tipo} onValueChange={(v) => setTipo(v as TipoFiltro)}>
+          <SelectTrigger className="w-[180px] bg-card">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos los tipos</SelectItem>
+            <SelectItem value="facturas">Facturas</SelectItem>
+            <SelectItem value="nc">Notas de crédito</SelectItem>
+            <SelectItem value="nd">Notas de débito</SelectItem>
+            <SelectItem value="recibos">Recibos</SelectItem>
           </SelectContent>
         </Select>
       </div>
