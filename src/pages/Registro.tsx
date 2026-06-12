@@ -94,8 +94,9 @@ export function Registro() {
   function validar(): string | null {
     if (!form.nombre.trim() || !form.apellido.trim()) return 'Completá tu nombre y apellido.';
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())) return 'Ingresá un email válido.';
-    if (soloDigitos(form.telefono).replace(/^0/, '').length < 8)
-      return 'Ingresá tu código de área y número (sin el 0 ni el 15).';
+    const tel = soloDigitos(form.telefono).replace(/^0/, '').replace(/^15/, '');
+    if (tel.length !== 10)
+      return 'El celular debe tener 10 dígitos: tu código de área + número, sin el 0 ni el 15.';
     const dni = soloDigitos(form.dni);
     if (dni.length < 7 || dni.length > 8) return 'El DNI debe tener 7 u 8 dígitos.';
     if (soloDigitos(form.cuit).length !== 11) return 'El CUIT debe tener 11 dígitos.';
@@ -121,7 +122,7 @@ export function Registro() {
         nombre: form.nombre.trim(),
         apellido: form.apellido.trim(),
         email: form.email.trim(),
-        telefono: '+549' + soloDigitos(form.telefono).replace(/^0/, ''),
+        telefono: '+549' + soloDigitos(form.telefono).replace(/^0/, '').replace(/^15/, ''),
         dni: form.dni,
         cuit: form.cuit,
         estudio: form.estudio.trim(),
