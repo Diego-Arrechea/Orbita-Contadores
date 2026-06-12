@@ -111,6 +111,36 @@ function TrialBadge({ trialFin, rol }: { trialFin?: string | null; rol?: string 
   );
 }
 
+/** Botón "Actualizar" con feedback: fuerza un refetch (ignora el caché) y muestra "Actualizado ✓"
+ *  un momento al terminar, para que se note que hizo algo aunque los datos no hayan cambiado. */
+function BotonActualizar({
+  refetch,
+  isFetching,
+}: {
+  refetch: () => Promise<unknown>;
+  isFetching: boolean;
+}) {
+  const [ok, setOk] = useState(false);
+  async function go() {
+    await refetch();
+    setOk(true);
+    window.setTimeout(() => setOk(false), 1500);
+  }
+  return (
+    <Button variant="outline" size="sm" disabled={isFetching} onClick={() => void go()}>
+      {ok && !isFetching ? (
+        <>
+          <CheckCircle2 className="h-4 w-4 text-success" /> Actualizado
+        </>
+      ) : (
+        <>
+          <RefreshCcw className={cn('h-4 w-4', isFetching && 'animate-spin')} /> Actualizar
+        </>
+      )}
+    </Button>
+  );
+}
+
 export function Admin() {
   const navigate = useNavigate();
   const yo = usuarioActual();
@@ -255,9 +285,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
             className="pl-9"
           />
         </div>
-        <Button variant="outline" size="sm" disabled={isFetching} onClick={() => void refetch()}>
-          <RefreshCcw className={cn('h-4 w-4', isFetching && 'animate-spin')} /> Actualizar
-        </Button>
+        <BotonActualizar refetch={refetch} isFetching={isFetching} />
       </div>
 
       {error && (
@@ -868,9 +896,7 @@ function TabClientes() {
             className="pl-9"
           />
         </div>
-        <Button variant="outline" size="sm" disabled={isFetching} onClick={() => void refetch()}>
-          <RefreshCcw className={cn('h-4 w-4', isFetching && 'animate-spin')} /> Actualizar
-        </Button>
+        <BotonActualizar refetch={refetch} isFetching={isFetching} />
       </div>
 
       <div className="text-xs text-muted-foreground">
