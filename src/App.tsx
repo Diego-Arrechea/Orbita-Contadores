@@ -1,7 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, type ReactNode } from 'react';
 import { CargasProvider } from '@/context/CargasContext';
-import { SyncProvider } from '@/context/SyncContext';
 import { ConfigProvider } from '@/context/ConfigContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Login } from '@/pages/Login';
@@ -10,6 +9,7 @@ import { Terminos, Privacidad } from '@/pages/Legal';
 import { cuentaActual, esAdmin, tokenActual, actualizarUsuarioGuardado } from '@/lib/cuenta';
 import { getMe } from '@/services/authService';
 import { InvalidadorCache } from '@/components/shared/InvalidadorCache';
+import { CargasToasts } from '@/components/shared/CargasToasts';
 
 /** Sin sesión → al login. (Cuentas demo en el front; ver src/lib/cuenta.ts). */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -48,8 +48,8 @@ export default function App() {
 
   return (
     <CargasProvider>
-      <SyncProvider>
       <InvalidadorCache />
+      <CargasToasts />
       <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/registro" element={<Registro />} />
@@ -87,7 +87,6 @@ export default function App() {
       />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      </SyncProvider>
     </CargasProvider>
   );
 }

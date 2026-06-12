@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     # a la vez (misma clave fiscal) — esto cuenta contadores distintos en paralelo.
     sync_worker_concurrencia: int = 6
     # Cada cliente se re-sincroniza cuando su última extracción (cualquier resultado) supera esto.
-    sync_intervalo_horas: int = 12
+    sync_intervalo_horas: int = 6
     # Cada cuánto el despachador revisa qué clientes están vencidos y los encola (segundos).
     sync_poll_segundos: int = 60
     # Envío automático de alertas por WhatsApp desde el motor continuo. Default APAGADO: el motor

@@ -69,10 +69,18 @@ export default {
           from: { height: 'var(--radix-accordion-content-height)' },
           to: { height: '0' },
         },
+        // Parpadeo que llama la atención cuando una sincronización termina. El color sale de la
+        // variable --titilar (la setea cada componente: éxito/parcial/error) → mismo keyframe, 3 tintes.
+        titilar: {
+          '0%, 100%': { boxShadow: '0 0 0 0 hsl(var(--titilar) / 0)' },
+          '50%': { boxShadow: '0 0 0 5px hsl(var(--titilar) / 0.4)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
+        // Titila 3 veces (~2.7s) y se detiene: avisa "terminó" sin quedar parpadeando para siempre.
+        titilar: 'titilar 0.9s ease-in-out 3',
       },
     },
   },

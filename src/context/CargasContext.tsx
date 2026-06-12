@@ -35,13 +35,24 @@ export interface CargaJob {
   iniciadoEn: number;
 }
 
+/** Aviso transitorio (toast) que aparece cuando una carga termina y se va solo a los 5 s. */
+export interface AvisoCarga {
+  id: string;
+  titulo: string;
+  tipo: 'ok' | 'error';
+  mensaje: string;
+}
+
 interface CargasContextValue {
   cargas: CargaJob[];
   activas: CargaJob[];
+  /** Avisos transitorios pendientes de mostrar (se autodescartan a los 5 s). */
+  avisos: AvisoCarga[];
   /** Incrementa cada vez que una carga termina: úsalo como dep para refrescar la cartera. */
   version: number;
   registrarCarga: (jobId: string, clientes: CargaCliente[]) => void;
   descartar: (jobId: string) => void;
+  descartarAviso: (id: string) => void;
 }
 
 const CargasContext = createContext<CargasContextValue | null>(null);
@@ -54,6 +65,22 @@ const HORA_MS = 60 * 60 * 1000; // un alta tarda minutos; > 1h en_proceso = job 
 function tituloDe(clientes: CargaCliente[]): string {
   if (clientes.length === 1) return clientes[0].nombre;
   return `${clientes.length} clientes`;
+}
+
+const AVISO_MS = 5000; // el aviso de "carga lista" se va solo a los 5 s
+
+/** Arma el aviso transitorio a partir del resultado final de la carga (copy de dominio). */
+function avisoDeCarga(c: CargaJob): AvisoCarga {
+  const ok = c.resultados.filter(r => r.ok).length;
+  const fallaron = c.resultados.filter(r => !r.ok).length;
+  // Falló del todo (error de job, o ningún cliente quedó conectado).
+  if (c.estado === 'error' || (ok === 0 && fallaron > 0)) {
+    return { id: c.jobId, titulo: c.titulo, tipo: 'error', mensaje: 'No se pudo completar la carga.' };
+  }
+  const mensaje = fallaron
+    ? `Datos al día. ${fallaron} con error.`
+    : 'Comprobantes y datos al día.';
+  return { id: c.jobId, titulo: c.titulo, tipo: 'ok', mensaje };
 }
 
 function cargarLS(): CargaJob[] {
@@ -83,9 +110,23 @@ function guardarLS(cargas: CargaJob[]): void {
 export function CargasProvider({ children }: { children: ReactNode }) {
   const [cargas, setCargas] = useState<CargaJob[]>(() => cargarLS());
   const [version, setVersion] = useState(0);
+  const [avisos, setAvisos] = useState<AvisoCarga[]>([]);
   // Jobs cuyos efectos de finalización ya corrieron (no re-disparar al restaurar / re-pollear).
   const procesados = useRef<Set<string>>(new Set());
   const fallos = useRef<Record<string, number>>({});
+
+  const descartarAviso = useCallback((id: string) => {
+    setAvisos(prev => prev.filter(a => a.id !== id));
+  }, []);
+
+  // Encola un aviso transitorio y lo quita solo a los AVISO_MS.
+  const emitirAviso = useCallback(
+    (aviso: AvisoCarga) => {
+      setAvisos(prev => [...prev.filter(a => a.id !== aviso.id), aviso]);
+      setTimeout(() => descartarAviso(aviso.id), AVISO_MS);
+    },
+    [descartarAviso],
+  );
 
   // Seedea `procesados` con las cargas ya terminadas que se restauraron de LS (una sola vez).
   useEffect(() => {
@@ -139,16 +180,19 @@ export function CargasProvider({ children }: { children: ReactNode }) {
         const p = await getProgresoMonitoreo(jobId);
         if (cancel) return;
         fallos.current[jobId] = 0;
+        let cargaFinal: CargaJob | null = null;
         setCargas(prev =>
-          prev.map(c =>
-            c.jobId === jobId
-              ? { ...c, estado: p.estado, progreso: p.progreso, mensaje: p.mensaje, resultados: p.resultados, error: p.error }
-              : c,
-          ),
+          prev.map(c => {
+            if (c.jobId !== jobId) return c;
+            const upd = { ...c, estado: p.estado, progreso: p.progreso, mensaje: p.mensaje, resultados: p.resultados, error: p.error };
+            cargaFinal = upd;
+            return upd;
+          }),
         );
         if ((p.estado === 'terminado' || p.estado === 'error') && !procesados.current.has(jobId)) {
           procesados.current.add(jobId);
           setVersion(v => v + 1);
+          if (cargaFinal) emitirAviso(avisoDeCarga(cargaFinal));
         }
       } catch (e) {
         if (cancel) return;
@@ -179,10 +223,13 @@ export function CargasProvider({ children }: { children: ReactNode }) {
       cancel = true;
       clearInterval(id);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claveActivas]);
 
   return (
-    <CargasContext.Provider value={{ cargas, activas, version, registrarCarga, descartar }}>
+    <CargasContext.Provider
+      value={{ cargas, activas, avisos, version, registrarCarga, descartar, descartarAviso }}
+    >
       {children}
     </CargasContext.Provider>
   );

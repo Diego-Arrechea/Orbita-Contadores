@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -33,8 +33,7 @@ import { getCliente } from '@/data/clientes';
 import { useConfig } from '@/context/ConfigContext';
 import { calcularCliente } from '@/lib/monotributo';
 import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
-import { formatCuit, formatDate, cn } from '@/lib/utils';
-import { useSync } from '@/context/SyncContext';
+import { formatCuit, formatDate } from '@/lib/utils';
 import { useClienteReal } from '@/lib/queries';
 import { EditarClienteDialog } from '@/components/cliente/EditarClienteDialog';
 import { EliminarClienteDialog } from '@/components/cliente/EliminarClienteDialog';
@@ -66,19 +65,6 @@ export function ClienteDetalle() {
   );
 
   const esReal = cliente?.fuente === 'arca';
-  const cuit = cliente?.cuit;
-
-  // La sincronización corre en SEGUNDO PLANO (SyncContext): sigue aunque el contador se vaya de la
-  // ficha, y se ve en el indicador del header. Acá sólo la disparamos y leemos su estado.
-  const { sincronizar, estaSincronizando, syncs } = useSync();
-  const sincronizando = !!cuit && estaSincronizando(cuit);
-  const miSync = cuit ? syncs.find(s => s.cuit === cuit.replace(/\D/g, '')) : undefined;
-  const errorSync = miSync?.estado === 'error' ? miSync.error : null;
-
-  const handleSincronizar = useCallback(() => {
-    if (!esReal || !cuit) return;
-    sincronizar(cuit, cliente?.nombre ?? cuit);
-  }, [esReal, cuit, cliente?.nombre, sincronizar]);
 
   if (!cliente) {
     return (
@@ -164,17 +150,6 @@ export function ClienteDetalle() {
               </div>
 
               <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="bg-card/70 backdrop-blur"
-                  onClick={handleSincronizar}
-                  disabled={!esReal || sincronizando}
-                  title={esReal ? 'Traer los últimos comprobantes de ARCA' : 'Solo para clientes conectados a ARCA'}
-                >
-                  <RefreshCcw className={cn('h-3.5 w-3.5', sincronizando && 'animate-spin')} />
-                  {sincronizando ? 'Sincronizando…' : 'Sincronizar ahora'}
-                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -239,13 +214,6 @@ export function ClienteDetalle() {
                   </span>
                 </div>
               )}
-
-            {errorSync && (
-              <div className="mt-5 rounded-lg bg-danger/12 border border-danger/25 px-4 py-2.5 text-sm">
-                <span className="text-danger font-medium">No se pudo sincronizar:</span>
-                <span className="text-foreground/80 ml-2">{errorSync}</span>
-              </div>
-            )}
           </div>
 
           <div className="border-t border-border/60 bg-card/70 px-7">
