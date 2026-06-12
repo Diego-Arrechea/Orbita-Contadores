@@ -7,6 +7,7 @@
  * front ya no mantiene ningún mapa local de dueños.
  */
 import type { AuthResp, Usuario } from '@/services/authService';
+import { queryClient } from '@/lib/queryClient';
 
 export interface Cuenta {
   email: string;
@@ -47,6 +48,10 @@ export function iniciarSesion(auth: AuthResp): Cuenta {
   } catch {
     /* ignore */
   }
+  // Cambió la identidad de la sesión (login / "entrar como"): tiramos TODO el caché de React Query,
+  // si no la nueva cuenta vería datos cacheados de la anterior (p.ej. los clientes del admin al
+  // impersonar). El backend filtra por usuario_id, así que cada dato es por-sesión.
+  queryClient.clear();
   return usuarioToCuenta(auth.usuario);
 }
 
@@ -94,6 +99,7 @@ export function logoutCuenta(): void {
   } catch {
     /* ignore */
   }
+  queryClient.clear(); // que la próxima cuenta no herede datos cacheados de esta
 }
 
 /** ¿La cuenta logueada es administradora (acceso al panel superadmin)? */
@@ -146,4 +152,6 @@ export function terminarImpersonacion(): void {
   } catch {
     /* ignore */
   }
+  // Volvió a la sesión de admin: limpia el caché del contador impersonado (el banner además recarga).
+  queryClient.clear();
 }
