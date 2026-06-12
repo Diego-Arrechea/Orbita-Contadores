@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -8,10 +9,13 @@ import {
   Orbit,
   LogOut,
   ShieldCheck,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { cuentaActual, esAdmin, logoutCuenta } from '@/lib/cuenta';
 import { resetChatSoporte } from '@/components/shared/SoporteChat';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
 const nav = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -21,78 +25,164 @@ const nav = [
   { to: '/configuracion', label: 'Configuración', icon: Settings },
 ];
 
+const LS_COLAPSADA = 'orbita_sidebar_colapsada';
+
+function leerColapsada(): boolean {
+  try {
+    return localStorage.getItem(LS_COLAPSADA) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function Sidebar() {
   const navigate = useNavigate();
   const cuenta = cuentaActual();
+  const [colapsada, setColapsada] = useState(leerColapsada);
+
+  function toggle() {
+    setColapsada(prev => {
+      const v = !prev;
+      try {
+        localStorage.setItem(LS_COLAPSADA, v ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return v;
+    });
+  }
+
   // El ítem del panel sólo aparece para cuentas admin (la ruta /admin además está protegida en back).
   const items = esAdmin()
     ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
     : nav;
+
   return (
     <aside
-      className="hidden lg:flex w-72 shrink-0 flex-col px-4 py-7 text-[hsl(var(--sidebar-foreground))]"
+      className={cn(
+        'relative hidden lg:flex shrink-0 flex-col py-7 text-[hsl(var(--sidebar-foreground))] transition-[width] duration-300 ease-in-out',
+        colapsada ? 'w-[78px] px-3' : 'w-72 px-4'
+      )}
       style={{ background: 'hsl(var(--sidebar))' }}
     >
-      <div className="px-3 mb-9 flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
+      {/* Botón flotante para colapsar/expandir, montado sobre el borde derecho. */}
+      <button
+        onClick={toggle}
+        title={colapsada ? 'Expandir menú' : 'Colapsar menú'}
+        aria-label={colapsada ? 'Expandir menú' : 'Colapsar menú'}
+        className="absolute -right-3 top-9 z-40 flex h-6 w-6 items-center justify-center rounded-full border border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-muted))] shadow-md transition-colors hover:text-white"
+      >
+        {colapsada ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+      </button>
+
+      {/* Logo */}
+      <div className={cn('mb-9 flex items-center gap-3', colapsada ? 'justify-center px-0' : 'px-3')}>
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
           <Orbit className="h-5 w-5" />
         </div>
-        <div className="leading-tight">
-          <div className="font-semibold text-lg tracking-tight text-white">Órbita</div>
-          <div className="text-xs text-[hsl(var(--sidebar-muted))]">Contador</div>
-        </div>
+        {!colapsada && (
+          <div className="leading-tight">
+            <div className="font-semibold text-lg tracking-tight text-white">Órbita</div>
+            <div className="text-xs text-[hsl(var(--sidebar-muted))]">Contador</div>
+          </div>
+        )}
       </div>
 
-      <div className="px-3 mb-3">
-        <div className="text-[11px] uppercase tracking-wider text-[hsl(var(--sidebar-muted))] font-semibold">
-          Estudio
+      {!colapsada && (
+        <div className="px-3 mb-3">
+          <div className="text-[11px] uppercase tracking-wider text-[hsl(var(--sidebar-muted))] font-semibold">
+            Estudio
+          </div>
         </div>
-      </div>
+      )}
 
       <nav className="flex-1 space-y-1">
-        {items.map(item => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-white'
-              )
-            }
-          >
-            <item.icon className="h-4 w-4" />
-            {item.label}
-          </NavLink>
-        ))}
+        {items.map(item => {
+          const link = (
+            <NavLink
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium transition-colors',
+                  colapsada ? 'justify-center px-0' : 'px-3.5',
+                  isActive
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-white'
+                )
+              }
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              {!colapsada && item.label}
+            </NavLink>
+          );
+          return colapsada ? (
+            <Tooltip key={item.to}>
+              <TooltipTrigger asChild>{link}</TooltipTrigger>
+              <TooltipContent side="right">{item.label}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <div key={item.to}>{link}</div>
+          );
+        })}
       </nav>
 
+      {/* Cuenta + salir */}
       <div className="border-t border-[hsl(var(--sidebar-border))] pt-4 mt-4">
-        <div className="rounded-xl bg-[hsl(var(--sidebar-hover))] p-3 flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-primary text-sm font-semibold">
-            {cuenta?.iniciales ?? '—'}
+        {colapsada ? (
+          <div className="flex flex-col items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-primary text-sm font-semibold">
+                  {cuenta?.iniciales ?? '—'}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {cuenta?.nombre ?? 'Invitado'}
+                {cuenta?.estudio ? ` · ${cuenta.estudio}` : ''}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => {
+                    resetChatSoporte();
+                    logoutCuenta();
+                    navigate('/login');
+                  }}
+                  aria-label="Salir"
+                  className="text-[hsl(var(--sidebar-muted))] hover:text-white transition-colors p-1.5 rounded-md hover:bg-[hsl(var(--sidebar-hover))]"
+                >
+                  <LogOut className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">Salir</TooltipContent>
+            </Tooltip>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-white truncate">{cuenta?.nombre ?? 'Invitado'}</div>
-            <div className="text-xs text-[hsl(var(--sidebar-muted))] truncate">
-              {cuenta?.estudio ?? ''}
+        ) : (
+          <div className="rounded-xl bg-[hsl(var(--sidebar-hover))] p-3 flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary text-sm font-semibold">
+              {cuenta?.iniciales ?? '—'}
             </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-white truncate">{cuenta?.nombre ?? 'Invitado'}</div>
+              <div className="text-xs text-[hsl(var(--sidebar-muted))] truncate">
+                {cuenta?.estudio ?? ''}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                resetChatSoporte(); // limpia la sesión de Crisp: la próxima cuenta no hereda el chat
+                logoutCuenta();
+                navigate('/login');
+              }}
+              className="text-[hsl(var(--sidebar-muted))] hover:text-white transition-colors p-1.5 rounded-md hover:bg-[hsl(var(--sidebar-hover))]"
+              title="Salir"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
-          <button
-            onClick={() => {
-              resetChatSoporte(); // limpia la sesión de Crisp: la próxima cuenta no hereda el chat
-              logoutCuenta();
-              navigate('/login');
-            }}
-            className="text-[hsl(var(--sidebar-muted))] hover:text-white transition-colors p-1.5 rounded-md hover:bg-[hsl(var(--sidebar-hover))]"
-            title="Salir"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
-        </div>
+        )}
       </div>
     </aside>
   );
