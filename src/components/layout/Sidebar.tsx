@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   Bell,
@@ -37,8 +37,17 @@ function leerColapsada(): boolean {
 
 export function Sidebar() {
   const navigate = useNavigate();
+  const location = useLocation();
   const cuenta = cuentaActual();
   const [colapsada, setColapsada] = useState(leerColapsada);
+
+  // Calculamos el activo a mano (no con el className-función de NavLink): cuando el ítem va envuelto
+  // en TooltipTrigger asChild (riel colapsado), el Slot de Radix rompe esa función y se perdía el
+  // resaltado. Con un string siempre funciona, colapsada o no.
+  function activo(to: string, end?: boolean): boolean {
+    const p = location.pathname;
+    return end ? p === to : p === to || p.startsWith(to.endsWith('/') ? to : to + '/');
+  }
 
   function toggle() {
     setColapsada(prev => {
@@ -103,19 +112,18 @@ export function Sidebar() {
 
       <nav className={cn('flex-1', colapsada ? 'flex flex-col items-center gap-2' : 'space-y-1')}>
         {items.map(item => {
+          const isActive = activo(item.to, item.end);
           const link = (
             <NavLink
               to={item.to}
               end={item.end}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center rounded-xl font-medium transition-colors',
-                  colapsada ? 'h-11 w-11 justify-center' : 'gap-3 px-3.5 py-2.5 text-sm',
-                  isActive
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-white'
-                )
-              }
+              className={cn(
+                'flex items-center rounded-xl font-medium transition-colors',
+                colapsada ? 'h-11 w-11 justify-center' : 'gap-3 px-3.5 py-2.5 text-sm',
+                isActive
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-white'
+              )}
             >
               <item.icon className={cn('shrink-0', colapsada ? 'h-5 w-5' : 'h-4 w-4')} />
               {!colapsada && item.label}
