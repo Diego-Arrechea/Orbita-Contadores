@@ -63,6 +63,13 @@ export function NuevoCliente() {
     return [...new Set(todos)];
   }, [clientes]);
 
+  // CUITs que el contador YA tiene en su cartera: no se pueden volver a sumar.
+  const cuitsEnCartera = useMemo(
+    () => new Set(clientes.map(c => (c.cuit ?? '').replace(/\D/g, ''))),
+    [clientes],
+  );
+  const yaEnCartera = (c: string) => cuitsEnCartera.has(c.replace(/\D/g, ''));
+
   const puedeConectar = cuit.replace(/\D/g, '').length >= 10 && clave.length >= 4;
   const elegidos = representados.filter(r => seleccionados.has(r.cuit));
 
@@ -72,7 +79,10 @@ export function NuevoCliente() {
     try {
       const reps = await listarRepresentados(cuit.replace(/\D/g, ''), clave);
       setRepresentados(reps);
-      setSeleccionados(reps.length === 1 ? new Set([reps[0].cuit]) : new Set());
+      // Autoseleccionamos sólo si hay uno solo y todavía no está en la cartera.
+      setSeleccionados(
+        reps.length === 1 && !yaEnCartera(reps[0].cuit) ? new Set([reps[0].cuit]) : new Set(),
+      );
       setPaso('elegir');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -81,6 +91,7 @@ export function NuevoCliente() {
   };
 
   const toggle = (c: string) => {
+    if (yaEnCartera(c)) return; // ya está en la cartera: no se puede sumar de nuevo
     setSeleccionados(prev => {
       const next = new Set(prev);
       if (next.has(c)) next.delete(c);
@@ -255,28 +266,48 @@ export function NuevoCliente() {
 
           <div className="space-y-2">
             {representados.map(r => {
+              const enCartera = yaEnCartera(r.cuit);
               const sel = seleccionados.has(r.cuit);
               return (
                 <button
                   key={r.cuit}
                   type="button"
                   onClick={() => toggle(r.cuit)}
+                  disabled={enCartera}
                   className={cn(
                     'w-full flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors',
-                    sel ? 'border-primary bg-primary/5' : 'border-border/60 hover:bg-muted/40',
+                    enCartera
+                      ? 'border-border/40 bg-muted/30 cursor-not-allowed'
+                      : sel
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border/60 hover:bg-muted/40',
                   )}
                 >
-                  {sel ? (
+                  {enCartera ? (
+                    <CheckCircle2 className="h-5 w-5 text-muted-foreground/40 shrink-0" />
+                  ) : sel ? (
                     <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
                   ) : (
                     <Circle className="h-5 w-5 text-muted-foreground/40 shrink-0" />
                   )}
                   <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">{r.nombre}</div>
+                    <div
+                      className={cn(
+                        'text-sm font-medium truncate',
+                        enCartera && 'text-muted-foreground',
+                      )}
+                    >
+                      {r.nombre}
+                    </div>
                     <div className="text-xs text-muted-foreground tabular-nums">
                       CUIT {formatCuit(r.cuit)}
                     </div>
                   </div>
+                  {enCartera && (
+                    <Badge variant="muted" className="ml-auto shrink-0 text-[10px]">
+                      Ya en tu cartera
+                    </Badge>
+                  )}
                 </button>
               );
             })}
