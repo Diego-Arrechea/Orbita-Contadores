@@ -44,7 +44,7 @@ export function Login() {
           </div>
         </div>
 
-        <div className="bg-card border border-border/60 rounded-2xl shadow-sm p-8">
+        <div className="bg-card border border-border/60 rounded-2xl shadow-sm p-6 sm:p-8">
           <h1 className="text-xl font-semibold mb-1">Ingresar al estudio</h1>
           <p className="text-sm text-muted-foreground mb-6">
             Monitoreá tus clientes monotributistas en un solo lugar.

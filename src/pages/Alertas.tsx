@@ -161,15 +161,15 @@ function ResumenCard({ label, value, icon, tint, active, onClick }: ResumenCardP
       onClick={onClick}
       className={`text-left bg-card border ${
         active ? 'border-primary/40 shadow-card-lg' : 'border-border/60 shadow-card'
-      } rounded-2xl p-6 transition-all hover:border-primary/40 hover:shadow-card-lg`}
+      } rounded-2xl p-4 sm:p-6 transition-all hover:border-primary/40 hover:shadow-card-lg`}
     >
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-3 sm:mb-5">
         <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
           {label}
         </span>
         <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${tint}`}>{icon}</div>
       </div>
-      <div className="text-4xl font-semibold tabular-nums tracking-tight">{value}</div>
+      <div className="text-3xl sm:text-4xl font-semibold tabular-nums tracking-tight">{value}</div>
     </button>
   );
 }

@@ -50,6 +50,69 @@ function coincideTipo(tipoComprobante: string, filtro: TipoFiltro): boolean {
   }
 }
 
+/** Icono cuadrado del comprobante (emitido = primario, recibido = neutro). */
+function IconoComprobante({ direccion }: { direccion: 'emitido' | 'recibido' }) {
+  return (
+    <div
+      className={cn(
+        'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+        direccion === 'emitido' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+      )}
+    >
+      <FileText className="h-4 w-4" />
+    </div>
+  );
+}
+
+/** Monto del comprobante. En moneda extranjera (p.ej. Factura E de exportación) muestra el original
+ *  + la cotización del día; el tope se consolida en pesos. Las notas de crédito van con signo menos. */
+function MontoComprobante({ c }: { c: Cliente['comprobantes'][number] }) {
+  const esNC = c.tipo.includes('Nota Crédito');
+  if (c.moneda && c.moneda !== 'ARS') {
+    return (
+      <>
+        <div>
+          {esNC ? '-' : ''}
+          {formatCurrency(c.montoOrigen ?? c.monto, { moneda: c.moneda })}
+        </div>
+        {!!c.cotizacion && c.cotizacion !== 1 && (
+          <div className="text-[11px] font-normal text-muted-foreground">
+            TC ${c.cotizacion.toLocaleString('es-AR', {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </div>
+        )}
+      </>
+    );
+  }
+  return (
+    <>
+      {esNC ? '-' : ''}
+      {formatCurrency(c.monto)}
+    </>
+  );
+}
+
+/** "Ver PDF": pendiente. ARCA no expone una URL al PDF del comprobante (todo va detrás de la clave
+ *  fiscal) y no cacheamos PDFs. Lo dejamos deshabilitado hasta implementar la descarga on-demand. El
+ *  <span> recibe el hover: el Button disabled tiene pointer-events-none y, sin él, el tooltip no
+ *  aparecería. */
+function BotonVerPdf() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          <Button size="icon" variant="ghost" disabled aria-label="Ver PDF (próximamente)">
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>Ver PDF — próximamente</TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function ListaComprobantes({ cliente }: Props) {
   const [direccion, setDireccion] = useState<'todos' | 'emitido' | 'recibido'>('todos');
   const [tipo, setTipo] = useState<TipoFiltro>('todos');
@@ -102,7 +165,7 @@ export function ListaComprobantes({ cliente }: Props) {
           />
         </div>
         <Select value={direccion} onValueChange={(v) => setDireccion(v as typeof direccion)}>
-          <SelectTrigger className="w-[160px] bg-card">
+          <SelectTrigger className="w-full md:w-[160px] bg-card">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -112,7 +175,7 @@ export function ListaComprobantes({ cliente }: Props) {
           </SelectContent>
         </Select>
         <Select value={tipo} onValueChange={(v) => setTipo(v as TipoFiltro)}>
-          <SelectTrigger className="w-[180px] bg-card">
+          <SelectTrigger className="w-full md:w-[180px] bg-card">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -125,40 +188,99 @@ export function ListaComprobantes({ cliente }: Props) {
         </Select>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[44px]" />
-            <TableHead>Tipo</TableHead>
-            <TableHead>Fecha emisión</TableHead>
-            <TableHead>Período devengado</TableHead>
-            <TableHead>Punto / N°</TableHead>
-            <TableHead>Contraparte</TableHead>
-            <TableHead className="text-right">Monto</TableHead>
-            <TableHead className="w-[60px]" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {visibles.map(c => {
-            const esNC = c.tipo.includes('Nota Crédito');
-            const periodoDiferente = c.periodoDevengado && c.periodoDevengado !== c.fechaEmision.slice(0, 7);
-            return (
-              <TableRow key={c.id}>
-                <TableCell>
-                  <div
+      {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+      <div className="hidden lg:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[44px]" />
+              <TableHead>Tipo</TableHead>
+              <TableHead>Fecha emisión</TableHead>
+              <TableHead>Período devengado</TableHead>
+              <TableHead>Punto / N°</TableHead>
+              <TableHead>Contraparte</TableHead>
+              <TableHead className="text-right">Monto</TableHead>
+              <TableHead className="w-[60px]" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {visibles.map(c => {
+              const periodoDiferente = c.periodoDevengado && c.periodoDevengado !== c.fechaEmision.slice(0, 7);
+              return (
+                <TableRow key={c.id}>
+                  <TableCell>
+                    <IconoComprobante direccion={c.direccion} />
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm font-medium leading-tight">{c.tipo}</div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                      <span>{c.direccion === 'emitido' ? 'Emitido' : 'Recibido'}</span>
+                      {c.esBienPatrimonial && (
+                        <Badge variant="muted" className="text-[10px] py-0">
+                          <Package className="h-3 w-3" /> Patrimonial
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-sm whitespace-nowrap">
+                    {formatDate(c.fechaEmision)}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {periodoDiferente ? (
+                      <Badge variant="warning" className="text-[10px]">
+                        {c.periodoDevengado}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted-foreground tabular-nums">
+                        {c.fechaEmision.slice(0, 7)}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm tabular-nums whitespace-nowrap">
+                    {c.puntoVenta.toString().padStart(5, '0')}-{c.numero}
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm">{c.contraparteNombre}</div>
+                    <div className="text-[11px] text-muted-foreground tabular-nums">
+                      {formatCuit(c.contraparteCuit)}
+                    </div>
+                  </TableCell>
+                  <TableCell
                     className={cn(
-                      'flex h-8 w-8 items-center justify-center rounded-lg',
-                      c.direccion === 'emitido'
-                        ? 'bg-primary/10 text-primary'
-                        : 'bg-muted text-muted-foreground',
+                      'text-right tabular-nums font-medium whitespace-nowrap',
+                      c.tipo.includes('Nota Crédito') && 'text-danger',
                     )}
                   >
-                    <FileText className="h-4 w-4" />
-                  </div>
+                    <MontoComprobante c={c} />
+                  </TableCell>
+                  <TableCell>
+                    <BotonVerPdf />
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+            {visibles.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                  No hay comprobantes que coincidan con los filtros.
                 </TableCell>
-                <TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="space-y-3 p-4 lg:hidden">
+        {visibles.map(c => {
+          const esNC = c.tipo.includes('Nota Crédito');
+          const periodoDiferente = c.periodoDevengado && c.periodoDevengado !== c.fechaEmision.slice(0, 7);
+          return (
+            <Card key={c.id} className="space-y-2 p-4">
+              <div className="flex items-start gap-3">
+                <IconoComprobante direccion={c.direccion} />
+                <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium leading-tight">{c.tipo}</div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                  <div className="text-[11px] text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1.5">
                     <span>{c.direccion === 'emitido' ? 'Emitido' : 'Recibido'}</span>
                     {c.esBienPatrimonial && (
                       <Badge variant="muted" className="text-[10px] py-0">
@@ -166,93 +288,39 @@ export function ListaComprobantes({ cliente }: Props) {
                       </Badge>
                     )}
                   </div>
-                </TableCell>
-                <TableCell className="text-sm whitespace-nowrap">
-                  {formatDate(c.fechaEmision)}
-                </TableCell>
-                <TableCell className="text-sm">
-                  {periodoDiferente ? (
-                    <Badge variant="warning" className="text-[10px]">
-                      {c.periodoDevengado}
-                    </Badge>
-                  ) : (
-                    <span className="text-muted-foreground tabular-nums">
-                      {c.fechaEmision.slice(0, 7)}
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="text-sm tabular-nums whitespace-nowrap">
-                  {c.puntoVenta.toString().padStart(5, '0')}-{c.numero}
-                </TableCell>
-                <TableCell>
-                  <div className="text-sm">{c.contraparteNombre}</div>
-                  <div className="text-[11px] text-muted-foreground tabular-nums">
-                    {formatCuit(c.contraparteCuit)}
-                  </div>
-                </TableCell>
-                <TableCell
+                </div>
+                <div
                   className={cn(
-                    'text-right tabular-nums font-medium whitespace-nowrap',
+                    'text-right tabular-nums font-medium text-sm',
                     esNC && 'text-danger',
                   )}
                 >
-                  {c.moneda && c.moneda !== 'ARS' ? (
-                    // Comprobante en moneda extranjera (p.ej. Factura E de exportación): se muestra
-                    // en su moneda original + la cotización del día. El tope se consolida en pesos.
-                    <>
-                      <div>
-                        {esNC ? '-' : ''}
-                        {formatCurrency(c.montoOrigen ?? c.monto, { moneda: c.moneda })}
-                      </div>
-                      {!!c.cotizacion && c.cotizacion !== 1 && (
-                        <div className="text-[11px] font-normal text-muted-foreground">
-                          TC ${c.cotizacion.toLocaleString('es-AR', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      {esNC ? '-' : ''}
-                      {formatCurrency(c.monto)}
-                    </>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {/* "Ver PDF": pendiente. ARCA no expone una URL al PDF del comprobante (todo va
-                      detrás de la clave fiscal) y no cacheamos PDFs. Lo dejamos deshabilitado hasta
-                      implementar la descarga on-demand. El <span> recibe el hover: el Button disabled
-                      tiene pointer-events-none y, sin él, el tooltip no aparecería. */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          disabled
-                          aria-label="Ver PDF (próximamente)"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>Ver PDF — próximamente</TooltipContent>
-                  </Tooltip>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-          {visibles.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
-                No hay comprobantes que coincidan con los filtros.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+                  <MontoComprobante c={c} />
+                </div>
+              </div>
+
+              <div className="text-sm">{c.contraparteNombre}</div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground tabular-nums">
+                <span>{formatDate(c.fechaEmision)}</span>
+                <span>
+                  {c.puntoVenta.toString().padStart(5, '0')}-{c.numero}
+                </span>
+                <span>{formatCuit(c.contraparteCuit)}</span>
+                {periodoDiferente && (
+                  <Badge variant="warning" className="text-[10px]">
+                    Dev. {c.periodoDevengado}
+                  </Badge>
+                )}
+              </div>
+            </Card>
+          );
+        })}
+        {visibles.length === 0 && (
+          <div className="text-center py-10 text-muted-foreground">
+            No hay comprobantes que coincidan con los filtros.
+          </div>
+        )}
+      </div>
 
       {comprobantes.length > 0 && (
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 border-t border-border/60 bg-muted/20">

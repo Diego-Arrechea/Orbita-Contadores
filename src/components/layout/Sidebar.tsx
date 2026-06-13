@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   ChevronLeft,
   ChevronRight,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { cuentaActual, esAdmin, logoutCuenta } from '@/lib/cuenta';
@@ -35,55 +36,45 @@ function leerColapsada(): boolean {
   }
 }
 
-export function Sidebar() {
+// Calcula si una ruta del menú está activa. Lo hacemos a mano (no con el className-función de
+// NavLink) porque cuando el ítem va envuelto en TooltipTrigger asChild (riel colapsado), el Slot de
+// Radix rompe esa función y se perdía el resaltado. Con un string siempre funciona.
+function rutaActiva(pathname: string, to: string, end?: boolean): boolean {
+  return end
+    ? pathname === to
+    : pathname === to || pathname.startsWith(to.endsWith('/') ? to : to + '/');
+}
+
+/**
+ * Contenido interno del sidebar (logo + navegación + cuenta), compartido entre el riel de escritorio
+ * y el drawer mobile. `colapsada` sólo aplica a escritorio; el drawer siempre va expandido.
+ * `onNavegar` se dispara al tocar un ítem o salir (lo usa el drawer para cerrarse).
+ */
+function ContenidoSidebar({
+  colapsada,
+  onNavegar,
+}: {
+  colapsada: boolean;
+  onNavegar?: () => void;
+}) {
   const navigate = useNavigate();
   const location = useLocation();
   const cuenta = cuentaActual();
-  const [colapsada, setColapsada] = useState(leerColapsada);
-
-  // Calculamos el activo a mano (no con el className-función de NavLink): cuando el ítem va envuelto
-  // en TooltipTrigger asChild (riel colapsado), el Slot de Radix rompe esa función y se perdía el
-  // resaltado. Con un string siempre funciona, colapsada o no.
-  function activo(to: string, end?: boolean): boolean {
-    const p = location.pathname;
-    return end ? p === to : p === to || p.startsWith(to.endsWith('/') ? to : to + '/');
-  }
-
-  function toggle() {
-    setColapsada(prev => {
-      const v = !prev;
-      try {
-        localStorage.setItem(LS_COLAPSADA, v ? '1' : '0');
-      } catch {
-        /* ignore */
-      }
-      return v;
-    });
-  }
 
   // El ítem del panel sólo aparece para cuentas admin (la ruta /admin además está protegida en back).
   const items = esAdmin()
     ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
     : nav;
 
-  return (
-    <aside
-      className={cn(
-        'relative hidden lg:flex shrink-0 flex-col py-7 text-[hsl(var(--sidebar-foreground))] transition-[width] duration-300 ease-in-out',
-        colapsada ? 'w-[78px] px-3' : 'w-72 px-4'
-      )}
-      style={{ background: 'hsl(var(--sidebar))' }}
-    >
-      {/* Botón flotante para colapsar/expandir, montado sobre el borde derecho. */}
-      <button
-        onClick={toggle}
-        title={colapsada ? 'Expandir menú' : 'Colapsar menú'}
-        aria-label={colapsada ? 'Expandir menú' : 'Colapsar menú'}
-        className="absolute -right-3 top-9 z-40 flex h-6 w-6 items-center justify-center rounded-full border border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-muted))] shadow-md transition-colors hover:text-white"
-      >
-        {colapsada ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
-      </button>
+  function salir() {
+    resetChatSoporte(); // limpia la sesión de Crisp: la próxima cuenta no hereda el chat
+    logoutCuenta();
+    onNavegar?.();
+    navigate('/login');
+  }
 
+  return (
+    <>
       {/* Logo */}
       <div
         className={cn(
@@ -112,11 +103,12 @@ export function Sidebar() {
 
       <nav className={cn('flex-1', colapsada ? 'flex flex-col items-center gap-2' : 'space-y-1')}>
         {items.map(item => {
-          const isActive = activo(item.to, item.end);
+          const isActive = rutaActiva(location.pathname, item.to, item.end);
           const link = (
             <NavLink
               to={item.to}
               end={item.end}
+              onClick={onNavegar}
               className={cn(
                 'flex items-center rounded-xl font-medium transition-colors',
                 colapsada ? 'h-11 w-11 justify-center' : 'gap-3 px-3.5 py-2.5 text-sm',
@@ -158,11 +150,7 @@ export function Sidebar() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={() => {
-                    resetChatSoporte();
-                    logoutCuenta();
-                    navigate('/login');
-                  }}
+                  onClick={salir}
                   aria-label="Salir"
                   className="text-[hsl(var(--sidebar-muted))] hover:text-white transition-colors p-1.5 rounded-md hover:bg-[hsl(var(--sidebar-hover))]"
                 >
@@ -184,11 +172,7 @@ export function Sidebar() {
               </div>
             </div>
             <button
-              onClick={() => {
-                resetChatSoporte(); // limpia la sesión de Crisp: la próxima cuenta no hereda el chat
-                logoutCuenta();
-                navigate('/login');
-              }}
+              onClick={salir}
               className="text-[hsl(var(--sidebar-muted))] hover:text-white transition-colors p-1.5 rounded-md hover:bg-[hsl(var(--sidebar-hover))]"
               title="Salir"
             >
@@ -197,6 +181,82 @@ export function Sidebar() {
           </div>
         )}
       </div>
-    </aside>
+    </>
+  );
+}
+
+export function Sidebar({
+  abiertoMobile = false,
+  onCerrarMobile,
+}: {
+  abiertoMobile?: boolean;
+  onCerrarMobile?: () => void;
+}) {
+  const [colapsada, setColapsada] = useState(leerColapsada);
+
+  function toggle() {
+    setColapsada(prev => {
+      const v = !prev;
+      try {
+        localStorage.setItem(LS_COLAPSADA, v ? '1' : '0');
+      } catch {
+        /* ignore */
+      }
+      return v;
+    });
+  }
+
+  return (
+    <>
+      {/* Riel de escritorio (≥ lg). Oculto en mobile. */}
+      <aside
+        className={cn(
+          'relative hidden lg:flex shrink-0 flex-col py-7 text-[hsl(var(--sidebar-foreground))] transition-[width] duration-300 ease-in-out',
+          colapsada ? 'w-[78px] px-3' : 'w-72 px-4'
+        )}
+        style={{ background: 'hsl(var(--sidebar))' }}
+      >
+        {/* Botón flotante para colapsar/expandir, montado sobre el borde derecho. */}
+        <button
+          onClick={toggle}
+          title={colapsada ? 'Expandir menú' : 'Colapsar menú'}
+          aria-label={colapsada ? 'Expandir menú' : 'Colapsar menú'}
+          className="absolute -right-3 top-9 z-40 flex h-6 w-6 items-center justify-center rounded-full border border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-muted))] shadow-md transition-colors hover:text-white"
+        >
+          {colapsada ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+        </button>
+
+        <ContenidoSidebar colapsada={colapsada} />
+      </aside>
+
+      {/* Drawer mobile (< lg). Backdrop + panel deslizable controlados desde el AppLayout. */}
+      <div className="lg:hidden" aria-hidden={!abiertoMobile}>
+        {/* Backdrop */}
+        <div
+          onClick={onCerrarMobile}
+          className={cn(
+            'fixed inset-0 z-40 bg-black/50 transition-opacity duration-300',
+            abiertoMobile ? 'opacity-100' : 'pointer-events-none opacity-0'
+          )}
+        />
+        {/* Panel */}
+        <aside
+          className={cn(
+            'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col px-4 py-7 text-[hsl(var(--sidebar-foreground))] shadow-2xl transition-transform duration-300 ease-in-out',
+            abiertoMobile ? 'translate-x-0' : '-translate-x-full'
+          )}
+          style={{ background: 'hsl(var(--sidebar))' }}
+        >
+          <button
+            onClick={onCerrarMobile}
+            aria-label="Cerrar menú"
+            className="absolute right-3 top-7 z-10 flex h-8 w-8 items-center justify-center rounded-lg text-[hsl(var(--sidebar-muted))] transition-colors hover:bg-[hsl(var(--sidebar-hover))] hover:text-white"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <ContenidoSidebar colapsada={false} onNavegar={onCerrarMobile} />
+        </aside>
+      </div>
+    </>
   );
 }

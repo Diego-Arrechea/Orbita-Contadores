@@ -114,16 +114,16 @@ export function Configuracion() {
       )}
 
       <Tabs defaultValue="ventanas">
-        <TabsList>
-          <TabsTrigger value="ventanas"><Calendar className="h-3.5 w-3.5" />Ventanas</TabsTrigger>
-          <TabsTrigger value="umbrales"><Bell className="h-3.5 w-3.5" />Alertas</TabsTrigger>
-          <TabsTrigger value="categorias"><Database className="h-3.5 w-3.5" />Categorías</TabsTrigger>
-          <TabsTrigger value="causales"><Info className="h-3.5 w-3.5" />Causales</TabsTrigger>
-          <TabsTrigger value="notificaciones"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
+        <TabsList className="flex w-full max-w-full justify-start overflow-x-auto scrollbar-thin">
+          <TabsTrigger value="ventanas" className="shrink-0"><Calendar className="h-3.5 w-3.5" />Ventanas</TabsTrigger>
+          <TabsTrigger value="umbrales" className="shrink-0"><Bell className="h-3.5 w-3.5" />Alertas</TabsTrigger>
+          <TabsTrigger value="categorias" className="shrink-0"><Database className="h-3.5 w-3.5" />Categorías</TabsTrigger>
+          <TabsTrigger value="causales" className="shrink-0"><Info className="h-3.5 w-3.5" />Causales</TabsTrigger>
+          <TabsTrigger value="notificaciones" className="shrink-0"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
         </TabsList>
 
         <TabsContent value="ventanas">
-          <Card className="p-6">
+          <Card className="p-4 sm:p-6">
             <div className="text-base font-semibold mb-1">Ventanas de recategorización</div>
             <p className="text-sm text-muted-foreground mb-5">
               ARCA puede prorrogar estas fechas. Si publican una prórroga, actualizá manualmente
@@ -171,7 +171,7 @@ export function Configuracion() {
         </TabsContent>
 
         <TabsContent value="umbrales">
-          <Card className="p-6">
+          <Card className="p-4 sm:p-6">
             <div className="text-base font-semibold mb-1">Configuración de alertas</div>
             <p className="text-sm text-muted-foreground mb-5">
               Definí cuándo el sistema marca un cliente en amarillo (aviso) o en rojo (urgente). Los
@@ -248,36 +248,74 @@ export function Configuracion() {
                 en el Boletín Oficial.
               </p>
             </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Cat.</TableHead>
-                  <TableHead className="text-right">Tope facturación anual</TableHead>
-                  <TableHead className="text-right">Cuota servicios</TableHead>
-                  <TableHead className="text-right">Cuota comercio</TableHead>
-                  <TableHead className="text-right">Superficie máx.</TableHead>
-                  <TableHead className="text-right">Energía máx.</TableHead>
-                  <TableHead className="text-right">Tope precio unit.</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {CATEGORIAS.map(c => (
-                  <TableRow key={c.codigo}>
-                    <TableCell>
-                      <Badge variant="outline" className="font-semibold">{c.codigo}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(c.topeAnual)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(c.cuotaServicios)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(c.cuotaComercio)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{c.superficieMax} m²</TableCell>
-                    <TableCell className="text-right tabular-nums">{c.energiaMaxKwh.toLocaleString('es-AR')} kWh</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {c.topePrecioUnitario ? formatCurrency(c.topePrecioUnitario) : '—'}
-                    </TableCell>
+            {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+            <div className="hidden lg:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Cat.</TableHead>
+                    <TableHead className="text-right">Tope facturación anual</TableHead>
+                    <TableHead className="text-right">Cuota servicios</TableHead>
+                    <TableHead className="text-right">Cuota comercio</TableHead>
+                    <TableHead className="text-right">Superficie máx.</TableHead>
+                    <TableHead className="text-right">Energía máx.</TableHead>
+                    <TableHead className="text-right">Tope precio unit.</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {CATEGORIAS.map(c => (
+                    <TableRow key={c.codigo}>
+                      <TableCell>
+                        <Badge variant="outline" className="font-semibold">{c.codigo}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(c.topeAnual)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(c.cuotaServicios)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(c.cuotaComercio)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{c.superficieMax} m²</TableCell>
+                      <TableCell className="text-right tabular-nums">{c.energiaMaxKwh.toLocaleString('es-AR')} kWh</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {c.topePrecioUnitario ? formatCurrency(c.topePrecioUnitario) : '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="space-y-3 p-4 lg:hidden">
+              {CATEGORIAS.map(c => (
+                <div key={c.codigo} className="rounded-xl border border-border/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="font-semibold">{c.codigo}</Badge>
+                    <span className="text-sm tabular-nums font-medium">{formatCurrency(c.topeAnual)}</span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Cuota serv.</span>
+                      <span className="tabular-nums">{formatCurrency(c.cuotaServicios)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Cuota com.</span>
+                      <span className="tabular-nums">{formatCurrency(c.cuotaComercio)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Superficie</span>
+                      <span className="tabular-nums">{c.superficieMax} m²</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Energía</span>
+                      <span className="tabular-nums">{c.energiaMaxKwh.toLocaleString('es-AR')} kWh</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Precio unit.</span>
+                      <span className="tabular-nums">
+                        {c.topePrecioUnitario ? formatCurrency(c.topePrecioUnitario) : '—'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
             <Separator />
             <div className="p-4 flex justify-end gap-2">
               <Button variant="outline">Importar desde Excel</Button>
@@ -297,45 +335,61 @@ export function Configuracion() {
                 hace en el detalle de cada cliente.
               </p>
             </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">#</TableHead>
-                  <TableHead>Descripción</TableHead>
-                  <TableHead>Seguimiento</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {CAUSALES_EXCLUSION.map((c, i) => (
-                  <TableRow key={c.codigo}>
-                    <TableCell className="text-muted-foreground tabular-nums">{i + 1}</TableCell>
-                    <TableCell className="text-sm">{c.descripcion}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          c.modo === 'auto'
-                            ? 'success'
-                            : c.modo === 'parcial'
-                              ? 'warning'
-                              : 'muted'
-                        }
-                      >
-                        {c.modo === 'auto'
-                          ? 'Automático'
-                          : c.modo === 'parcial'
-                            ? 'Parcial'
-                            : 'Manual'}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            {(() => {
+              const ModoBadge = ({ modo }: { modo: string }) => (
+                <Badge
+                  variant={modo === 'auto' ? 'success' : modo === 'parcial' ? 'warning' : 'muted'}
+                >
+                  {modo === 'auto' ? 'Automático' : modo === 'parcial' ? 'Parcial' : 'Manual'}
+                </Badge>
+              );
+              return (
+                <>
+                  {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+                  <div className="hidden lg:block">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-10">#</TableHead>
+                          <TableHead>Descripción</TableHead>
+                          <TableHead>Seguimiento</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {CAUSALES_EXCLUSION.map((c, i) => (
+                          <TableRow key={c.codigo}>
+                            <TableCell className="text-muted-foreground tabular-nums">{i + 1}</TableCell>
+                            <TableCell className="text-sm">{c.descripcion}</TableCell>
+                            <TableCell>
+                              <ModoBadge modo={c.modo} />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  <div className="space-y-3 p-4 lg:hidden">
+                    {CAUSALES_EXCLUSION.map((c, i) => (
+                      <div key={c.codigo} className="rounded-xl border border-border/60 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="text-sm">
+                            <span className="text-muted-foreground tabular-nums mr-1.5">{i + 1}.</span>
+                            {c.descripcion}
+                          </div>
+                          <ModoBadge modo={c.modo} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
           </Card>
         </TabsContent>
 
         <TabsContent value="notificaciones">
-          <Card className="p-6">
+          <Card className="p-4 sm:p-6">
             <div className="text-base font-semibold mb-1">Alertas por WhatsApp</div>
             <p className="text-sm text-muted-foreground mb-5">
               Las alertas urgentes de tu cartera pueden llegarte por WhatsApp. Configurá las

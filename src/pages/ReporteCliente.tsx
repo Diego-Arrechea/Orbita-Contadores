@@ -63,7 +63,7 @@ export function ReporteCliente() {
       </div>
 
       {/* Documento */}
-      <div className="mx-auto max-w-[820px] my-6 bg-white text-foreground rounded-xl shadow-sm border border-border/60 p-10 print:my-0 print:p-0 print:border-0 print:shadow-none print:rounded-none">
+      <div className="mx-auto max-w-[820px] my-6 bg-white text-foreground rounded-xl shadow-sm border border-border/60 p-5 sm:p-10 print:my-0 print:p-0 print:border-0 print:shadow-none print:rounded-none">
         <header className="flex items-start justify-between border-b border-border/60 pb-5">
           <div className="flex items-center gap-2.5">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
