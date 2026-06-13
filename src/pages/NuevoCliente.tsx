@@ -174,7 +174,7 @@ export function NuevoCliente() {
 
       {/* PASO 1 — credenciales del contador */}
       {metodo === 'auto' && (paso === 'credenciales' || paso === 'listando') && (
-        <Card className="p-7">
+        <Card className="p-4 sm:p-7">
           <div className="flex items-start gap-3 mb-5">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/12 text-primary shrink-0">
               <ShieldCheck className="h-5 w-5" />
@@ -255,7 +255,7 @@ export function NuevoCliente() {
 
       {/* PASO 2 — elegir a quién monitorear */}
       {paso === 'elegir' && (
-        <Card className="p-7">
+        <Card className="p-4 sm:p-7">
           <div className="flex items-center gap-2 mb-1">
             <Users className="h-4 w-4 text-primary" />
             <span className="text-xs uppercase tracking-wider text-primary font-semibold">
@@ -326,7 +326,7 @@ export function NuevoCliente() {
 
       {/* PASO 3 — monitoreando (bootstrap del cert con barra) */}
       {paso === 'monitoreando' && (
-        <Card className="p-7">
+        <Card className="p-4 sm:p-7">
           {progreso?.estado === 'terminado' ? (
             <ResultadoFinal progreso={progreso} onDashboard={() => navigate('/')} />
           ) : progreso?.estado === 'error' ? (
@@ -468,7 +468,7 @@ function SubirCertForm({ onListo }: { onListo: () => void }) {
 
   if (estado === 'ok') {
     return (
-      <Card className="p-7">
+      <Card className="p-4 sm:p-7">
         <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-success/15 text-success shrink-0">
             <CheckCircle2 className="h-5 w-5" />
@@ -494,7 +494,7 @@ function SubirCertForm({ onListo }: { onListo: () => void }) {
   }
 
   return (
-    <Card className="p-7">
+    <Card className="p-4 sm:p-7">
       <div className="flex items-start gap-3 mb-5">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/12 text-primary shrink-0">
           <Upload className="h-5 w-5" />
@@ -510,7 +510,7 @@ function SubirCertForm({ onListo }: { onListo: () => void }) {
       </div>
 
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <Label htmlFor="cuit-c">CUIT del cliente</Label>
             <Input
@@ -536,7 +536,7 @@ function SubirCertForm({ onListo }: { onListo: () => void }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FileField label="Certificado (.crt)" accept=".crt,.pem,.cer" file={cert} onPick={f => leer(f, setCert)} />
           <FileField label="Clave privada (.key)" accept=".key,.pem" file={clave} onPick={f => leer(f, setClave)} />
         </div>

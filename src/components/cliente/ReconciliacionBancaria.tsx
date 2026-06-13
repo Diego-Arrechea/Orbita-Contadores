@@ -534,7 +534,7 @@ function ResultadosTable({
         />
       </div>
 
-      <div className="flex items-center justify-between p-4 border-b border-border/60">
+      <div className="flex flex-col gap-3 p-4 border-b border-border/60 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-sm text-muted-foreground max-w-xl">
           Cada acreditación se cruzó con una factura emitida por importe y CUIT originante.
         </div>
@@ -552,28 +552,117 @@ function ResultadosTable({
         </div>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Fecha</TableHead>
-            <TableHead>Fuente</TableHead>
-            <TableHead>Originante</TableHead>
-            <TableHead className="text-right">Monto</TableHead>
-            <TableHead>Match automático</TableHead>
-            <TableHead>Decisión del contador</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {visibles.map(m => (
-            <MovimientoRow
-              key={m.id}
-              mov={m}
-              onClasificar={onClasificar}
-              clasificando={clasificandoId === m.id}
-            />
-          ))}
-        </TableBody>
-      </Table>
+      {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+      <div className="hidden lg:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Fecha</TableHead>
+              <TableHead>Fuente</TableHead>
+              <TableHead>Originante</TableHead>
+              <TableHead className="text-right">Monto</TableHead>
+              <TableHead>Match automático</TableHead>
+              <TableHead>Decisión del contador</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {visibles.map(m => (
+              <MovimientoRow
+                key={m.id}
+                mov={m}
+                onClasificar={onClasificar}
+                clasificando={clasificandoId === m.id}
+              />
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="space-y-3 p-4 lg:hidden">
+        {visibles.map(m => (
+          <MovimientoCard
+            key={m.id}
+            mov={m}
+            onClasificar={onClasificar}
+            clasificando={clasificandoId === m.id}
+          />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/** Versión tarjeta de MovimientoRow para mobile: mismos datos y acciones, apilados. */
+function MovimientoCard({
+  mov,
+  onClasificar,
+  clasificando,
+}: {
+  mov: MovimientoBancario;
+  onClasificar?: (mov: MovimientoBancario, marca: 'ingreso-actividad' | 'no-es-venta') => void;
+  clasificando?: boolean;
+}) {
+  const originante = mov.nombreOriginante || mov.descripcion || '—';
+  return (
+    <Card className="space-y-2 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-sm font-medium truncate">{originante}</div>
+          <div className="text-xs text-muted-foreground tabular-nums">
+            {mov.cuitOriginante ? formatCuit(mov.cuitOriginante) : ''}
+          </div>
+        </div>
+        <div className="text-right tabular-nums font-medium whitespace-nowrap">
+          {formatCurrency(mov.monto)}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <span>{formatDate(mov.fecha)}</span>
+        <Badge variant="muted" className="capitalize">
+          {mov.fuente === 'mercadopago' ? 'MercadoPago' : mov.fuente}
+        </Badge>
+        {mov.comprobanteMatcheadoId ? (
+          <Badge variant={CONFIANZA_TONO[mov.matchConfianza ?? 'media'] ?? 'success'}>
+            <Link2 className="h-3 w-3" /> Factura {mov.comprobanteMatcheadoId.slice(-4)}
+          </Badge>
+        ) : (
+          <span>No matcheado</span>
+        )}
+        {mov.matchConfianza === 'sugerido' && (
+          <span className="text-warning-foreground">a confirmar</span>
+        )}
+      </div>
+
+      {!mov.comprobanteMatcheadoId &&
+        (mov.marcadoComo === 'ingreso-actividad' ? (
+          <Badge variant="warning">Ingreso de actividad</Badge>
+        ) : mov.marcadoComo === 'no-es-venta' ? (
+          <Badge variant="muted">No es venta</Badge>
+        ) : clasificando ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : (
+          <div className="flex gap-2 pt-1">
+            <Button
+              size="sm"
+              variant="soft"
+              className="flex-1"
+              onClick={() => onClasificar?.(mov, 'ingreso-actividad')}
+              disabled={!onClasificar}
+            >
+              Es venta
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="flex-1"
+              onClick={() => onClasificar?.(mov, 'no-es-venta')}
+              disabled={!onClasificar}
+            >
+              No es venta
+            </Button>
+          </div>
+        ))}
     </Card>
   );
 }

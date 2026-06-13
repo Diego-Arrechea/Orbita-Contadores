@@ -39,10 +39,10 @@ import { EditarClienteDialog } from '@/components/cliente/EditarClienteDialog';
 import { EliminarClienteDialog } from '@/components/cliente/EliminarClienteDialog';
 
 const tabsListClass =
-  'bg-transparent p-0 h-auto rounded-none gap-7 overflow-x-auto scrollbar-thin justify-start';
+  'flex w-full bg-transparent p-0 h-auto rounded-none gap-5 sm:gap-7 overflow-x-auto scrollbar-thin justify-start';
 
 const tabTriggerClass =
-  'data-[state=active]:bg-transparent data-[state=active]:shadow-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-foreground rounded-none px-0 py-3.5 text-muted-foreground hover:text-foreground transition-colors';
+  'shrink-0 data-[state=active]:bg-transparent data-[state=active]:shadow-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-foreground rounded-none px-0 py-3.5 text-muted-foreground hover:text-foreground transition-colors';
 
 export function ClienteDetalle() {
   const { id } = useParams<{ id: string }>();
@@ -97,7 +97,7 @@ export function ClienteDetalle() {
       <Tabs defaultValue="situacion" className="space-y-5">
         <Card className="overflow-hidden p-0 border-primary/15">
           <div
-            className="p-7 relative"
+            className="p-4 sm:p-7 relative"
             style={{
               background:
                 'linear-gradient(135deg, hsl(var(--primary) / 0.16) 0%, hsl(var(--accent) / 0.6) 38%, hsl(var(--card)) 100%)',
@@ -110,9 +110,9 @@ export function ClienteDetalle() {
                   'linear-gradient(90deg, transparent, hsl(var(--primary) / 0.5), transparent)',
               }}
             />
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="flex items-start gap-5">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground text-xl font-semibold shrink-0 shadow-md">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 sm:gap-5 min-w-0">
+                <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground text-base sm:text-xl font-semibold shrink-0 shadow-md">
                   {cliente.nombre
                     .split(' ')
                     .map(p => p[0])
@@ -122,7 +122,7 @@ export function ClienteDetalle() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <h1 className="text-2xl font-semibold tracking-tight">{cliente.nombre}</h1>
+                    <h1 className="text-lg sm:text-2xl font-semibold tracking-tight">{cliente.nombre}</h1>
                     <Badge variant="outline" className="font-semibold bg-card/70">
                       {esMonotributista(cliente)
                         ? `Cat. ${cliente.categoria}`
@@ -149,7 +149,7 @@ export function ClienteDetalle() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -216,7 +216,7 @@ export function ClienteDetalle() {
               )}
           </div>
 
-          <div className="border-t border-border/60 bg-card/70 px-7">
+          <div className="border-t border-border/60 bg-card/70 px-4 sm:px-7">
             <TabsList className={tabsListClass}>
               <TabsTrigger value="situacion" className={tabTriggerClass}>Situación actual</TabsTrigger>
               <TabsTrigger value="estado-cuenta" className={tabTriggerClass}>Estado de cuenta</TabsTrigger>

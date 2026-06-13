@@ -200,39 +200,75 @@ export function EstadoCuenta({ cliente }: Props) {
           </div>
 
           {movimientos.length > 0 ? (
-            <Card className="p-0 overflow-hidden">
-              <div className="px-5 py-3 border-b border-border/60 text-sm font-medium">
-                Movimientos de la cuenta corriente
-              </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[90px]">Período</TableHead>
-                    <TableHead>Concepto</TableHead>
-                    <TableHead className="w-[120px]">Vencimiento</TableHead>
-                    <TableHead className="text-right w-[130px]">Debe</TableHead>
-                    <TableHead className="text-right w-[130px]">Haber</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {movimientos.map((m, i) => (
-                    <TableRow key={`${m.periodo}-${m.impuesto}-${m.descripcion}-${i}`}>
-                      <TableCell className="tabular-nums">{m.periodo}</TableCell>
-                      <TableCell className="text-sm">{m.descripcion}</TableCell>
-                      <TableCell className="tabular-nums text-sm text-muted-foreground">
-                        {m.vencimiento}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {m.debe ? formatCurrency(m.debe) : '—'}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-success">
-                        {m.haber ? formatCurrency(m.haber) : '—'}
-                      </TableCell>
+            <>
+              {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+              <Card className="hidden p-0 overflow-hidden lg:block">
+                <div className="px-5 py-3 border-b border-border/60 text-sm font-medium">
+                  Movimientos de la cuenta corriente
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[90px]">Período</TableHead>
+                      <TableHead>Concepto</TableHead>
+                      <TableHead className="w-[120px]">Vencimiento</TableHead>
+                      <TableHead className="text-right w-[130px]">Debe</TableHead>
+                      <TableHead className="text-right w-[130px]">Haber</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {movimientos.map((m, i) => (
+                      <TableRow key={`${m.periodo}-${m.impuesto}-${m.descripcion}-${i}`}>
+                        <TableCell className="tabular-nums">{m.periodo}</TableCell>
+                        <TableCell className="text-sm">{m.descripcion}</TableCell>
+                        <TableCell className="tabular-nums text-sm text-muted-foreground">
+                          {m.vencimiento}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {m.debe ? formatCurrency(m.debe) : '—'}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-success">
+                          {m.haber ? formatCurrency(m.haber) : '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+
+              <div className="space-y-3 lg:hidden">
+                <div className="text-sm font-medium">Movimientos de la cuenta corriente</div>
+                {movimientos.map((m, i) => (
+                  <Card key={`${m.periodo}-${m.impuesto}-${m.descripcion}-${i}`} className="space-y-2 p-4 text-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-medium">{m.descripcion}</div>
+                      <span className="tabular-nums text-xs text-muted-foreground whitespace-nowrap">
+                        {m.periodo}
+                      </span>
+                    </div>
+                    {m.vencimiento && (
+                      <div className="text-xs text-muted-foreground">
+                        Vencimiento: <span className="tabular-nums">{m.vencimiento}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between border-t border-border/50 pt-2">
+                      <span className="text-muted-foreground">
+                        Debe:{' '}
+                        <span className="tabular-nums text-foreground">
+                          {m.debe ? formatCurrency(m.debe) : '—'}
+                        </span>
+                      </span>
+                      <span className="text-muted-foreground">
+                        Haber:{' '}
+                        <span className="tabular-nums text-success">
+                          {m.haber ? formatCurrency(m.haber) : '—'}
+                        </span>
+                      </span>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </>
           ) : (
             <Card className="p-6">
               <p className="text-sm text-muted-foreground">

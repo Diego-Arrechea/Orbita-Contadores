@@ -18,7 +18,7 @@ export function SituacionActual({ cliente, calc }: Props) {
   if (!esMonotributista(cliente)) {
     const esRI = cliente.regimen === 'responsable_inscripto';
     return (
-      <Card className="p-7">
+      <Card className="p-5 sm:p-7">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <Building2 className="h-5 w-5" />
@@ -54,7 +54,7 @@ export function SituacionActual({ cliente, calc }: Props) {
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      <Card className="p-7 col-span-full lg:col-span-2">
+      <Card className="p-5 sm:p-7 col-span-full lg:col-span-2">
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
@@ -66,7 +66,7 @@ export function SituacionActual({ cliente, calc }: Props) {
               )}
             </div>
             <div className="flex items-baseline gap-3">
-              <div className="text-4xl font-semibold tabular-nums tracking-tight">
+              <div className="text-3xl sm:text-4xl font-semibold tabular-nums tracking-tight">
                 {formatCurrency(facturacionMostrada)}
               </div>
               <div className="text-sm text-muted-foreground">
@@ -107,7 +107,7 @@ export function SituacionActual({ cliente, calc }: Props) {
         )}
 
         {debeRecategorizar && (
-          <div className="mt-4 flex items-center gap-2 rounded-lg bg-warning/15 border border-warning/30 px-3 py-2.5 text-sm">
+          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-warning/15 border border-warning/30 px-3 py-2.5 text-sm">
             <TrendingUp className="h-4 w-4 text-warning-foreground" />
             <span>Con la facturación actual debería recategorizarse a</span>
             <Badge variant="warning" className="font-semibold">
@@ -121,7 +121,7 @@ export function SituacionActual({ cliente, calc }: Props) {
         )}
       </Card>
 
-      <Card className="p-7">
+      <Card className="p-5 sm:p-7">
         <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
           Próxima ventana
         </div>
@@ -142,7 +142,7 @@ export function SituacionActual({ cliente, calc }: Props) {
         )}
       </Card>
 
-      <Card className="p-7">
+      <Card className="p-5 sm:p-7">
         <div className="flex items-center justify-between mb-1">
           <div className="text-xs uppercase tracking-wider text-muted-foreground">
             Ratio compras / tope K
@@ -153,7 +153,7 @@ export function SituacionActual({ cliente, calc }: Props) {
             </Badge>
           )}
         </div>
-        <div className="text-4xl font-semibold tabular-nums tracking-tight">
+        <div className="text-3xl sm:text-4xl font-semibold tabular-nums tracking-tight">
           {formatPercent(ratioPct, 1)}
         </div>
         <div className="text-xs text-muted-foreground mt-2 leading-relaxed">
@@ -163,12 +163,12 @@ export function SituacionActual({ cliente, calc }: Props) {
         </div>
       </Card>
 
-      <Card className="p-7">
+      <Card className="p-5 sm:p-7">
         <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
           Proyección con inflación
         </div>
         <div className="flex items-baseline gap-2">
-          <div className="text-4xl font-semibold tabular-nums tracking-tight">
+          <div className="text-3xl sm:text-4xl font-semibold tabular-nums tracking-tight">
             Cat. {calc.categoriaConInflacion.codigo}
           </div>
         </div>
@@ -182,7 +182,7 @@ export function SituacionActual({ cliente, calc }: Props) {
         </div>
       </Card>
 
-      <Card className="p-7">
+      <Card className="p-5 sm:p-7">
         <div className="flex items-center gap-2 mb-1">
           <CreditCard className="h-4 w-4 text-muted-foreground" />
           <div className="text-xs uppercase tracking-wider text-muted-foreground">

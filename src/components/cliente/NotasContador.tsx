@@ -37,7 +37,7 @@ export function NotasContador({ cliente }: Props) {
   }
 
   return (
-    <Card className="p-6">
+    <Card className="p-4 sm:p-6">
       <div className="mb-3">
         <div className="text-base font-semibold">Notas del contador</div>
         <p className="text-sm text-muted-foreground">

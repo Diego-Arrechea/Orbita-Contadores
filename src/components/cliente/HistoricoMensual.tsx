@@ -37,8 +37,8 @@ export function HistoricoMensual({ cliente }: Props) {
   }));
 
   return (
-    <Card className="p-6">
-      <div className="flex items-center justify-between mb-4">
+    <Card className="p-4 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
         <div>
           <div className="text-base font-semibold">Histórico de últimos 13 meses</div>
           <div className="text-sm text-muted-foreground">
@@ -46,10 +46,10 @@ export function HistoricoMensual({ cliente }: Props) {
           </div>
         </div>
         <Tabs value={vista} onValueChange={(v) => setVista(v as typeof vista)}>
-          <TabsList>
-            <TabsTrigger value="ambos">Ambos</TabsTrigger>
-            <TabsTrigger value="emitidas">Emitidas</TabsTrigger>
-            <TabsTrigger value="recibidas">Recibidas</TabsTrigger>
+          <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="ambos" className="flex-1 sm:flex-none">Ambos</TabsTrigger>
+            <TabsTrigger value="emitidas" className="flex-1 sm:flex-none">Emitidas</TabsTrigger>
+            <TabsTrigger value="recibidas" className="flex-1 sm:flex-none">Recibidas</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -112,7 +112,8 @@ export function HistoricoMensual({ cliente }: Props) {
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-6 max-h-80 overflow-auto scrollbar-thin -mx-6 px-6">
+      {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+      <div className="mt-6 hidden max-h-80 overflow-auto scrollbar-thin -mx-6 px-6 lg:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -160,6 +161,55 @@ export function HistoricoMensual({ cliente }: Props) {
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      <div className="mt-5 space-y-3 lg:hidden">
+        {[...cliente.historialMensual].reverse().map(m => (
+          <div key={m.mes} className="rounded-xl border border-border/60 p-3">
+            <div className="flex items-center justify-between">
+              <span className="font-medium">{formatMesLargo(m.mes)}</span>
+              <span className="text-sm tabular-nums font-medium">
+                {formatCurrency(m.emitidasNetas)}{' '}
+                <span className="text-xs font-normal text-muted-foreground">netas</span>
+              </span>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Emit. brutas</span>
+                <span className="tabular-nums">{formatCurrency(m.emitidasBrutas)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">NC</span>
+                <span className="tabular-nums text-muted-foreground">
+                  {m.notasCredito > 0 ? `-${formatCurrency(m.notasCredito)}` : '—'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Ing. no fact.</span>
+                <span
+                  className={cn(
+                    'tabular-nums',
+                    m.ingresosNoFacturados > 0
+                      ? 'text-warning-foreground font-medium'
+                      : 'text-muted-foreground',
+                  )}
+                >
+                  {m.ingresosNoFacturados > 0 ? formatCurrency(m.ingresosNoFacturados) : '—'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Recibidas</span>
+                <span className="tabular-nums">{formatCurrency(m.recibidas)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Comput. ratio</span>
+                <span className="tabular-nums text-muted-foreground">
+                  {formatCurrency(m.recibidasComputables)}
+                </span>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </Card>
   );

@@ -151,20 +151,20 @@ export function Admin() {
       </div>
 
       <Tabs defaultValue="cuentas">
-        <TabsList>
-          <TabsTrigger value="cuentas">
+        <TabsList className="flex w-full max-w-full justify-start overflow-x-auto scrollbar-thin">
+          <TabsTrigger value="cuentas" className="shrink-0">
             <Users className="h-4 w-4" /> Cuentas
           </TabsTrigger>
-          <TabsTrigger value="clientes">
+          <TabsTrigger value="clientes" className="shrink-0">
             <Building2 className="h-4 w-4" /> Clientes
           </TabsTrigger>
-          <TabsTrigger value="motor">
+          <TabsTrigger value="motor" className="shrink-0">
             <Cpu className="h-4 w-4" /> Motor
           </TabsTrigger>
-          <TabsTrigger value="metricas">
+          <TabsTrigger value="metricas" className="shrink-0">
             <Activity className="h-4 w-4" /> Métricas
           </TabsTrigger>
-          <TabsTrigger value="auditoria">
+          <TabsTrigger value="auditoria" className="shrink-0">
             <ShieldCheck className="h-4 w-4" /> Auditoría
           </TabsTrigger>
         </TabsList>
@@ -287,7 +287,8 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
         </div>
       )}
 
-      <Card className="overflow-hidden">
+      {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+      <Card className="hidden overflow-hidden lg:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -374,6 +375,86 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
           </TableBody>
         </Table>
       </Card>
+
+      <div className="space-y-3 lg:hidden">
+        {filtrados.map(u => (
+          <Card key={u.id} className="space-y-3 p-4">
+            <button
+              type="button"
+              onClick={() => setFichaId(u.id)}
+              className="flex w-full items-start justify-between gap-2 text-left"
+              title="Ver ficha del contador"
+            >
+              <div className="min-w-0">
+                <div className="font-medium flex items-center gap-2 flex-wrap">
+                  {u.nombre} {u.apellido}
+                  {u.rol === 'admin' && (
+                    <Badge variant="default" className="text-[10px]">
+                      <ShieldCheck className="h-3 w-3" /> admin
+                    </Badge>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground break-all">{u.email}</div>
+              </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </button>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {u.activo ? (
+                <Badge variant="success">Activa</Badge>
+              ) : (
+                <Badge variant="muted">Inhabilitada</Badge>
+              )}
+              <TrialBadge trialFin={u.trial_fin} rol={u.rol} />
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {u.clientes} cliente(s)
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+              <div>
+                <span className="block text-[11px] uppercase tracking-wider">Alta</span>
+                {fechaCorta(u.creado_en)}
+              </div>
+              <div>
+                <span className="block text-[11px] uppercase tracking-wider">Último acceso</span>
+                {fechaHora(u.ultimo_acceso)}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                disabled={accionando === u.id || !u.activo || u.id === miId}
+                onClick={() => void entrarComo(u)}
+              >
+                <LogIn className="h-4 w-4" /> Entrar como
+              </Button>
+              <Button
+                variant={u.activo ? 'destructive' : 'default'}
+                size="sm"
+                className="flex-1"
+                disabled={accionando === u.id || u.id === miId}
+                onClick={() => void toggleActivo(u)}
+              >
+                {accionando === u.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Power className="h-4 w-4" />
+                )}
+                {u.activo ? 'Desactivar' : 'Activar'}
+              </Button>
+            </div>
+          </Card>
+        ))}
+        {filtrados.length === 0 && (
+          <Card className="p-8 text-center text-sm text-muted-foreground">
+            No hay cuentas que coincidan con la búsqueda.
+          </Card>
+        )}
+      </div>
     </div>
   );
 }
@@ -403,91 +484,137 @@ function ClientesTabla({
   const visibles = pageSize ? filas.slice(pag * pageSize, (pag + 1) * pageSize) : filas;
   const cols = modo === 'actividad' ? 5 : 3;
 
+  const paginacion = pageSize && totalPaginas > 1 && (
+    <div className="flex items-center justify-between border-t border-border/60 px-4 py-2.5 text-sm">
+      <span className="text-muted-foreground">
+        {filas.length} en total · página {pag + 1} de {totalPaginas}
+      </span>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={pag === 0}
+          onClick={() => setPagina(p => Math.max(0, p - 1))}
+        >
+          <ChevronLeft className="h-4 w-4" /> Anterior
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={pag >= totalPaginas - 1}
+          onClick={() => setPagina(p => Math.min(totalPaginas - 1, p + 1))}
+        >
+          Siguiente <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
-    <Card className="overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Cliente</TableHead>
-            <TableHead>Contador</TableHead>
-            {modo === 'actividad' ? (
-              <>
-                <TableHead className="text-center">Resultado</TableHead>
-                <TableHead className="text-right">Nuevos</TableHead>
-                <TableHead className="text-right">Cuándo</TableHead>
-              </>
-            ) : (
-              <TableHead className="text-right">Última sync</TableHead>
-            )}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {visibles.map((f, i) => (
-            <TableRow key={`${f.cuit}-${f.ultima ?? ''}-${i}`}>
-              <TableCell className="text-sm">
-                <div>{f.cliente || '—'}</div>
-                <div className="text-xs text-muted-foreground tabular-nums">{f.cuit}</div>
-              </TableCell>
-              <TableCell className="text-sm">{f.contador_email || '—'}</TableCell>
+    <>
+      {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+      <Card className="hidden overflow-hidden lg:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Cliente</TableHead>
+              <TableHead>Contador</TableHead>
               {modo === 'actividad' ? (
                 <>
-                  <TableCell className="text-center">
-                    {f.resultado === 'exitosa' ? (
-                      <Badge variant="success">OK</Badge>
-                    ) : (
-                      <Badge variant="danger">Falló</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right text-sm tabular-nums">
-                    {f.comprobantes ?? '—'}
-                  </TableCell>
+                  <TableHead className="text-center">Resultado</TableHead>
+                  <TableHead className="text-right">Nuevos</TableHead>
+                  <TableHead className="text-right">Cuándo</TableHead>
+                </>
+              ) : (
+                <TableHead className="text-right">Última sync</TableHead>
+              )}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {visibles.map((f, i) => (
+              <TableRow key={`${f.cuit}-${f.ultima ?? ''}-${i}`}>
+                <TableCell className="text-sm">
+                  <div>{f.cliente || '—'}</div>
+                  <div className="text-xs text-muted-foreground tabular-nums">{f.cuit}</div>
+                </TableCell>
+                <TableCell className="text-sm">{f.contador_email || '—'}</TableCell>
+                {modo === 'actividad' ? (
+                  <>
+                    <TableCell className="text-center">
+                      {f.resultado === 'exitosa' ? (
+                        <Badge variant="success">OK</Badge>
+                      ) : (
+                        <Badge variant="danger">Falló</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">
+                      {f.comprobantes ?? '—'}
+                    </TableCell>
+                    <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap">
+                      {haceTexto(f.horas_desde)}
+                    </TableCell>
+                  </>
+                ) : (
                   <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap">
                     {haceTexto(f.horas_desde)}
                   </TableCell>
-                </>
-              ) : (
-                <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap">
-                  {haceTexto(f.horas_desde)}
+                )}
+              </TableRow>
+            ))}
+            {filas.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={cols} className="text-center text-muted-foreground py-8">
+                  {modo === 'cola' ? 'No hay clientes pendientes: está todo al día. 🎉' : 'Sin actividad reciente.'}
                 </TableCell>
-              )}
-            </TableRow>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+        {paginacion}
+      </Card>
+
+      <div className="lg:hidden">
+        <div className="space-y-3">
+          {visibles.map((f, i) => (
+            <Card key={`${f.cuit}-${f.ultima ?? ''}-${i}`} className="space-y-2 p-4 text-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-medium">{f.cliente || '—'}</div>
+                  <div className="text-xs text-muted-foreground tabular-nums">{f.cuit}</div>
+                </div>
+                {modo === 'actividad' &&
+                  (f.resultado === 'exitosa' ? (
+                    <Badge variant="success">OK</Badge>
+                  ) : (
+                    <Badge variant="danger">Falló</Badge>
+                  ))}
+              </div>
+              <div className="text-xs text-muted-foreground break-all">
+                {f.contador_email || '—'}
+              </div>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                {modo === 'actividad' ? (
+                  <>
+                    <span className="tabular-nums">{f.comprobantes ?? '—'} nuevos</span>
+                    <span className="whitespace-nowrap">{haceTexto(f.horas_desde)}</span>
+                  </>
+                ) : (
+                  <span className="ml-auto whitespace-nowrap">
+                    última sync {haceTexto(f.horas_desde)}
+                  </span>
+                )}
+              </div>
+            </Card>
           ))}
           {filas.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={cols} className="text-center text-muted-foreground py-8">
-                {modo === 'cola' ? 'No hay clientes pendientes: está todo al día. 🎉' : 'Sin actividad reciente.'}
-              </TableCell>
-            </TableRow>
+            <Card className="p-8 text-center text-sm text-muted-foreground">
+              {modo === 'cola' ? 'No hay clientes pendientes: está todo al día. 🎉' : 'Sin actividad reciente.'}
+            </Card>
           )}
-        </TableBody>
-      </Table>
-
-      {pageSize && totalPaginas > 1 && (
-        <div className="flex items-center justify-between border-t border-border/60 px-4 py-2.5 text-sm">
-          <span className="text-muted-foreground">
-            {filas.length} en total · página {pag + 1} de {totalPaginas}
-          </span>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={pag === 0}
-              onClick={() => setPagina(p => Math.max(0, p - 1))}
-            >
-              <ChevronLeft className="h-4 w-4" /> Anterior
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={pag >= totalPaginas - 1}
-              onClick={() => setPagina(p => Math.min(totalPaginas - 1, p + 1))}
-            >
-              Siguiente <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
         </div>
-      )}
-    </Card>
+        {paginacion && <Card className="mt-3 overflow-hidden">{paginacion}</Card>}
+      </div>
+    </>
   );
 }
 
@@ -744,77 +871,133 @@ function SyncsFallidas({ fallidas }: { fallidas: AdminSyncFallida[] }) {
           No hay sincronizaciones con problemas recientes. 🎉
         </Card>
       ) : (
-        <Card className="overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="whitespace-nowrap">Fecha</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Contador</TableHead>
-                <TableHead className="text-center">Estado actual</TableHead>
-                <TableHead>Detalle del problema</TableHead>
-                <TableHead className="text-right">Acción</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {fallidas.map((f, i) => {
-                const corriendo = reintentando[f.cuit];
-                const err = errores[f.cuit];
-                return (
-                  <TableRow key={`${f.cuit}-${f.fecha}-${i}`}>
-                    <TableCell className="text-sm whitespace-nowrap">{fechaHora(f.fecha)}</TableCell>
-                    <TableCell className="text-sm">
-                      <div>{f.cliente || '—'}</div>
-                      <div className="text-xs text-muted-foreground tabular-nums">{f.cuit}</div>
-                    </TableCell>
-                    <TableCell className="text-sm">{f.contador_email || '—'}</TableCell>
-                    <TableCell className="text-center">
-                      {f.resuelto ? (
-                        <Badge variant="success" title={`Sincronizado después: ${fechaHora(f.ultima_sync_ok)}`}>
-                          <CheckCircle2 className="h-3 w-3" /> Resuelto
-                        </Badge>
-                      ) : (
-                        <Badge variant="danger">Sin resolver</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <code
-                        className="block max-w-sm truncate font-mono text-xs text-danger"
-                        title={f.motivo || ''}
-                      >
-                        {(f.motivo || '—').split('\n')[0]}
-                      </code>
-                      {err && <div className="text-xs text-danger mt-1">{err}</div>}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {f.resuelto ? (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={corriendo}
-                          onClick={() => void reintentar(f.cuit)}
-                          title="Volver a intentar la sincronización de este cliente"
+        <>
+          {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+          <Card className="hidden overflow-hidden lg:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="whitespace-nowrap">Fecha</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Contador</TableHead>
+                  <TableHead className="text-center">Estado actual</TableHead>
+                  <TableHead>Detalle del problema</TableHead>
+                  <TableHead className="text-right">Acción</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {fallidas.map((f, i) => {
+                  const corriendo = reintentando[f.cuit];
+                  const err = errores[f.cuit];
+                  return (
+                    <TableRow key={`${f.cuit}-${f.fecha}-${i}`}>
+                      <TableCell className="text-sm whitespace-nowrap">{fechaHora(f.fecha)}</TableCell>
+                      <TableCell className="text-sm">
+                        <div>{f.cliente || '—'}</div>
+                        <div className="text-xs text-muted-foreground tabular-nums">{f.cuit}</div>
+                      </TableCell>
+                      <TableCell className="text-sm">{f.contador_email || '—'}</TableCell>
+                      <TableCell className="text-center">
+                        {f.resuelto ? (
+                          <Badge variant="success" title={`Sincronizado después: ${fechaHora(f.ultima_sync_ok)}`}>
+                            <CheckCircle2 className="h-3 w-3" /> Resuelto
+                          </Badge>
+                        ) : (
+                          <Badge variant="danger">Sin resolver</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <code
+                          className="block max-w-sm truncate font-mono text-xs text-danger"
+                          title={f.motivo || ''}
                         >
-                          {corriendo ? (
-                            <>
-                              <Loader2 className="h-4 w-4 animate-spin" /> Reintentando…
-                            </>
-                          ) : (
-                            <>
-                              <RotateCw className="h-4 w-4" /> Reintentar
-                            </>
-                          )}
-                        </Button>
+                          {(f.motivo || '—').split('\n')[0]}
+                        </code>
+                        {err && <div className="text-xs text-danger mt-1">{err}</div>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {f.resuelto ? (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={corriendo}
+                            onClick={() => void reintentar(f.cuit)}
+                            title="Volver a intentar la sincronización de este cliente"
+                          >
+                            {corriendo ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" /> Reintentando…
+                              </>
+                            ) : (
+                              <>
+                                <RotateCw className="h-4 w-4" /> Reintentar
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Card>
+
+          <div className="space-y-3 lg:hidden">
+            {fallidas.map((f, i) => {
+              const corriendo = reintentando[f.cuit];
+              const err = errores[f.cuit];
+              return (
+                <Card key={`${f.cuit}-${f.fecha}-${i}`} className="space-y-2 p-4 text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium">{f.cliente || '—'}</div>
+                      <div className="text-xs text-muted-foreground tabular-nums">{f.cuit}</div>
+                    </div>
+                    {f.resuelto ? (
+                      <Badge variant="success" title={`Sincronizado después: ${fechaHora(f.ultima_sync_ok)}`}>
+                        <CheckCircle2 className="h-3 w-3" /> Resuelto
+                      </Badge>
+                    ) : (
+                      <Badge variant="danger">Sin resolver</Badge>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground break-all">
+                    {f.contador_email || '—'} · {fechaHora(f.fecha)}
+                  </div>
+                  <code
+                    className="block font-mono text-xs text-danger break-words"
+                    title={f.motivo || ''}
+                  >
+                    {(f.motivo || '—').split('\n')[0]}
+                  </code>
+                  {err && <div className="text-xs text-danger">{err}</div>}
+                  {!f.resuelto && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      disabled={corriendo}
+                      onClick={() => void reintentar(f.cuit)}
+                    >
+                      {corriendo ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" /> Reintentando…
+                        </>
+                      ) : (
+                        <>
+                          <RotateCw className="h-4 w-4" /> Reintentar
+                        </>
                       )}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </Card>
+                    </Button>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );
@@ -917,81 +1100,150 @@ function TablaClientes({
   mostrarContador: boolean;
 }) {
   const cols = mostrarContador ? 7 : 6;
+
+  function EstadoSync({ c }: { c: AdminCliente }) {
+    return (
+      <>
+        <div className="flex items-center gap-2">
+          {c.resultado_ultima_extraccion === 'exitosa' ? (
+            <Badge variant="success">
+              <CheckCircle2 className="h-3 w-3" /> OK
+            </Badge>
+          ) : c.resultado_ultima_extraccion === 'fallida' ? (
+            <Badge variant="danger">falló</Badge>
+          ) : (
+            <Badge variant="muted">sin datos</Badge>
+          )}
+          <span className="text-muted-foreground whitespace-nowrap">
+            {fechaCorta(c.ultima_extraccion)}
+          </span>
+        </div>
+        {c.resultado_ultima_extraccion === 'fallida' && c.motivo_ultima_extraccion && (
+          <div
+            className="text-xs text-danger truncate max-w-xs"
+            title={c.motivo_ultima_extraccion}
+          >
+            {c.motivo_ultima_extraccion.split('\n')[0]}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  function CuotaBadge({ c }: { c: AdminCliente }) {
+    return c.cuota_estado === 'al-dia' ? (
+      <Badge variant="success">al día</Badge>
+    ) : c.cuota_estado === 'con-deuda' ? (
+      <Badge variant="warning">con deuda</Badge>
+    ) : (
+      <span className="text-muted-foreground text-xs">—</span>
+    );
+  }
+
   return (
-    <Card className="overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Cliente</TableHead>
-            {mostrarContador && <TableHead>Contador</TableHead>}
-            <TableHead className="text-center">Régimen / Cat.</TableHead>
-            <TableHead className="text-right">Facturado 12m</TableHead>
-            <TableHead className="text-center">Comprob.</TableHead>
-            <TableHead className="text-center">Cuota</TableHead>
-            <TableHead>Última sincronización</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {clientes.map(c => (
-            <TableRow key={c.cuit}>
-              <TableCell>
+    <>
+      {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+      <Card className="hidden overflow-hidden lg:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Cliente</TableHead>
+              {mostrarContador && <TableHead>Contador</TableHead>}
+              <TableHead className="text-center">Régimen / Cat.</TableHead>
+              <TableHead className="text-right">Facturado 12m</TableHead>
+              <TableHead className="text-center">Comprob.</TableHead>
+              <TableHead className="text-center">Cuota</TableHead>
+              <TableHead>Última sincronización</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {clientes.map(c => (
+              <TableRow key={c.cuit}>
+                <TableCell>
+                  <div className="font-medium">{c.nombre}</div>
+                  <div className="text-xs text-muted-foreground tabular-nums">{c.cuit}</div>
+                </TableCell>
+                {mostrarContador && (
+                  <TableCell className="text-sm">{c.contador_email || '—'}</TableCell>
+                )}
+                <TableCell className="text-center text-sm">
+                  {regimenCorto(c.regimen)}
+                  {c.categoria ? <span className="text-muted-foreground"> · {c.categoria}</span> : ''}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{pesos(facturado12m(c))}</TableCell>
+                <TableCell className="text-center tabular-nums">{c.cantidad_comprobantes}</TableCell>
+                <TableCell className="text-center">
+                  <CuotaBadge c={c} />
+                </TableCell>
+                <TableCell className="text-sm">
+                  <EstadoSync c={c} />
+                </TableCell>
+              </TableRow>
+            ))}
+            {clientes.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={cols} className="text-center text-muted-foreground py-10">
+                  Este contador todavía no tiene clientes.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </Card>
+
+      <div className="space-y-3 lg:hidden">
+        {clientes.map(c => (
+          <Card key={c.cuit} className="space-y-3 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <div className="font-medium">{c.nombre}</div>
                 <div className="text-xs text-muted-foreground tabular-nums">{c.cuit}</div>
-              </TableCell>
-              {mostrarContador && (
-                <TableCell className="text-sm">{c.contador_email || '—'}</TableCell>
-              )}
-              <TableCell className="text-center text-sm">
-                {regimenCorto(c.regimen)}
-                {c.categoria ? <span className="text-muted-foreground"> · {c.categoria}</span> : ''}
-              </TableCell>
-              <TableCell className="text-right tabular-nums">{pesos(facturado12m(c))}</TableCell>
-              <TableCell className="text-center tabular-nums">{c.cantidad_comprobantes}</TableCell>
-              <TableCell className="text-center">
-                {c.cuota_estado === 'al-dia' ? (
-                  <Badge variant="success">al día</Badge>
-                ) : c.cuota_estado === 'con-deuda' ? (
-                  <Badge variant="warning">con deuda</Badge>
-                ) : (
-                  <span className="text-muted-foreground text-xs">—</span>
-                )}
-              </TableCell>
-              <TableCell className="text-sm">
-                <div className="flex items-center gap-2">
-                  {c.resultado_ultima_extraccion === 'exitosa' ? (
-                    <Badge variant="success">
-                      <CheckCircle2 className="h-3 w-3" /> OK
-                    </Badge>
-                  ) : c.resultado_ultima_extraccion === 'fallida' ? (
-                    <Badge variant="danger">falló</Badge>
-                  ) : (
-                    <Badge variant="muted">sin datos</Badge>
-                  )}
-                  <span className="text-muted-foreground whitespace-nowrap">
-                    {fechaCorta(c.ultima_extraccion)}
-                  </span>
-                </div>
-                {c.resultado_ultima_extraccion === 'fallida' && c.motivo_ultima_extraccion && (
-                  <div
-                    className="text-xs text-danger truncate max-w-xs"
-                    title={c.motivo_ultima_extraccion}
-                  >
-                    {c.motivo_ultima_extraccion.split('\n')[0]}
+                {mostrarContador && (
+                  <div className="text-xs text-muted-foreground break-all">
+                    {c.contador_email || '—'}
                   </div>
                 )}
-              </TableCell>
-            </TableRow>
-          ))}
-          {clientes.length === 0 && (
-            <TableRow>
-              <TableCell colSpan={cols} className="text-center text-muted-foreground py-10">
-                Este contador todavía no tiene clientes.
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </Card>
+              </div>
+              <CuotaBadge c={c} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <span className="block text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Régimen / Cat.
+                </span>
+                {regimenCorto(c.regimen)}
+                {c.categoria ? <span className="text-muted-foreground"> · {c.categoria}</span> : ''}
+              </div>
+              <div className="text-right">
+                <span className="block text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Facturado 12m
+                </span>
+                <span className="tabular-nums">{pesos(facturado12m(c))}</span>
+              </div>
+              <div>
+                <span className="block text-[11px] uppercase tracking-wider text-muted-foreground">
+                  Comprob.
+                </span>
+                <span className="tabular-nums">{c.cantidad_comprobantes}</span>
+              </div>
+            </div>
+
+            <div className="border-t border-border/50 pt-2 text-sm">
+              <span className="block text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
+                Última sincronización
+              </span>
+              <EstadoSync c={c} />
+            </div>
+          </Card>
+        ))}
+        {clientes.length === 0 && (
+          <Card className="p-8 text-center text-sm text-muted-foreground">
+            Este contador todavía no tiene clientes.
+          </Card>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -1172,41 +1424,74 @@ function TabAuditoria() {
   }
 
   return (
-    <Card className="overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Fecha</TableHead>
-            <TableHead>Administrador</TableHead>
-            <TableHead>Acción</TableHead>
-            <TableHead>Cuenta afectada</TableHead>
-            <TableHead>Detalle</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {filas.map(f => {
-            const a = ACCION_LABEL[f.accion] ?? { texto: f.accion, variant: 'muted' as const };
-            return (
-              <TableRow key={f.id}>
-                <TableCell className="text-sm whitespace-nowrap">{fechaHora(f.fecha)}</TableCell>
-                <TableCell className="text-sm">{f.admin_email}</TableCell>
-                <TableCell>
-                  <Badge variant={a.variant}>{a.texto}</Badge>
-                </TableCell>
-                <TableCell className="text-sm">{f.target_email || '—'}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">{f.detalle || '—'}</TableCell>
-              </TableRow>
-            );
-          })}
-          {filas.length === 0 && (
+    <>
+      {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+      <Card className="hidden overflow-hidden lg:block">
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
-                Todavía no hay acciones registradas.
-              </TableCell>
+              <TableHead>Fecha</TableHead>
+              <TableHead>Administrador</TableHead>
+              <TableHead>Acción</TableHead>
+              <TableHead>Cuenta afectada</TableHead>
+              <TableHead>Detalle</TableHead>
             </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </Card>
+          </TableHeader>
+          <TableBody>
+            {filas.map(f => {
+              const a = ACCION_LABEL[f.accion] ?? { texto: f.accion, variant: 'muted' as const };
+              return (
+                <TableRow key={f.id}>
+                  <TableCell className="text-sm whitespace-nowrap">{fechaHora(f.fecha)}</TableCell>
+                  <TableCell className="text-sm">{f.admin_email}</TableCell>
+                  <TableCell>
+                    <Badge variant={a.variant}>{a.texto}</Badge>
+                  </TableCell>
+                  <TableCell className="text-sm">{f.target_email || '—'}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{f.detalle || '—'}</TableCell>
+                </TableRow>
+              );
+            })}
+            {filas.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
+                  Todavía no hay acciones registradas.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </Card>
+
+      <div className="space-y-3 lg:hidden">
+        {filas.map(f => {
+          const a = ACCION_LABEL[f.accion] ?? { texto: f.accion, variant: 'muted' as const };
+          return (
+            <Card key={f.id} className="space-y-2 p-4 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <Badge variant={a.variant}>{a.texto}</Badge>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  {fechaHora(f.fecha)}
+                </span>
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Administrador: </span>
+                {f.admin_email}
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">Cuenta afectada: </span>
+                {f.target_email || '—'}
+              </div>
+              {f.detalle && <div className="text-muted-foreground">{f.detalle}</div>}
+            </Card>
+          );
+        })}
+        {filas.length === 0 && (
+          <Card className="p-8 text-center text-sm text-muted-foreground">
+            Todavía no hay acciones registradas.
+          </Card>
+        )}
+      </div>
+    </>
   );
 }

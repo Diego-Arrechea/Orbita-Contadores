@@ -161,7 +161,7 @@ export function Dashboard() {
               value={filtroAlerta}
               onValueChange={(v) => setFiltroAlerta(v as EstadoAlerta | 'todos')}
             >
-              <SelectTrigger className="w-[170px] bg-card">
+              <SelectTrigger className="flex-1 md:w-[170px] md:flex-none bg-card">
                 <SelectValue placeholder="Estado de alerta" />
               </SelectTrigger>
               <SelectContent>
@@ -176,7 +176,7 @@ export function Dashboard() {
               value={filtroActividad}
               onValueChange={(v) => setFiltroActividad(v as TipoActividad | 'todos')}
             >
-              <SelectTrigger className="w-[140px] bg-card">
+              <SelectTrigger className="flex-1 md:w-[140px] md:flex-none bg-card">
                 <SelectValue placeholder="Actividad" />
               </SelectTrigger>
               <SelectContent>
@@ -199,6 +199,8 @@ export function Dashboard() {
           </div>
         </div>
 
+        {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+        <div className="hidden lg:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -334,6 +336,93 @@ export function Dashboard() {
             )}
           </TableBody>
         </Table>
+        </div>
+
+        <div className="space-y-3 p-4 lg:hidden">
+          {filtrados.map(({ cliente, calc, estado }) => {
+            const noMono = !esMonotributista(cliente);
+            const recategoriza = !noMono && calc.categoriaCorresponde.codigo !== cliente.categoria;
+            return (
+              <Link
+                key={cliente.id}
+                to={`/clientes/${cliente.id}`}
+                className="block rounded-xl border border-border/60 p-4 transition-colors hover:border-primary/40"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <SemaforoDot estado={estado} />
+                    <div className="min-w-0">
+                      <div className="font-medium leading-tight truncate">{cliente.nombre}</div>
+                      <div className="text-xs text-muted-foreground tabular-nums">
+                        {formatCuit(cliente.cuit)}
+                      </div>
+                    </div>
+                  </div>
+                  <AlertaBadge estado={estado} />
+                </div>
+
+                {noMono ? (
+                  <div className="mt-3 flex items-center gap-2">
+                    <Badge variant="muted" className="font-semibold">
+                      {etiquetaRegimenCorta(cliente.regimen)}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">Sin seguimiento de monotributo</span>
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-1.5">
+                        <Badge variant="outline" className="font-semibold">
+                          {cliente.categoria}
+                        </Badge>
+                        {recategoriza && (
+                          <span className="flex items-center gap-0.5 text-xs text-warning-foreground">
+                            <TrendingUp className="h-3 w-3" />
+                            {calc.categoriaCorresponde.codigo}
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className={
+                          calc.ratioSuperadoLegal
+                            ? 'text-danger font-medium tabular-nums'
+                            : 'text-muted-foreground tabular-nums'
+                        }
+                      >
+                        {formatPercent(calc.ratioGastosTopeCatK, 1)} s/ tope K
+                      </span>
+                    </div>
+                    <ProgresoTope porcentaje={calc.porcentajeTopeActual} />
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        {Number.isFinite(calc.diasParaProximaVentana)
+                          ? `Próx. ventana ${calc.diasParaProximaVentana}d`
+                          : 'Sin ventana'}
+                      </span>
+                      {cliente.ultimaExtraccion && (
+                        <span
+                          className={
+                            cliente.resultadoUltimaExtraccion === 'fallida'
+                              ? 'text-danger'
+                              : ''
+                          }
+                        >
+                          {formatDate(cliente.ultimaExtraccion)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </Link>
+            );
+          })}
+          {filtrados.length === 0 && (
+            <div className="text-center py-10 text-muted-foreground">
+              No hay clientes que coincidan con los filtros aplicados.
+            </div>
+          )}
+        </div>
       </Card>
     </div>
   );
