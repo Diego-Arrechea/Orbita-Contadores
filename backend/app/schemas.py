@@ -293,6 +293,33 @@ class LoginIn(BaseModel):
     password: str
 
 
+class CambioPasswordIn(BaseModel):
+    """Cambio de contraseña estando logueado (Configuración → Seguridad)."""
+
+    password_actual: str
+    password_nueva: str = Field(min_length=8, max_length=72)  # bcrypt opera sobre <= 72 bytes
+
+
+class RecuperarIn(BaseModel):
+    """Pedido de recuperación de contraseña ("olvidé mi contraseña"): sólo el email."""
+
+    email: EmailStr
+
+
+class RestablecerIn(BaseModel):
+    """Confirmación del reset: el token del enlace + la contraseña nueva."""
+
+    token: str
+    password_nueva: str = Field(min_length=8, max_length=72)
+
+
+class ResetPasswordAdminOut(BaseModel):
+    """Respuesta del reset desde el panel admin: la contraseña temporal que el admin le pasa al
+    contador (se muestra una sola vez, no se persiste en claro)."""
+
+    password_temporal: str
+
+
 def dias_restantes_trial(trial_fin: "dt.datetime | None") -> int | None:
     """Días que faltan para que termine la prueba, contados por CALENDARIO (fecha contra fecha), no
     por timestamp: así la hora del día no infla el número (un trial de 30 días muestra 30 el día que

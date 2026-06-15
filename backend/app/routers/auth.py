@@ -9,10 +9,27 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..config import settings
 from ..db import get_db
-from ..schemas import AuthOut, LoginIn, RegistroIn, UsuarioOut, dias_restantes_trial
-from ..security import crear_token, hashear_password, usuario_actual, verificar_password
-from ..services import crisp
+from ..schemas import (
+    AuthOut,
+    CambioPasswordIn,
+    LoginIn,
+    RecuperarIn,
+    RegistroIn,
+    RestablecerIn,
+    UsuarioOut,
+    dias_restantes_trial,
+)
+from ..security import (
+    crear_token,
+    generar_reset_token,
+    hashear_password,
+    hashear_reset_token,
+    usuario_actual,
+    verificar_password,
+)
+from ..services import crisp, email
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -100,3 +117,68 @@ def login(datos: LoginIn, db: Session = Depends(get_db)):
 def me(usuario: models.Usuario = Depends(usuario_actual)):
     """Devuelve el contador logueado (sirve para rehidratar la sesión en el front)."""
     return _usuario_out(usuario)
+
+
+@router.post("/cambiar-password")
+def cambiar_password(
+    datos: CambioPasswordIn,
+    usuario: models.Usuario = Depends(usuario_actual),
+    db: Session = Depends(get_db),
+):
+    """Cambia la contraseña del contador logueado. Exige la contraseña actual (re-autenticación)."""
+    if not verificar_password(datos.password_actual, usuario.password_hash):
+        raise HTTPException(status_code=401, detail="La contraseña actual no es correcta.")
+    usuario.password_hash = hashear_password(datos.password_nueva)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/recuperar")
+def recuperar(datos: RecuperarIn, db: Session = Depends(get_db)):
+    """Inicia la recuperación de contraseña. Responde SIEMPRE 200 con un mensaje genérico, exista o
+    no el email (no revelamos qué cuentas existen). Si la cuenta existe y está activa, genera un
+    token de un solo uso, lo guarda hasheado y manda el enlace por correo (best-effort)."""
+    usuario = db.scalar(
+        select(models.Usuario).where(models.Usuario.email == datos.email.lower())
+    )
+    if usuario is not None and usuario.activo:
+        token, token_hash = generar_reset_token()
+        usuario.reset_token_hash = token_hash
+        usuario.reset_token_exp = dt.datetime.now(dt.timezone.utc) + dt.timedelta(
+            hours=settings.reset_token_horas
+        )
+        db.commit()
+        email.enviar_link_reset(usuario, token)  # no-op si SMTP no está configurado
+    return {
+        "mensaje": "Si el correo está registrado, te enviamos las instrucciones para "
+        "restablecer tu contraseña."
+    }
+
+
+@router.post("/restablecer")
+def restablecer(datos: RestablecerIn, db: Session = Depends(get_db)):
+    """Confirma el reset: valida el token del enlace (existe + no venció) y fija la contraseña nueva.
+    El token es de un solo uso: se limpia al usarlo."""
+    invalido = HTTPException(
+        status_code=400, detail="El enlace no es válido o ya expiró. Pedí uno nuevo."
+    )
+    if not datos.token:
+        raise invalido
+    usuario = db.scalar(
+        select(models.Usuario).where(
+            models.Usuario.reset_token_hash == hashear_reset_token(datos.token)
+        )
+    )
+    if usuario is None or usuario.reset_token_exp is None:
+        raise invalido
+    # reset_token_exp puede venir naive de SQLite: lo normalizamos a UTC para comparar.
+    exp = usuario.reset_token_exp
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=dt.timezone.utc)
+    if exp <= dt.datetime.now(dt.timezone.utc):
+        raise invalido
+    usuario.password_hash = hashear_password(datos.password_nueva)
+    usuario.reset_token_hash = None
+    usuario.reset_token_exp = None
+    db.commit()
+    return {"ok": True}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Orbit, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { Orbit, ShieldCheck, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,6 +10,9 @@ import { iniciarSesion } from '@/lib/cuenta';
 
 export function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Aviso de éxito al volver desde el restablecimiento de contraseña (ver Recuperar.tsx).
+  const aviso = (location.state as { aviso?: string } | null)?.aviso;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +53,13 @@ export function Login() {
             Monitoreá tus clientes monotributistas en un solo lugar.
           </p>
 
+          {aviso && (
+            <div className="rounded-lg bg-success/10 border border-success/25 px-3.5 py-2.5 text-sm flex items-start gap-2 mb-4">
+              <CheckCircle2 className="h-4 w-4 text-success shrink-0 mt-0.5" />
+              <span className="text-foreground/80">{aviso}</span>
+            </div>
+          )}
+
           <form className="space-y-4" onSubmit={entrar}>
             <div className="space-y-1.5">
               <Label htmlFor="email">Correo electrónico</Label>
@@ -68,9 +78,9 @@ export function Login() {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Contraseña</Label>
-                <a className="text-xs text-primary hover:underline" href="#">
+                <Link className="text-xs text-primary hover:underline" to="/recuperar">
                   ¿Olvidaste tu contraseña?
-                </a>
+                </Link>
               </div>
               <Input
                 id="password"

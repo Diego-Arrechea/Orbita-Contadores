@@ -10,6 +10,7 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
+  KeyRound,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,7 +32,7 @@ import { useConfig } from '@/context/ConfigContext';
 import { CAUSALES_EXCLUSION } from '@/data/causales';
 import { formatCurrency } from '@/lib/utils';
 import { enviarWhatsappPrueba } from '@/services/notificacionesService';
-import { mensajeDeError } from '@/services/authService';
+import { cambiarPassword, mensajeDeError } from '@/services/authService';
 
 export function Configuracion() {
   const { config, guardarConfig } = useConfig();
@@ -44,6 +45,37 @@ export function Configuracion() {
   const [numPrueba, setNumPrueba] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  // Cambio de contraseña (tab Seguridad).
+  const [passActual, setPassActual] = useState('');
+  const [passNueva, setPassNueva] = useState('');
+  const [passRepetir, setPassRepetir] = useState('');
+  const [cambiandoPass, setCambiandoPass] = useState(false);
+  const [resultadoPass, setResultadoPass] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  async function guardarPassword() {
+    setResultadoPass(null);
+    if (passNueva.length < 8) {
+      setResultadoPass({ ok: false, msg: 'La nueva contraseña tiene que tener al menos 8 caracteres.' });
+      return;
+    }
+    if (passNueva !== passRepetir) {
+      setResultadoPass({ ok: false, msg: 'Las contraseñas nuevas no coinciden.' });
+      return;
+    }
+    setCambiandoPass(true);
+    try {
+      await cambiarPassword(passActual, passNueva);
+      setResultadoPass({ ok: true, msg: 'Contraseña actualizada. Usá la nueva la próxima vez que ingreses.' });
+      setPassActual('');
+      setPassNueva('');
+      setPassRepetir('');
+    } catch (e) {
+      setResultadoPass({ ok: false, msg: mensajeDeError(e) });
+    } finally {
+      setCambiandoPass(false);
+    }
+  }
 
   // Edita una de las dos ventanas (fecha límite / efecto desde) en el estado local. El cambio recién
   // impacta a los clientes cuando se aprieta "Guardar fechas".
@@ -120,6 +152,7 @@ export function Configuracion() {
           <TabsTrigger value="categorias" className="shrink-0"><Database className="h-3.5 w-3.5" />Categorías</TabsTrigger>
           <TabsTrigger value="causales" className="shrink-0"><Info className="h-3.5 w-3.5" />Causales</TabsTrigger>
           <TabsTrigger value="notificaciones" className="shrink-0"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
+          <TabsTrigger value="seguridad" className="shrink-0"><KeyRound className="h-3.5 w-3.5" />Seguridad</TabsTrigger>
         </TabsList>
 
         <TabsContent value="ventanas">
@@ -443,6 +476,92 @@ export function Configuracion() {
               sandbox y después enviá la prueba. En Argentina, si no te llega, probá el número con el
               9 (ej. +54 9 221…).
             </p>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="seguridad">
+          <Card className="p-4 sm:p-6">
+            <div className="text-base font-semibold mb-1">Cambiar contraseña</div>
+            <p className="text-sm text-muted-foreground mb-5">
+              Ingresá tu contraseña actual y elegí una nueva (mínimo 8 caracteres). Vas a usar la
+              nueva la próxima vez que ingreses.
+            </p>
+
+            <div className="grid gap-3 max-w-md">
+              <div className="space-y-1.5">
+                <Label htmlFor="pass-actual">Contraseña actual</Label>
+                <Input
+                  id="pass-actual"
+                  type="password"
+                  autoComplete="current-password"
+                  value={passActual}
+                  onChange={e => {
+                    setPassActual(e.target.value);
+                    setResultadoPass(null);
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pass-nueva">Nueva contraseña</Label>
+                <Input
+                  id="pass-nueva"
+                  type="password"
+                  autoComplete="new-password"
+                  value={passNueva}
+                  onChange={e => {
+                    setPassNueva(e.target.value);
+                    setResultadoPass(null);
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pass-repetir">Repetir nueva contraseña</Label>
+                <Input
+                  id="pass-repetir"
+                  type="password"
+                  autoComplete="new-password"
+                  value={passRepetir}
+                  onChange={e => {
+                    setPassRepetir(e.target.value);
+                    setResultadoPass(null);
+                  }}
+                />
+              </div>
+            </div>
+
+            {resultadoPass && (
+              <div
+                className={`mt-4 flex items-start gap-2 rounded-lg px-3.5 py-2.5 text-sm border max-w-md ${
+                  resultadoPass.ok
+                    ? 'bg-success/10 border-success/25'
+                    : 'bg-danger/10 border-danger/25'
+                }`}
+              >
+                {resultadoPass.ok ? (
+                  <CheckCircle2 className="h-4 w-4 text-success shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 text-danger shrink-0 mt-0.5" />
+                )}
+                <span className="text-foreground/80">{resultadoPass.msg}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end mt-5 max-w-md">
+              <Button
+                onClick={guardarPassword}
+                disabled={cambiandoPass || !passActual || !passNueva || !passRepetir}
+              >
+                {cambiandoPass ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Guardando…
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="h-4 w-4" /> Cambiar contraseña
+                  </>
+                )}
+              </Button>
+            </div>
           </Card>
         </TabsContent>
       </Tabs>

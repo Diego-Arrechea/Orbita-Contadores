@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -24,12 +24,24 @@ import {
   Clock,
   Zap,
   ChevronLeft,
+  KeyRound,
+  Copy,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import {
   Table,
   TableBody,
@@ -50,6 +62,7 @@ import {
   listarTodosLosClientes,
   obtenerFichaContador,
   obtenerEstadoMotor,
+  restablecerPasswordUsuario,
   type AdminUsuario,
   type AdminMetricas,
   type AdminAuditoria,
@@ -186,6 +199,126 @@ export function Admin() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// --- Restablecer contraseña (soporte): genera una clave temporal y la muestra una vez ---
+
+function RestablecerPasswordDialog({
+  usuario,
+  trigger,
+}: {
+  usuario: AdminUsuario;
+  trigger: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [generando, setGenerando] = useState(false);
+  const [temporal, setTemporal] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
+
+  // Resetea el estado al abrir/cerrar para que cada apertura arranque en la pantalla de confirmación.
+  function cambiarOpen(o: boolean) {
+    if (generando) return;
+    setOpen(o);
+    if (!o) {
+      setTemporal(null);
+      setError(null);
+      setCopiado(false);
+    }
+  }
+
+  async function generar() {
+    setGenerando(true);
+    setError(null);
+    try {
+      const { password_temporal } = await restablecerPasswordUsuario(usuario.id);
+      setTemporal(password_temporal);
+    } catch (e) {
+      setError(mensajeDeError(e));
+    } finally {
+      setGenerando(false);
+    }
+  }
+
+  async function copiar() {
+    if (!temporal) return;
+    try {
+      await navigator.clipboard.writeText(temporal);
+      setCopiado(true);
+      window.setTimeout(() => setCopiado(false), 1500);
+    } catch {
+      /* sin portapapeles: el contador puede seleccionar el texto a mano */
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={cambiarOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5 text-primary" />
+            Restablecer contraseña
+          </DialogTitle>
+          <DialogDescription>
+            {temporal
+              ? `Pasale esta contraseña temporal a ${usuario.nombre} ${usuario.apellido}. La ve una sola vez: cuando cierres esta ventana no se puede volver a mostrar. Conviene que la cambie al ingresar (Configuración → Seguridad).`
+              : `Se genera una contraseña temporal para ${usuario.nombre} ${usuario.apellido} (${usuario.email}) y se reemplaza la actual. Usalo cuando no puede ingresar.`}
+          </DialogDescription>
+        </DialogHeader>
+
+        {error && (
+          <div className="rounded-lg bg-danger/12 border border-danger/25 px-3.5 py-2.5 text-sm text-danger">
+            {error}
+          </div>
+        )}
+
+        {temporal && (
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3.5 py-2.5">
+            <code className="flex-1 font-mono text-sm break-all">{temporal}</code>
+            <Button variant="outline" size="sm" onClick={() => void copiar()}>
+              {copiado ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-success" /> Copiado
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4" /> Copiar
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+
+        <DialogFooter>
+          {temporal ? (
+            <DialogClose asChild>
+              <Button>Listo</Button>
+            </DialogClose>
+          ) : (
+            <>
+              <DialogClose asChild>
+                <Button variant="ghost" disabled={generando}>
+                  Cancelar
+                </Button>
+              </DialogClose>
+              <Button onClick={() => void generar()} disabled={generando}>
+                {generando ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Generando…
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="h-4 w-4" /> Generar contraseña temporal
+                  </>
+                )}
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -347,6 +480,18 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                     >
                       <LogIn className="h-4 w-4" /> Entrar como
                     </Button>
+                    <RestablecerPasswordDialog
+                      usuario={u}
+                      trigger={
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          title="Generar una contraseña temporal para este contador"
+                        >
+                          <KeyRound className="h-4 w-4" /> Contraseña
+                        </Button>
+                      }
+                    />
                     <Button
                       variant={u.activo ? 'destructive' : 'default'}
                       size="sm"
@@ -447,6 +592,14 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                 {u.activo ? 'Desactivar' : 'Activar'}
               </Button>
             </div>
+            <RestablecerPasswordDialog
+              usuario={u}
+              trigger={
+                <Button variant="outline" size="sm" className="w-full">
+                  <KeyRound className="h-4 w-4" /> Restablecer contraseña
+                </Button>
+              }
+            />
           </Card>
         ))}
         {filtrados.length === 0 && (
@@ -1345,16 +1498,26 @@ function FichaContador({
             </div>
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={accionando || !u.activo || u.id === miId}
-          onClick={() => void entrarComo()}
-          title={u.id === miId ? 'Es tu propia cuenta' : 'Entrar como este contador'}
-        >
-          {accionando ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}{' '}
-          Entrar como
-        </Button>
+        <div className="flex items-center gap-2">
+          <RestablecerPasswordDialog
+            usuario={u}
+            trigger={
+              <Button variant="outline" size="sm" title="Generar una contraseña temporal">
+                <KeyRound className="h-4 w-4" /> Contraseña
+              </Button>
+            }
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={accionando || !u.activo || u.id === miId}
+            onClick={() => void entrarComo()}
+            title={u.id === miId ? 'Es tu propia cuenta' : 'Entrar como este contador'}
+          >
+            {accionando ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}{' '}
+            Entrar como
+          </Button>
+        </div>
       </div>
 
       <Card className="p-5">
@@ -1400,6 +1563,8 @@ const ACCION_LABEL: Record<string, { texto: string; variant: 'success' | 'danger
   desactivar: { texto: 'Desactivó', variant: 'danger' },
   cambiar_rol: { texto: 'Cambió rol', variant: 'warning' },
   impersonar: { texto: 'Entró como', variant: 'muted' },
+  restablecer_password: { texto: 'Restableció contraseña', variant: 'warning' },
+  reintentar_sync: { texto: 'Reintentó sync', variant: 'muted' },
 };
 
 function TabAuditoria() {
