@@ -92,5 +92,21 @@ class Settings(BaseSettings):
     twilio_auth_token: str = ""
     twilio_whatsapp_from: str = ""
 
+    # --- Email (SMTP) — envío del enlace de recuperación de contraseña ---
+    # Cualquier proveedor SMTP sirve (Gmail con App Password, Resend, SendGrid, Mailgun, etc.).
+    # Si SMTP_HOST o SMTP_USER quedan vacíos, el envío es un no-op: NO rompe el flujo de reset
+    # (el backend loguea el enlace para poder usarlo en desarrollo). Ver services/email.py.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""  # remitente ("De:"); si queda vacío usa SMTP_USER.
+
+    # Base pública del frontend, para armar el enlace de recuperación ({app_base_url}/recuperar?token=).
+    # En producción: https://contadores.orbitaglobalmarketing.com
+    app_base_url: str = "http://localhost:5173"
+    # Validez del enlace de recuperación de contraseña (horas).
+    reset_token_horas: int = 1
+
 
 settings = Settings()

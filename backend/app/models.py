@@ -74,6 +74,13 @@ class Usuario(Base):
     trial_fin: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Recuperación de contraseña ("olvidé mi contraseña"). Guardamos SÓLO el sha256 del token que
+    # viaja en el enlace (nunca el token en claro) + su expiración. Single-use: se limpian al
+    # restablecer. NULL/NULL = sin reset pendiente. Ver routers/auth.py + security.py.
+    reset_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reset_token_exp: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class ClienteARCA(Base):

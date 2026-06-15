@@ -23,11 +23,17 @@ from ..schemas import (
     AdminUsuarioPatch,
     ImpersonarOut,
     JobIdOut,
+    ResetPasswordAdminOut,
     UsuarioOut,
     dias_restantes_trial,
 )
 from ..scraping import jobs
-from ..security import admin_actual, crear_token
+from ..security import (
+    admin_actual,
+    crear_token,
+    generar_password_temporal,
+    hashear_password,
+)
 from .clientes import _correr_sync, construir_cliente_out
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(admin_actual)])
@@ -374,6 +380,30 @@ def editar_usuario(
         or 0
     )
     return _admin_usuario_out(target, clientes)
+
+
+@router.post(
+    "/usuarios/{usuario_id}/restablecer-password", response_model=ResetPasswordAdminOut
+)
+def restablecer_password(
+    usuario_id: int,
+    db: Session = Depends(get_db),
+    admin: models.Usuario = Depends(admin_actual),
+):
+    """Genera una contraseña temporal para un contador y la fija (soporte: cuando no puede entrar y
+    no le llega el email de recuperación). La devuelve UNA sola vez para que el admin se la pase; no
+    se guarda en claro. Invalida cualquier enlace de recuperación pendiente. Queda en la auditoría."""
+    target = db.get(models.Usuario, usuario_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+    temporal = generar_password_temporal()
+    target.password_hash = hashear_password(temporal)
+    # Un reset pendiente quedaría obsoleto: lo limpiamos.
+    target.reset_token_hash = None
+    target.reset_token_exp = None
+    _registrar(db, admin, "restablecer_password", target)  # sin loguear la clave
+    db.commit()
+    return ResetPasswordAdminOut(password_temporal=temporal)
 
 
 @router.post("/usuarios/{usuario_id}/impersonar", response_model=ImpersonarOut)

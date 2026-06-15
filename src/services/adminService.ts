@@ -108,6 +108,13 @@ export function impersonar(id: number): Promise<AuthResp> {
   return apiPost<AuthResp>(`/admin/usuarios/${id}/impersonar`);
 }
 
+/** Genera y fija una contraseña temporal para un contador. La devuelve para mostrarla una vez. */
+export function restablecerPasswordUsuario(
+  id: number
+): Promise<{ password_temporal: string }> {
+  return apiPost<{ password_temporal: string }>(`/admin/usuarios/${id}/restablecer-password`);
+}
+
 export function listarAuditoria(): Promise<AdminAuditoria[]> {
   return apiGet<AdminAuditoria[]>('/admin/auditoria');
 }

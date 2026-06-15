@@ -5,6 +5,7 @@ import { ConfigProvider } from '@/context/ConfigContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Login } from '@/pages/Login';
 import { Registro } from '@/pages/Registro';
+import { Recuperar } from '@/pages/Recuperar';
 import { Terminos, Privacidad } from '@/pages/Legal';
 import { cuentaActual, esAdmin, tokenActual, actualizarUsuarioGuardado } from '@/lib/cuenta';
 import { getMe } from '@/services/authService';
@@ -53,6 +54,7 @@ export default function App() {
       <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/registro" element={<Registro />} />
+      <Route path="/recuperar" element={<Recuperar />} />
       <Route path="/terminos" element={<Terminos />} />
       <Route path="/privacidad" element={<Privacidad />} />
       <Route

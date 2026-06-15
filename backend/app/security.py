@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import secrets
 
 import bcrypt
 import jwt
@@ -38,6 +40,24 @@ def verificar_password(password: str, password_hash: str) -> bool:
         return bcrypt.checkpw(password.encode("utf-8")[:72], password_hash.encode("utf-8"))
     except ValueError:
         return False
+
+
+def hashear_reset_token(token: str) -> str:
+    """sha256 (hex) del token de recuperación. En la DB guardamos sólo este hash, nunca el token
+    en claro: así una filtración de la base no permite restablecer contraseñas."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def generar_reset_token() -> tuple[str, str]:
+    """Token de recuperación de un solo uso. Devuelve (token_claro, token_hash): el claro viaja en
+    el enlace del email; el hash se persiste en `Usuario.reset_token_hash`."""
+    token = secrets.token_urlsafe(32)
+    return token, hashear_reset_token(token)
+
+
+def generar_password_temporal() -> str:
+    """Contraseña temporal legible para el reset desde el panel admin (cumple el mínimo de 8)."""
+    return secrets.token_urlsafe(9)
 
 
 def crear_token(usuario_id: int) -> str:

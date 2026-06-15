@@ -50,6 +50,30 @@ export function getMe(): Promise<Usuario> {
   return apiGet<Usuario>('/auth/me');
 }
 
+/** Cambia la contraseña del contador logueado (requiere la actual). */
+export function cambiarPassword(
+  passwordActual: string,
+  passwordNueva: string
+): Promise<{ ok: boolean }> {
+  return apiPost('/auth/cambiar-password', {
+    password_actual: passwordActual,
+    password_nueva: passwordNueva,
+  });
+}
+
+/** Pide el enlace de recuperación de contraseña. Responde igual exista o no el email. */
+export function recuperarPassword(email: string): Promise<{ mensaje: string }> {
+  return apiPost('/auth/recuperar', { email });
+}
+
+/** Fija una contraseña nueva usando el token del enlace de recuperación. */
+export function restablecerPassword(
+  token: string,
+  passwordNueva: string
+): Promise<{ ok: boolean }> {
+  return apiPost('/auth/restablecer', { token, password_nueva: passwordNueva });
+}
+
 /**
  * Traduce el Error que lanza apiClient ("API <status> ...: <body>") al texto que mostramos.
  * Soporta el `detail` de FastAPI (string o el array de validación 422) y el fallo de red.

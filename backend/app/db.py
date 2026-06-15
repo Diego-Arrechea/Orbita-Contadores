@@ -56,6 +56,9 @@ def _migrar_usuarios(conn) -> None:
         "activo": "BOOLEAN DEFAULT TRUE" if not es_sqlite else "BOOLEAN DEFAULT 1",
         "ultimo_acceso": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
         "trial_fin": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
+        # Recuperación de contraseña: hash del token de reset + su expiración (NULL = sin reset pendiente).
+        "reset_token_hash": "VARCHAR(64)",
+        "reset_token_exp": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
     }
     for nombre, tipo in nuevas.items():
         if nombre not in cols:
