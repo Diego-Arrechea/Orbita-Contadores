@@ -150,7 +150,7 @@ export function Terminos() {
       </Seccion>
 
       <Seccion titulo="11. Contacto">
-        <p>Por consultas sobre estos términos, escribinos a soporte@orbita (completar correo oficial).</p>
+        <p>Por consultas sobre estos términos, escribinos a orbitaglobalclientes@gmail.com.</p>
       </Seccion>
     </MarcoLegal>
   );
