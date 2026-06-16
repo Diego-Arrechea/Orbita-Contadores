@@ -84,3 +84,32 @@ def enviar_link_reset(usuario: models.Usuario, token: str) -> bool:
         "Si no pediste este cambio, ignorá este correo."
     )
     return enviar_email(usuario.email, asunto, cuerpo_html, cuerpo_texto)
+
+
+def enviar_link_confirmacion(usuario: models.Usuario, token: str) -> bool:
+    """Arma y manda el correo de confirmación de email con el enlace al frontend."""
+    link = f"{settings.app_base_url.rstrip('/')}/confirmar-email?token={token}"
+    asunto = "Confirmá tu correo en Órbita"
+    cuerpo_html = f"""\
+<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;line-height:1.5">
+  <p>Hola {usuario.nombre},</p>
+  <p>¡Bienvenido a Órbita! Confirmá tu dirección de correo para terminar de activar tu cuenta.</p>
+  <p>
+    <a href="{link}" style="display:inline-block;background:#4f46e5;color:#fff;
+       text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">
+      Confirmar mi correo
+    </a>
+  </p>
+  <p style="color:#666;font-size:13px">
+    El enlace vence en {settings.email_confirm_token_horas} hora(s). Si no creaste esta cuenta,
+    ignorá este correo.
+  </p>
+</div>"""
+    cuerpo_texto = (
+        f"Hola {usuario.nombre},\n\n"
+        "¡Bienvenido a Órbita! Confirmá tu dirección de correo para terminar de activar tu cuenta.\n"
+        f"Abrí este enlace para confirmarlo (vence en {settings.email_confirm_token_horas} "
+        f"hora/s):\n{link}\n\n"
+        "Si no creaste esta cuenta, ignorá este correo."
+    )
+    return enviar_email(usuario.email, asunto, cuerpo_html, cuerpo_texto)

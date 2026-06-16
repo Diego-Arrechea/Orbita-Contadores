@@ -15,6 +15,7 @@ export interface Usuario {
   estudio: string;
   matricula?: string | null;
   rol?: string; // 'contador' | 'admin' — el front muestra el panel superadmin sólo si 'admin'
+  email_confirmado?: boolean; // false → mostramos el banner "confirmá tu correo"
   trial_fin?: string | null; // ISO: fin del período de prueba gratis (30 días)
   trial_dias_restantes?: number | null; // snapshot del backend; el front recalcula desde trial_fin
 }
@@ -72,6 +73,16 @@ export function restablecerPassword(
   passwordNueva: string
 ): Promise<{ ok: boolean }> {
   return apiPost('/auth/restablecer', { token, password_nueva: passwordNueva });
+}
+
+/** Confirma el email usando el token del enlace que se mandó al registrarse (ruta pública). */
+export function confirmarEmail(token: string): Promise<{ ok: boolean }> {
+  return apiPost('/auth/confirmar-email', { token });
+}
+
+/** Reenvía el correo de confirmación al contador logueado (botón del banner). */
+export function reenviarConfirmacion(): Promise<{ ok: boolean; ya_confirmado?: boolean }> {
+  return apiPost('/auth/reenviar-confirmacion', {});
 }
 
 /**

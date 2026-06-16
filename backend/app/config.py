@@ -107,6 +107,8 @@ class Settings(BaseSettings):
     app_base_url: str = "http://localhost:5173"
     # Validez del enlace de recuperación de contraseña (horas).
     reset_token_horas: int = 1
+    # Validez del enlace de confirmación de email (horas). 48h da un margen cómodo.
+    email_confirm_token_horas: int = 48
 
 
 settings = Settings()

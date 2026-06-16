@@ -313,6 +313,12 @@ class RestablecerIn(BaseModel):
     password_nueva: str = Field(min_length=8, max_length=72)
 
 
+class ConfirmarEmailIn(BaseModel):
+    """Confirmación de email: el token del enlace que se mandó al registrarse."""
+
+    token: str
+
+
 class ResetPasswordAdminOut(BaseModel):
     """Respuesta del reset desde el panel admin: la contraseña temporal que el admin le pasa al
     contador (se muestra una sola vez, no se persiste en claro)."""
@@ -345,6 +351,8 @@ class UsuarioOut(BaseModel):
     estudio: str
     matricula: str | None = None
     rol: str = "contador"  # contador | admin (el front muestra el panel sólo si admin)
+    # Confirmación de email: el front muestra el banner "confirmá tu correo" mientras sea False.
+    email_confirmado: bool = False
     # Período de prueba gratis: fin (ISO) + días restantes ya calculados (el front igual recalcula
     # desde trial_fin para que el conteo no quede viejo entre cargas).
     trial_fin: str | None = None

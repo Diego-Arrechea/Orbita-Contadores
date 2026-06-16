@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { ImpersonacionBanner } from './ImpersonacionBanner';
+import { ConfirmacionEmailBanner } from './ConfirmacionEmailBanner';
 import { SoporteChat } from '@/components/shared/SoporteChat';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
@@ -23,6 +24,7 @@ export function AppLayout() {
         <Sidebar abiertoMobile={menuAbierto} onCerrarMobile={() => setMenuAbierto(false)} />
         <div className="flex flex-1 min-w-0 flex-col">
           <ImpersonacionBanner />
+          <ConfirmacionEmailBanner />
           <Topbar onAbrirMenu={() => setMenuAbierto(true)} />
           <main className="flex-1 overflow-auto scrollbar-thin">
             <div className="w-full px-4 py-6 sm:px-6 lg:px-10 lg:py-8 2xl:px-14">

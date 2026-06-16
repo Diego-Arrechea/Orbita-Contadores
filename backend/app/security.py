@@ -55,6 +55,19 @@ def generar_reset_token() -> tuple[str, str]:
     return token, hashear_reset_token(token)
 
 
+def hashear_email_token(token: str) -> str:
+    """sha256 (hex) del token de confirmación de email. Mismo criterio que el de reset: en la DB
+    guardamos sólo este hash, nunca el token en claro."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def generar_email_token() -> tuple[str, str]:
+    """Token de confirmación de email de un solo uso. Devuelve (token_claro, token_hash): el claro
+    viaja en el enlace del correo; el hash se persiste en `Usuario.email_token_hash`."""
+    token = secrets.token_urlsafe(32)
+    return token, hashear_email_token(token)
+
+
 def generar_password_temporal() -> str:
     """Contraseña temporal legible para el reset desde el panel admin (cumple el mínimo de 8)."""
     return secrets.token_urlsafe(9)
