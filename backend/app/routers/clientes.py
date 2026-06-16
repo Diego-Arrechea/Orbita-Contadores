@@ -190,6 +190,12 @@ def eliminar_cliente(
     res = db.execute(
         delete(models.ComprobanteEmitido).where(models.ComprobanteEmitido.cuit == cuit)
     )
+    # Borrar TODO lo que referencia al cliente por FK antes de borrarlo. En Postgres las FKs se
+    # fuerzan (a diferencia de SQLite en dev, que por default las ignora), así que si quedan filas
+    # huérfanas en extracciones / movimientos_bancarios el DELETE del cliente revienta con una
+    # ForeignKeyViolation → 500. Ver models.py: estas dos tablas tienen FK a clientes_arca.cuit.
+    db.execute(delete(models.Extraccion).where(models.Extraccion.cuit == cuit))
+    db.execute(delete(models.MovimientoBancario).where(models.MovimientoBancario.cuit == cuit))
     db.delete(cliente)
     db.commit()
     return {"cuit": cuit, "comprobantes_eliminados": res.rowcount}
