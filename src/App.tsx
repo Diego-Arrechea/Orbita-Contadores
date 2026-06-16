@@ -8,8 +8,8 @@ import { Registro } from '@/pages/Registro';
 import { Recuperar } from '@/pages/Recuperar';
 import { ConfirmarEmail } from '@/pages/ConfirmarEmail';
 import { Terminos, Privacidad } from '@/pages/Legal';
-import { cuentaActual, esAdmin, tokenActual, actualizarUsuarioGuardado } from '@/lib/cuenta';
-import { getMe } from '@/services/authService';
+import { cuentaActual, esAdmin, tokenActual, actualizarUsuarioGuardado, impersonando } from '@/lib/cuenta';
+import { getMe, registrarLogout } from '@/services/authService';
 import { InvalidadorCache } from '@/components/shared/InvalidadorCache';
 import { CargasToasts } from '@/components/shared/CargasToasts';
 
@@ -46,6 +46,17 @@ export default function App() {
     if (tokenActual()) {
       getMe().then(actualizarUsuarioGuardado).catch(() => {});
     }
+  }, []);
+
+  // Registra el "último cierre" de la app para el panel admin cuando el contador cierra o recarga la
+  // pestaña. `pagehide` (no `beforeunload`) es el evento confiable para esto y NO se dispara en la
+  // navegación interna del SPA. Best-effort (keepalive); se omite durante una impersonación.
+  useEffect(() => {
+    function alCerrar() {
+      if (tokenActual() && !impersonando()) registrarLogout();
+    }
+    window.addEventListener('pagehide', alCerrar);
+    return () => window.removeEventListener('pagehide', alCerrar);
   }, []);
 
   return (

@@ -14,7 +14,8 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { cuentaActual, esAdmin, logoutCuenta } from '@/lib/cuenta';
+import { cuentaActual, esAdmin, impersonando, logoutCuenta } from '@/lib/cuenta';
+import { registrarLogout } from '@/services/authService';
 import { resetChatSoporte } from '@/components/shared/SoporteChat';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
@@ -67,6 +68,9 @@ function ContenidoSidebar({
     : nav;
 
   function salir() {
+    // Registra el cierre para el panel admin (salvo durante una impersonación: el token es el del
+    // contador y el que cierra es el admin de soporte, no queremos ensuciarle el "último cierre").
+    if (!impersonando()) registrarLogout();
     resetChatSoporte(); // limpia la sesión de Crisp: la próxima cuenta no hereda el chat
     logoutCuenta();
     onNavegar?.();

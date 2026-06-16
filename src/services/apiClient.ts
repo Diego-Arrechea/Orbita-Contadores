@@ -5,7 +5,7 @@
  */
 import { tokenActual, logoutCuenta } from '@/lib/cuenta';
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api';
+export const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api';
 
 /** Error HTTP con el código de estado, para que el caller distinga 404 (permanente) de fallos transitorios. */
 export class ApiError extends Error {
