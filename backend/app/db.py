@@ -59,6 +59,10 @@ def _migrar_usuarios(conn) -> None:
         # Recuperación de contraseña: hash del token de reset + su expiración (NULL = sin reset pendiente).
         "reset_token_hash": "VARCHAR(64)",
         "reset_token_exp": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
+        # Confirmación de email: estado + hash del token de confirmación + su expiración.
+        "email_confirmado": "BOOLEAN DEFAULT FALSE" if not es_sqlite else "BOOLEAN DEFAULT 0",
+        "email_token_hash": "VARCHAR(64)",
+        "email_token_exp": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
     }
     for nombre, tipo in nuevas.items():
         if nombre not in cols:
@@ -78,9 +82,26 @@ def _migrar_usuarios(conn) -> None:
         if not es_sqlite
         else text("UPDATE usuarios SET trial_fin = datetime('now', '+30 days') WHERE trial_fin IS NULL")
     )
+    # Confirmación de email: las cuentas previas a la feature quedan sin confirmar (NULL → FALSE);
+    # verán el banner y se confirman solas con el botón "reenviar" del front. No mandamos correos en
+    # la migración. Los admins semilla se dan por confirmados (operan el sistema; su email puede no
+    # ser una casilla real) en el loop de abajo.
+    conn.execute(
+        text("UPDATE usuarios SET email_confirmado = FALSE WHERE email_confirmado IS NULL")
+        if not es_sqlite
+        else text("UPDATE usuarios SET email_confirmado = 0 WHERE email_confirmado IS NULL")
+    )
     for email in ADMINS_SEMILLA:
         conn.execute(
-            text("UPDATE usuarios SET rol = 'admin' WHERE LOWER(email) = :email"),
+            text(
+                "UPDATE usuarios SET rol = 'admin', email_confirmado = TRUE "
+                "WHERE LOWER(email) = :email"
+            )
+            if not es_sqlite
+            else text(
+                "UPDATE usuarios SET rol = 'admin', email_confirmado = 1 "
+                "WHERE LOWER(email) = :email"
+            ),
             {"email": email.lower()},
         )
 

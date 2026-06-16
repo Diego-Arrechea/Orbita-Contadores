@@ -81,6 +81,15 @@ class Usuario(Base):
     reset_token_exp: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Confirmación de email. email_confirmado=False hasta que el contador abre el enlace que le
+    # mandamos al registrarse. Enforcement SUAVE: NO bloquea login ni el uso de la app; sólo dispara
+    # un banner en el front pidiendo que confirme. Mismo patrón single-use que el reset: guardamos
+    # SÓLO el sha256 del token + su expiración (NULL/NULL = sin confirmación pendiente).
+    email_confirmado: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    email_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    email_token_exp: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class ClienteARCA(Base):
