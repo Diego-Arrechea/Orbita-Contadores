@@ -128,6 +128,9 @@ def metricas(db: Session = Depends(get_db)):
         db.scalar(select(func.count()).where(models.Usuario.activo.is_(True))) or 0
     )
     admins = db.scalar(select(func.count()).where(models.Usuario.rol == "admin")) or 0
+    confirmados = (
+        db.scalar(select(func.count()).where(models.Usuario.email_confirmado.is_(True))) or 0
+    )
     total_clientes = db.scalar(select(func.count()).select_from(models.ClienteARCA)) or 0
 
     ahora = dt.datetime.now(dt.timezone.utc)
@@ -175,6 +178,7 @@ def metricas(db: Session = Depends(get_db)):
         total_cuentas=total,
         cuentas_activas=activas,
         cuentas_inactivas=total - activas,
+        mails_confirmados=confirmados,
         total_admins=admins,
         total_clientes=total_clientes,
         syncs_hoy=syncs_hoy,

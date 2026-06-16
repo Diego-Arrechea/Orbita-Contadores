@@ -1000,6 +1000,12 @@ function TabMetricas() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricaCard icon={Users} label="Cuentas totales" valor={m.total_cuentas} />
         <MetricaCard icon={UserCheck} label="Cuentas activas" valor={m.cuentas_activas} />
+        <MetricaCard
+          icon={MailCheck}
+          label="Mails confirmados"
+          valor={m.mails_confirmados}
+          hint={`de ${m.total_cuentas}`}
+        />
         <MetricaCard icon={UserX} label="Cuentas inhabilitadas" valor={m.cuentas_inactivas} />
         <MetricaCard icon={ShieldCheck} label="Administradores" valor={m.total_admins} />
         <MetricaCard icon={Building2} label="Clientes en el sistema" valor={m.total_clientes} />

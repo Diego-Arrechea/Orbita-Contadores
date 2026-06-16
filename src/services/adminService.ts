@@ -30,6 +30,7 @@ export interface AdminMetricas {
   total_cuentas: number;
   cuentas_activas: number;
   cuentas_inactivas: number;
+  mails_confirmados: number;
   total_admins: number;
   total_clientes: number;
   syncs_hoy: number;

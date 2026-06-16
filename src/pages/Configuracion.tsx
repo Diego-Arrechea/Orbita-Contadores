@@ -11,6 +11,8 @@ import {
   AlertCircle,
   CheckCircle2,
   KeyRound,
+  MailCheck,
+  MailWarning,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,7 +34,13 @@ import { useConfig } from '@/context/ConfigContext';
 import { CAUSALES_EXCLUSION } from '@/data/causales';
 import { formatCurrency } from '@/lib/utils';
 import { enviarWhatsappPrueba } from '@/services/notificacionesService';
-import { cambiarPassword, mensajeDeError } from '@/services/authService';
+import {
+  cambiarPassword,
+  getMe,
+  reenviarConfirmacion,
+  mensajeDeError,
+} from '@/services/authService';
+import { actualizarUsuarioGuardado, usuarioActual } from '@/lib/cuenta';
 
 export function Configuracion() {
   const { config, guardarConfig } = useConfig();
@@ -52,6 +60,39 @@ export function Configuracion() {
   const [passRepetir, setPassRepetir] = useState('');
   const [cambiandoPass, setCambiandoPass] = useState(false);
   const [resultadoPass, setResultadoPass] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  // Confirmación de correo (tab Seguridad). Arrancamos con lo que haya en la sesión y refrescamos
+  // contra el backend al montar (las sesiones viejas no traen el campo → null = todavía no sabemos).
+  const emailCuenta = usuarioActual()?.email ?? '';
+  const [emailConfirmado, setEmailConfirmado] = useState<boolean | null>(
+    () => usuarioActual()?.email_confirmado ?? null
+  );
+  const [reenvio, setReenvio] = useState<'idle' | 'enviando' | 'enviado' | 'error'>('idle');
+
+  useEffect(() => {
+    getMe()
+      .then(u => {
+        actualizarUsuarioGuardado(u);
+        setEmailConfirmado(u.email_confirmado ?? true);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function reenviarCorreo() {
+    setReenvio('enviando');
+    try {
+      const r = await reenviarConfirmacion();
+      // Si el backend avisa que ya estaba confirmado, reflejamos el estado real (sin "te enviamos…").
+      if (r.ya_confirmado) {
+        setEmailConfirmado(true);
+        setReenvio('idle');
+      } else {
+        setReenvio('enviado');
+      }
+    } catch {
+      setReenvio('error');
+    }
+  }
 
   async function guardarPassword() {
     setResultadoPass(null);
@@ -479,7 +520,70 @@ export function Configuracion() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="seguridad">
+        <TabsContent value="seguridad" className="space-y-4">
+          <Card className="p-4 sm:p-6">
+            <div className="text-base font-semibold mb-1">Confirmación de correo</div>
+            <p className="text-sm text-muted-foreground mb-5">
+              Confirmar tu correo nos permite enviarte avisos y recuperar tu cuenta si olvidás la
+              contraseña.
+            </p>
+
+            {emailConfirmado === null ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Verificando…
+              </div>
+            ) : emailConfirmado ? (
+              <div className="flex items-start gap-2 rounded-lg border border-success/25 bg-success/10 px-3.5 py-2.5 text-sm max-w-md">
+                <MailCheck className="h-4 w-4 text-success shrink-0 mt-0.5" />
+                <span className="text-foreground/80">
+                  Tu correo{emailCuenta ? <> (<strong>{emailCuenta}</strong>)</> : ''} está
+                  confirmado.
+                </span>
+              </div>
+            ) : (
+              <div className="max-w-md space-y-4">
+                <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-2.5 text-sm">
+                  <MailWarning className="h-4 w-4 text-warning shrink-0 mt-0.5" />
+                  <span className="text-foreground/80">
+                    Todavía no confirmaste tu correo
+                    {emailCuenta ? <> (<strong>{emailCuenta}</strong>)</> : ''}. Te enviamos un
+                    enlace al registrarte; revisá tu casilla (y la carpeta de spam) o pedí uno nuevo.
+                  </span>
+                </div>
+
+                {reenvio === 'enviado' ? (
+                  <div className="flex items-start gap-2 rounded-lg border border-success/25 bg-success/10 px-3.5 py-2.5 text-sm">
+                    <CheckCircle2 className="h-4 w-4 text-success shrink-0 mt-0.5" />
+                    <span className="text-foreground/80">
+                      Te reenviamos el correo de confirmación
+                      {emailCuenta ? ` a ${emailCuenta}` : ''}. Revisá tu casilla (y la carpeta de
+                      spam).
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <Button onClick={reenviarCorreo} disabled={reenvio === 'enviando'}>
+                      {reenvio === 'enviando' ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" /> Enviando…
+                        </>
+                      ) : (
+                        <>
+                          <MailCheck className="h-4 w-4" /> Reenviar correo de confirmación
+                        </>
+                      )}
+                    </Button>
+                    {reenvio === 'error' && (
+                      <span className="text-sm text-danger">
+                        No se pudo reenviar. Probá de nuevo en un momento.
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+
           <Card className="p-4 sm:p-6">
             <div className="text-base font-semibold mb-1">Cambiar contraseña</div>
             <p className="text-sm text-muted-foreground mb-5">

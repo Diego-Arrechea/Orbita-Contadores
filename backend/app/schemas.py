@@ -456,6 +456,7 @@ class AdminMetricasOut(BaseModel):
     total_cuentas: int
     cuentas_activas: int
     cuentas_inactivas: int
+    mails_confirmados: int  # cuentas que confirmaron su correo
     total_admins: int
     total_clientes: int  # clientes cargados en todo el sistema
     syncs_hoy: int  # sincronizaciones (extracciones) corridas hoy
