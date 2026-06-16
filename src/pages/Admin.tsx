@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Cpu,
   Clock,
+  Timer,
   Zap,
   ChevronLeft,
   KeyRound,
@@ -848,6 +849,17 @@ function TabMotor() {
 
   const exito = m.syncs_24h ? Math.round((m.exitosas_24h / m.syncs_24h) * 100) : null;
 
+  // Duración promedio de sync (segundos del backend) → "2m 45s" / "45s" / "—".
+  const dp = m.duracion_promedio_seg;
+  const durPromTexto =
+    dp == null
+      ? '—'
+      : dp < 60
+        ? `${dp}s`
+        : dp % 60 === 0
+          ? `${dp / 60}m`
+          : `${Math.floor(dp / 60)}m ${dp % 60}s`;
+
   return (
     <div className="space-y-6">
       {/* Estado del worker */}
@@ -908,7 +920,7 @@ function TabMotor() {
       {/* Rendimiento */}
       <div>
         <h2 className="text-sm font-semibold mb-3">Rendimiento</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           <MetricaCard icon={Zap} label="Syncs última hora" valor={m.syncs_1h} />
           <MetricaCard icon={Activity} label="Syncs últimas 24h" valor={m.syncs_24h} />
           <MetricaCard
@@ -916,6 +928,12 @@ function TabMotor() {
             label="Tasa de éxito 24h"
             valor={exito == null ? '—' : `${exito}%`}
             hint={`${m.exitosas_24h} ok · ${m.fallidas_24h} con falla`}
+          />
+          <MetricaCard
+            icon={Timer}
+            label="Tiempo promedio de sync"
+            valor={durPromTexto}
+            hint="exitosas, últimas 24h"
           />
           <MetricaCard icon={Clock} label="En cola" valor={m.proximos.length} hint="próximos a sincronizar" />
         </div>

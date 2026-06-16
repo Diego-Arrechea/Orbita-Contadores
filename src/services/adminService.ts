@@ -188,6 +188,7 @@ export interface MotorEstado {
   syncs_24h: number;
   exitosas_24h: number;
   fallidas_24h: number;
+  duracion_promedio_seg: number | null;
   proximos: MotorCliente[];
   actividad: MotorCliente[];
 }
