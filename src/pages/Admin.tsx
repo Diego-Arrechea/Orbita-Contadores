@@ -26,6 +26,9 @@ import {
   ChevronLeft,
   KeyRound,
   Copy,
+  MoreVertical,
+  MailCheck,
+  MailWarning,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -50,6 +53,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import {
   listarUsuarios,
   obtenerMetricas,
@@ -207,11 +217,19 @@ export function Admin() {
 function RestablecerPasswordDialog({
   usuario,
   trigger,
+  open: openProp,
+  onOpenChange,
 }: {
   usuario: AdminUsuario;
-  trigger: ReactNode;
+  trigger?: ReactNode;
+  // Modo controlado (desde el menú de acciones): si se pasan, el padre maneja la apertura. Si no,
+  // el diálogo se autocontrola con su propio trigger.
+  open?: boolean;
+  onOpenChange?: (o: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [openInterno, setOpenInterno] = useState(false);
+  const open = openProp ?? openInterno;
+  const setOpen = onOpenChange ?? setOpenInterno;
   const [generando, setGenerando] = useState(false);
   const [temporal, setTemporal] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -254,7 +272,7 @@ function RestablecerPasswordDialog({
 
   return (
     <Dialog open={open} onOpenChange={cambiarOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -319,6 +337,75 @@ function RestablecerPasswordDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Estado de confirmación del correo del contador (columna del panel).
+function EmailConfirmadoBadge({ confirmado }: { confirmado?: boolean }) {
+  return confirmado ? (
+    <Badge variant="success">
+      <MailCheck className="h-3 w-3" /> Confirmado
+    </Badge>
+  ) : (
+    <Badge variant="warning">
+      <MailWarning className="h-3 w-3" /> Pendiente
+    </Badge>
+  );
+}
+
+// Menú de acciones (3 puntos) de cada cuenta: reemplaza los botones sueltos. El diálogo de
+// restablecer contraseña va FUERA del menú (controlado por estado): abrir un modal desde un ítem del
+// dropdown y dejarlo dentro del portal del menú trae problemas de foco.
+function AccionesCuenta({
+  u,
+  miId,
+  trabajando,
+  onEntrarComo,
+  onToggleActivo,
+}: {
+  u: AdminUsuario;
+  miId?: number;
+  trabajando: boolean;
+  onEntrarComo: (u: AdminUsuario) => void;
+  onToggleActivo: (u: AdminUsuario) => void;
+}) {
+  const [pwdOpen, setPwdOpen] = useState(false);
+  const esYo = u.id === miId;
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon" disabled={trabajando} aria-label="Acciones">
+            {trabajando ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <MoreVertical className="h-4 w-4" />
+            )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            disabled={esYo || !u.activo}
+            onSelect={() => onEntrarComo(u)}
+          >
+            <LogIn /> Entrar como
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setPwdOpen(true)}>
+            <KeyRound /> Restablecer contraseña
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            disabled={esYo}
+            onSelect={() => onToggleActivo(u)}
+            className={u.activo ? 'text-danger focus:text-danger' : ''}
+          >
+            <Power /> {u.activo ? 'Desactivar' : 'Activar'}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <RestablecerPasswordDialog usuario={u} open={pwdOpen} onOpenChange={setPwdOpen} />
+    </>
   );
 }
 
@@ -430,6 +517,8 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
               <TableHead className="text-center">Clientes</TableHead>
               <TableHead>Alta</TableHead>
               <TableHead>Último acceso</TableHead>
+              <TableHead>Último cierre</TableHead>
+              <TableHead className="text-center">Correo</TableHead>
               <TableHead className="text-center">Estado</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
@@ -462,6 +551,10 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                 <TableCell className="text-center tabular-nums">{u.clientes}</TableCell>
                 <TableCell className="text-sm">{fechaCorta(u.creado_en)}</TableCell>
                 <TableCell className="text-sm">{fechaHora(u.ultimo_acceso)}</TableCell>
+                <TableCell className="text-sm">{fechaHora(u.ultimo_logout)}</TableCell>
+                <TableCell className="text-center">
+                  <EmailConfirmadoBadge confirmado={u.email_confirmado} />
+                </TableCell>
                 <TableCell className="text-center">
                   {u.activo ? (
                     <Badge variant="success">Activa</Badge>
@@ -470,49 +563,21 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                   )}
                 </TableCell>
                 <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={accionando === u.id || !u.activo || u.id === miId}
-                      onClick={() => void entrarComo(u)}
-                      title={u.id === miId ? 'Es tu propia cuenta' : 'Entrar como este contador'}
-                    >
-                      <LogIn className="h-4 w-4" /> Entrar como
-                    </Button>
-                    <RestablecerPasswordDialog
-                      usuario={u}
-                      trigger={
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          title="Generar una contraseña temporal para este contador"
-                        >
-                          <KeyRound className="h-4 w-4" /> Contraseña
-                        </Button>
-                      }
+                  <div className="flex justify-end">
+                    <AccionesCuenta
+                      u={u}
+                      miId={miId}
+                      trabajando={accionando === u.id}
+                      onEntrarComo={u => void entrarComo(u)}
+                      onToggleActivo={u => void toggleActivo(u)}
                     />
-                    <Button
-                      variant={u.activo ? 'destructive' : 'default'}
-                      size="sm"
-                      disabled={accionando === u.id || u.id === miId}
-                      onClick={() => void toggleActivo(u)}
-                      title={u.id === miId ? 'No podés desactivar tu cuenta' : ''}
-                    >
-                      {accionando === u.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Power className="h-4 w-4" />
-                      )}
-                      {u.activo ? 'Desactivar' : 'Activar'}
-                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
             ))}
             {filtrados.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-10">
+                <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
                   No hay cuentas que coincidan con la búsqueda.
                 </TableCell>
               </TableRow>
@@ -551,6 +616,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                 <Badge variant="muted">Inhabilitada</Badge>
               )}
               <TrialBadge trialFin={u.trial_fin} rol={u.rol} />
+              <EmailConfirmadoBadge confirmado={u.email_confirmado} />
               <span className="text-xs text-muted-foreground tabular-nums">
                 {u.clientes} cliente(s)
               </span>
@@ -565,41 +631,21 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                 <span className="block text-[11px] uppercase tracking-wider">Último acceso</span>
                 {fechaHora(u.ultimo_acceso)}
               </div>
+              <div>
+                <span className="block text-[11px] uppercase tracking-wider">Último cierre</span>
+                {fechaHora(u.ultimo_logout)}
+              </div>
             </div>
 
-            <div className="flex gap-2 pt-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1"
-                disabled={accionando === u.id || !u.activo || u.id === miId}
-                onClick={() => void entrarComo(u)}
-              >
-                <LogIn className="h-4 w-4" /> Entrar como
-              </Button>
-              <Button
-                variant={u.activo ? 'destructive' : 'default'}
-                size="sm"
-                className="flex-1"
-                disabled={accionando === u.id || u.id === miId}
-                onClick={() => void toggleActivo(u)}
-              >
-                {accionando === u.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Power className="h-4 w-4" />
-                )}
-                {u.activo ? 'Desactivar' : 'Activar'}
-              </Button>
+            <div className="flex justify-end pt-1">
+              <AccionesCuenta
+                u={u}
+                miId={miId}
+                trabajando={accionando === u.id}
+                onEntrarComo={u => void entrarComo(u)}
+                onToggleActivo={u => void toggleActivo(u)}
+              />
             </div>
-            <RestablecerPasswordDialog
-              usuario={u}
-              trigger={
-                <Button variant="outline" size="sm" className="w-full">
-                  <KeyRound className="h-4 w-4" /> Restablecer contraseña
-                </Button>
-              }
-            />
           </Card>
         ))}
         {filtrados.length === 0 && (

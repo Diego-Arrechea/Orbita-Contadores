@@ -2,7 +2,8 @@
  * Auth del contador (login propio de Órbita) contra el backend.
  * Sólo HTTP: la sesión (token + usuario en localStorage) la maneja src/lib/cuenta.ts.
  */
-import { apiGet, apiPost } from './apiClient';
+import { apiGet, apiPost, BASE_URL } from './apiClient';
+import { tokenActual } from '@/lib/cuenta';
 
 export interface Usuario {
   id: number;
@@ -83,6 +84,25 @@ export function confirmarEmail(token: string): Promise<{ ok: boolean }> {
 /** Reenvía el correo de confirmación al contador logueado (botón del banner). */
 export function reenviarConfirmacion(): Promise<{ ok: boolean; ya_confirmado?: boolean }> {
   return apiPost('/auth/reenviar-confirmacion', {});
+}
+
+/**
+ * Avisa al backend que el contador cierra la app (sesión explícita o cierre de pestaña), para que el
+ * panel admin registre el "último cierre". Best-effort: usa `keepalive` para que el request sobreviva
+ * al unload de la página, no lanza si falla y no invalida la sesión (sólo deja el timestamp).
+ */
+export function registrarLogout(): void {
+  const token = tokenActual();
+  if (!token) return;
+  try {
+    void fetch(`${BASE_URL}/auth/logout`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* ignore */
+  }
 }
 
 /**

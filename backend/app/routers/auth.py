@@ -132,6 +132,19 @@ def me(usuario: models.Usuario = Depends(usuario_actual)):
     return _usuario_out(usuario)
 
 
+@router.post("/logout")
+def logout(
+    usuario: models.Usuario = Depends(usuario_actual),
+    db: Session = Depends(get_db),
+):
+    """Registra que el contador cerró la app (sesión explícita o cierre/recarga de la pestaña). NO
+    invalida el token — sólo deja el timestamp para el panel admin. Best-effort: lo dispara el front
+    al hacer logout y en el evento de cierre de pestaña."""
+    usuario.ultimo_logout = dt.datetime.now(dt.timezone.utc)
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/cambiar-password")
 def cambiar_password(
     datos: CambioPasswordIn,

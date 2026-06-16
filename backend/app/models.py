@@ -65,6 +65,11 @@ class Usuario(Base):
     ultimo_acceso: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Última vez que el contador cerró la app (para el panel admin): cierre de sesión explícito o
+    # cierre/recarga de la pestaña (best-effort vía POST /auth/logout). NULL = nunca registrado.
+    ultimo_logout: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     creado_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -434,8 +434,10 @@ class AdminUsuarioOut(BaseModel):
     matricula: str | None = None
     rol: str
     activo: bool
+    email_confirmado: bool = False  # confirmó su correo al registrarse
     creado_en: str | None = None  # ISO
     ultimo_acceso: str | None = None  # ISO; None = nunca inició sesión
+    ultimo_logout: str | None = None  # ISO; None = nunca registró un cierre de la app
     clientes: int = 0  # cuántos clientes tiene cargados
     trial_fin: str | None = None  # ISO: fin del período de prueba gratis
     trial_dias_restantes: int | None = None  # días que faltan (0 = vencida)

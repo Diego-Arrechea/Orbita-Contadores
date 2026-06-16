@@ -55,6 +55,7 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         estudio=u.estudio,
         matricula=u.matricula,
         rol=u.rol,
+        email_confirmado=bool(u.email_confirmado),
         trial_fin=u.trial_fin.isoformat() if u.trial_fin else None,
         trial_dias_restantes=dias_restantes_trial(u.trial_fin),
     )
@@ -72,8 +73,10 @@ def _admin_usuario_out(u: models.Usuario, clientes: int) -> AdminUsuarioOut:
         matricula=u.matricula,
         rol=u.rol,
         activo=u.activo,
+        email_confirmado=bool(u.email_confirmado),
         creado_en=_iso(u.creado_en),
         ultimo_acceso=_iso(u.ultimo_acceso),
+        ultimo_logout=_iso(u.ultimo_logout),
         clientes=clientes,
         trial_fin=_iso(u.trial_fin),
         trial_dias_restantes=dias_restantes_trial(u.trial_fin),

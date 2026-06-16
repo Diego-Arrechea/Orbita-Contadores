@@ -55,6 +55,7 @@ def _migrar_usuarios(conn) -> None:
         "rol": "VARCHAR(20) DEFAULT 'contador'",
         "activo": "BOOLEAN DEFAULT TRUE" if not es_sqlite else "BOOLEAN DEFAULT 1",
         "ultimo_acceso": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
+        "ultimo_logout": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
         "trial_fin": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
         # Recuperación de contraseña: hash del token de reset + su expiración (NULL = sin reset pendiente).
         "reset_token_hash": "VARCHAR(64)",
