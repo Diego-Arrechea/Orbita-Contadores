@@ -546,8 +546,8 @@ export function Configuracion() {
                   <MailWarning className="h-4 w-4 text-warning shrink-0 mt-0.5" />
                   <span className="text-foreground/80">
                     Todavía no confirmaste tu correo
-                    {emailCuenta ? <> (<strong>{emailCuenta}</strong>)</> : ''}. Te enviamos un
-                    enlace al registrarte; revisá tu casilla (y la carpeta de spam) o pedí uno nuevo.
+                    {emailCuenta ? <> (<strong>{emailCuenta}</strong>)</> : ''}. Enviate el enlace de
+                    confirmación y seguí los pasos para terminar de activar tu cuenta.
                   </span>
                 </div>
 
@@ -555,7 +555,7 @@ export function Configuracion() {
                   <div className="flex items-start gap-2 rounded-lg border border-success/25 bg-success/10 px-3.5 py-2.5 text-sm">
                     <CheckCircle2 className="h-4 w-4 text-success shrink-0 mt-0.5" />
                     <span className="text-foreground/80">
-                      Te reenviamos el correo de confirmación
+                      Te enviamos el correo de confirmación
                       {emailCuenta ? ` a ${emailCuenta}` : ''}. Revisá tu casilla (y la carpeta de
                       spam).
                     </span>
@@ -569,13 +569,13 @@ export function Configuracion() {
                         </>
                       ) : (
                         <>
-                          <MailCheck className="h-4 w-4" /> Reenviar correo de confirmación
+                          <MailCheck className="h-4 w-4" /> Enviar correo de confirmación
                         </>
                       )}
                     </Button>
                     {reenvio === 'error' && (
                       <span className="text-sm text-danger">
-                        No se pudo reenviar. Probá de nuevo en un momento.
+                        No se pudo enviar. Probá de nuevo en un momento.
                       </span>
                     )}
                   </div>

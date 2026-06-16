@@ -73,8 +73,6 @@ def registrar(datos: RegistroIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail="Ya existe una cuenta con ese CUIT.")
 
     ahora = dt.datetime.now(dt.timezone.utc)
-    # Token de confirmación de email (single-use): se guarda hasheado y el claro viaja en el enlace.
-    confirm_token, confirm_hash = generar_email_token()
     usuario = models.Usuario(
         nombre=datos.nombre.strip(),
         apellido=datos.apellido.strip(),
@@ -91,10 +89,11 @@ def registrar(datos: RegistroIn, db: Session = Depends(get_db)):
         ultimo_acceso=ahora,
         # Período de prueba gratis de 30 días desde el alta.
         trial_fin=ahora + dt.timedelta(days=TRIAL_DIAS),
-        # Confirmación de email pendiente (enforcement suave: igual queda logueado).
+        # Confirmación de email pendiente (enforcement suave: igual queda logueado). NO mandamos el
+        # correo en el alta: el contador lo dispara manualmente desde el banner / Configuración →
+        # Seguridad ("Enviar correo de confirmación"), que recién ahí genera y envía el token
+        # (endpoint reenviar-confirmacion).
         email_confirmado=False,
-        email_token_hash=confirm_hash,
-        email_token_exp=ahora + dt.timedelta(hours=settings.email_confirm_token_horas),
     )
     db.add(usuario)
     try:
@@ -106,7 +105,6 @@ def registrar(datos: RegistroIn, db: Session = Depends(get_db)):
         ) from e
     db.refresh(usuario)
     crisp.intentar_sincronizar(usuario)  # crea el contacto en Crisp (best-effort: no rompe el alta)
-    email.enviar_link_confirmacion(usuario, confirm_token)  # no-op si SMTP no está configurado
     return _auth_out(usuario)
 
 
