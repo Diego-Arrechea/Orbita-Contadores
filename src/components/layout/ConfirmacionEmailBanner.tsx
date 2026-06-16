@@ -51,7 +51,7 @@ export function ConfirmacionEmailBanner() {
       {estado === 'enviado' ? (
         <span className="inline-flex items-center gap-1.5">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
-          Te reenviamos el correo de confirmación{email ? ` a ${email}` : ''}. Revisá tu casilla
+          Te enviamos el correo de confirmación{email ? ` a ${email}` : ''}. Revisá tu casilla
           (y la carpeta de spam).
         </span>
       ) : (
@@ -70,11 +70,11 @@ export function ConfirmacionEmailBanner() {
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Enviando…
               </>
             ) : (
-              'Reenviar correo'
+              'Enviar correo'
             )}
           </button>
           {estado === 'error' && (
-            <span className="text-xs">No se pudo reenviar. Probá de nuevo en un momento.</span>
+            <span className="text-xs">No se pudo enviar. Probá de nuevo en un momento.</span>
           )}
         </>
       )}
