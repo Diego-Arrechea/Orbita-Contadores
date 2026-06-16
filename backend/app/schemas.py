@@ -570,6 +570,7 @@ class MotorEstadoOut(BaseModel):
     syncs_24h: int = 0
     exitosas_24h: int = 0
     fallidas_24h: int = 0
+    duracion_promedio_seg: int | None = None  # promedio de duración de las syncs exitosas (24h)
     # Listas
     proximos: list[MotorClienteOut] = []    # próximos a sincronizar (más vencidos primero)
     actividad: list[MotorClienteOut] = []   # últimas extracciones (feed)

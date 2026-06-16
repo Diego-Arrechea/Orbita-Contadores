@@ -113,6 +113,17 @@ def estado_motor(db: Session = Depends(get_db)):
     hace_1h = ahora - dt.timedelta(hours=1)
     hace_24h = ahora - dt.timedelta(hours=24)
 
+    # Duración promedio de las sincronizaciones EXITOSAS de las últimas 24h (las fallidas inflan el
+    # tiempo con reintentos/timeouts y no representan "traer los datos"). En segundos; None si no hubo.
+    dur_prom_ms = db.scalar(
+        select(func.avg(models.Extraccion.duracion_ms)).where(
+            models.Extraccion.fecha >= hace_24h,
+            models.Extraccion.resultado == "exitosa",
+            models.Extraccion.duracion_ms > 0,
+        )
+    )
+    duracion_promedio_seg = round(dur_prom_ms / 1000) if dur_prom_ms else None
+
     # Actividad reciente (feed de las últimas extracciones; el panel la pagina de a 10).
     recientes = db.execute(
         select(models.Extraccion).order_by(models.Extraccion.fecha.desc()).limit(50)
@@ -163,6 +174,7 @@ def estado_motor(db: Session = Depends(get_db)):
         syncs_24h=_contar(hace_24h),
         exitosas_24h=_contar(hace_24h, "exitosa"),
         fallidas_24h=_contar(hace_24h, "fallida"),
+        duracion_promedio_seg=duracion_promedio_seg,
         proximos=proximos,
         actividad=actividad,
     )
