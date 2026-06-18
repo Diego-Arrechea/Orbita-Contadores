@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Orbit, ArrowLeft, AlertTriangle } from 'lucide-react';
+import { Orbit, ArrowLeft } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 const ACTUALIZADO = 'junio de 2026';
@@ -27,14 +27,6 @@ function MarcoLegal({ titulo, children }: { titulo: string; children: ReactNode 
         <div className="bg-card border border-border/60 rounded-2xl shadow-sm p-8 sm:p-10">
           <h1 className="text-2xl font-semibold tracking-tight">{titulo}</h1>
           <p className="text-sm text-muted-foreground mt-1">Última actualización: {ACTUALIZADO}</p>
-
-          <div className="mt-5 flex items-start gap-2 rounded-lg bg-warning/15 border border-warning/30 px-3.5 py-2.5 text-sm">
-            <AlertTriangle className="h-4 w-4 text-warning-foreground shrink-0 mt-0.5" />
-            <span className="text-foreground/80">
-              Borrador inicial. Este texto es una base orientativa y debe ser revisado por un asesor
-              legal antes de usarse en producción.
-            </span>
-          </div>
 
           <div className="mt-7 space-y-6 text-sm leading-relaxed text-foreground/80">{children}</div>
         </div>
