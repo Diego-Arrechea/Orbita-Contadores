@@ -117,6 +117,8 @@ export function ListaComprobantes({ cliente }: Props) {
   const [direccion, setDireccion] = useState<'todos' | 'emitido' | 'recibido'>('todos');
   const [tipo, setTipo] = useState<TipoFiltro>('todos');
   const [busqueda, setBusqueda] = useState('');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
   const [pagina, setPagina] = useState(1);
 
   const comprobantes = useMemo(
@@ -124,6 +126,8 @@ export function ListaComprobantes({ cliente }: Props) {
       cliente.comprobantes
         .filter(c => (direccion === 'todos' ? true : c.direccion === direccion))
         .filter(c => coincideTipo(c.tipo, tipo))
+        // Rango de fechas de emisión (inclusive). fechaEmision es 'YYYY-MM-DD', comparable lexicográficamente.
+        .filter(c => (!fechaDesde || c.fechaEmision >= fechaDesde) && (!fechaHasta || c.fechaEmision <= fechaHasta))
         .filter(c => {
           if (!busqueda) return true;
           const q = busqueda.toLowerCase();
@@ -141,11 +145,11 @@ export function ListaComprobantes({ cliente }: Props) {
             b.puntoVenta - a.puntoVenta ||
             b.numero.localeCompare(a.numero),
         ),
-    [cliente.comprobantes, direccion, tipo, busqueda],
+    [cliente.comprobantes, direccion, tipo, busqueda, fechaDesde, fechaHasta],
   );
 
   // Al cambiar los filtros, volver a la primera página.
-  useEffect(() => setPagina(1), [direccion, tipo, busqueda]);
+  useEffect(() => setPagina(1), [direccion, tipo, busqueda, fechaDesde, fechaHasta]);
 
   const totalPaginas = Math.max(1, Math.ceil(comprobantes.length / POR_PAGINA));
   const paginaActual = Math.min(pagina, totalPaginas);
@@ -186,6 +190,38 @@ export function ListaComprobantes({ cliente }: Props) {
             <SelectItem value="recibos">Recibos</SelectItem>
           </SelectContent>
         </Select>
+        <div className="flex items-center gap-2">
+          <Input
+            type="date"
+            value={fechaDesde}
+            max={fechaHasta || undefined}
+            onChange={e => setFechaDesde(e.target.value)}
+            aria-label="Fecha desde"
+            className="w-full md:w-[160px] bg-card"
+          />
+          <span className="text-sm text-muted-foreground">a</span>
+          <Input
+            type="date"
+            value={fechaHasta}
+            min={fechaDesde || undefined}
+            onChange={e => setFechaHasta(e.target.value)}
+            aria-label="Fecha hasta"
+            className="w-full md:w-[160px] bg-card"
+          />
+          {(fechaDesde || fechaHasta) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="shrink-0"
+              onClick={() => {
+                setFechaDesde('');
+                setFechaHasta('');
+              }}
+            >
+              Limpiar
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
