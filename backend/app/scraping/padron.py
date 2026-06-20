@@ -59,15 +59,23 @@ def extraer(html: str) -> dict:
     #   facturacion_12m = ingresos brutos devengados de los últimos 12 meses SEGÚN ARCA (numerador).
     #   tope_categoria  = tope oficial de la categoría actual (denominador). Es el dato autoritativo
     #                     del gauge; el cálculo por comprobantes queda como estimación al día.
+    # SELF-HEAL del 0 transitorio: a veces el AJAX CalcularFacturacion deja el panel renderizado
+    # (con la fecha de corte ya puesta) pero el monto/tope en 0. Persistir ese 0 pisaría el último
+    # valor bueno → la ficha mostraría $0 sobre un cliente que sí facturó. Por eso sólo tomamos el
+    # facturómetro si el monto es > 0, y atamos fecha+tope a ese monto: si vino 0/ausente, NO se
+    # persiste ninguno de los tres → el cliente conserva su valor previo y el próximo sync lo auto-cura.
     mfm = re.search(r'id="spanFacturometroMonto"[^>]*>\s*\$?\s*([\d.]+,\d{2})', html)
-    if mfm:
-        out["facturacion_12m"] = float(mfm.group(1).replace(".", "").replace(",", "."))
-    mft = re.search(r'id="spanFacturometroCategoriaTope"[^>]*>\s*\$?\s*([\d.]+,\d{2})', html)
-    if mft:
-        out["tope_categoria"] = float(mft.group(1).replace(".", "").replace(",", "."))
-    mfa = re.search(r'id="spanFacturometroActualizacion"[^>]*>\s*(\d{2}/\d{2}/\d{4})', html)
-    if mfa:
-        out["facturometro_actualizado"] = mfa.group(1)
+    monto = float(mfm.group(1).replace(".", "").replace(",", ".")) if mfm else 0.0
+    if monto > 0:
+        out["facturacion_12m"] = monto
+        mft = re.search(r'id="spanFacturometroCategoriaTope"[^>]*>\s*\$?\s*([\d.]+,\d{2})', html)
+        if mft:
+            tope = float(mft.group(1).replace(".", "").replace(",", "."))
+            if tope > 0:
+                out["tope_categoria"] = tope
+        mfa = re.search(r'id="spanFacturometroActualizacion"[^>]*>\s*(\d{2}/\d{2}/\d{4})', html)
+        if mfa:
+            out["facturometro_actualizado"] = mfa.group(1)
     return out
 
 

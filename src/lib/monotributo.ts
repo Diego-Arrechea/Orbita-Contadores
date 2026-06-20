@@ -72,10 +72,23 @@ export function calcularCliente(
     mesesEfectivos < 12 ? (facturacion12 / mesesEfectivos) * 12 : facturacion12;
 
   const categoriaActual = getCategoria(cliente.categoria);
-  const porcentajeTopeActual = facturacionAnualizada / categoriaActual.topeAnual;
+
+  // Nivel autoritativo para tope/categoría/proyección: la cifra OFICIAL de ARCA (facturómetro del
+  // padrón) cuando está; si no, el cálculo propio por comprobantes (anualizado si <12m de actividad).
+  // El oficial ya incluye lo que ARCA computa —p. ej. liquidaciones del agro que el productor NO
+  // emite—, así que evita subdeclarar en esas carteras. La TENDENCIA (ritmo/proyección de cruce) sí
+  // sigue saliendo de los comprobantes: el oficial es un único total 12m, sin desglose mensual.
+  // OJO: sólo se considera válido el oficial > 0. El panel de ARCA a veces responde 0 por una carga
+  // incompleta del AJAX (con la fecha de corte ya puesta); ese 0 NO es real (lo delata tener
+  // comprobantes por encima) y con `??` ganaría y pisaría todo con $0 → usamos chequeo > 0, no null.
+  const oficialValido = cliente.facturacion12mOficial != null && cliente.facturacion12mOficial > 0;
+  const topeOficialValido = cliente.topeCategoriaOficial != null && cliente.topeCategoriaOficial > 0;
+  const nivelTope = oficialValido ? cliente.facturacion12mOficial! : facturacionAnualizada;
+  const topeRef = topeOficialValido ? cliente.topeCategoriaOficial! : categoriaActual.topeAnual;
+  const porcentajeTopeActual = topeRef > 0 ? nivelTope / topeRef : 0;
 
   const categoriaCorresponde =
-    CATEGORIAS.find(c => facturacionAnualizada <= c.topeAnual) ||
+    CATEGORIAS.find(c => nivelTope <= c.topeAnual) ||
     CATEGORIAS[CATEGORIAS.length - 1];
 
   const ratioGastosTopeCatK = compras12 / TOPE_CATEGORIA_K;
@@ -90,11 +103,12 @@ export function calcularCliente(
   const promAnt3 = anteriores3.reduce((s, m) => s + m.emitidasNetas + m.ingresosNoFacturados, 0) / 3 || promUlt3;
   const variacion = promAnt3 > 0 ? (promUlt3 - promAnt3) / promAnt3 / 3 : 0;
 
+  // Arranca del nivel oficial (lo ya acumulado según ARCA) y proyecta con el ritmo de comprobantes.
   const fechaProyectada = proyectarCruceTope(
-    facturacion12,
+    oficialValido ? cliente.facturacion12mOficial! : facturacion12,
     promUlt3,
     variacion,
-    categoriaActual.topeAnual,
+    topeRef,
   );
 
   // Proyección a 12 meses: parte del ritmo mensual reciente (promedio de los últimos 3 meses) y lo

@@ -136,11 +136,21 @@ def calcular_cliente(
     )
 
     categoria_actual = get_categoria(categoria_norm)
-    porcentaje_tope = (
-        facturacion_anualizada / categoria_actual.tope_anual if categoria_actual.tope_anual else 0.0
-    )
+    # Nivel autoritativo (tope/categoría/proyección): cifra OFICIAL de ARCA (facturómetro del padrón)
+    # cuando está; si no, el cálculo propio por comprobantes (anualizado si <12m). Espejo de
+    # monotributo.ts. El oficial ya incluye lo que ARCA computa (p. ej. liquidaciones del agro que el
+    # productor NO emite) → no subdeclara. La TENDENCIA sigue por comprobantes (el oficial es un único
+    # total 12m, sin desglose mensual).
+    # OJO: sólo vale el oficial > 0. El panel de ARCA a veces responde 0 por una carga incompleta del
+    # AJAX (con la fecha de corte ya puesta); ese 0 NO es real (lo delata tener comprobantes por
+    # encima) → chequeamos > 0, no `is not None`, para no pisar todo con 0.
+    oficial_valido = cliente.facturacion_12m is not None and cliente.facturacion_12m > 0
+    tope_oficial_valido = cliente.tope_categoria is not None and cliente.tope_categoria > 0
+    nivel_tope = cliente.facturacion_12m if oficial_valido else facturacion_anualizada
+    tope_ref = cliente.tope_categoria if tope_oficial_valido else categoria_actual.tope_anual
+    porcentaje_tope = nivel_tope / tope_ref if tope_ref else 0.0
     categoria_corresponde = next(
-        (c.codigo for c in CATEGORIAS if facturacion_anualizada <= c.tope_anual),
+        (c.codigo for c in CATEGORIAS if nivel_tope <= c.tope_anual),
         CATEGORIAS[-1].codigo,
     )
 
@@ -152,8 +162,10 @@ def calcular_cliente(
     ant3 = ultimos12[-6:-3]
     prom_ant3 = (sum(m.emitidasNetas + m.ingresosNoFacturados for m in ant3) / 3) or prom_ult3
     variacion = (prom_ult3 - prom_ant3) / prom_ant3 / 3 if prom_ant3 > 0 else 0.0
+    # Arranca del nivel oficial (lo ya acumulado según ARCA) y proyecta con el ritmo de comprobantes.
+    acumulado_proy = cliente.facturacion_12m if oficial_valido else facturacion12
     fecha_proyectada = _proyectar_cruce_tope(
-        facturacion12, prom_ult3, variacion, categoria_actual.tope_anual, hoy
+        acumulado_proy, prom_ult3, variacion, tope_ref, hoy
     )
 
     futuras = sorted(
