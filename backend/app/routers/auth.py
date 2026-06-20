@@ -4,7 +4,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -13,9 +13,11 @@ from ..config import settings
 from ..db import get_db
 from ..schemas import (
     AuthOut,
+    BorrarCuentaIn,
     CambioPasswordIn,
     ConfirmarEmailIn,
     LoginIn,
+    PerfilIn,
     RecuperarIn,
     RegistroIn,
     RestablecerIn,
@@ -153,6 +155,68 @@ def cambiar_password(
     if not verificar_password(datos.password_actual, usuario.password_hash):
         raise HTTPException(status_code=401, detail="La contraseña actual no es correcta.")
     usuario.password_hash = hashear_password(datos.password_nueva)
+    db.commit()
+    return {"ok": True}
+
+
+@router.patch("/perfil", response_model=UsuarioOut)
+def actualizar_perfil(
+    datos: PerfilIn,
+    usuario: models.Usuario = Depends(usuario_actual),
+    db: Session = Depends(get_db),
+):
+    """Actualiza los datos editables de la cuenta del contador logueado (nombre, apellido, teléfono,
+    estudio, matrícula). Email/CUIT/DNI no se tocan acá (identidad/login)."""
+    usuario.nombre = datos.nombre.strip()
+    usuario.apellido = datos.apellido.strip()
+    usuario.telefono = datos.telefono.strip()
+    usuario.estudio = datos.estudio.strip()
+    usuario.matricula = (datos.matricula or "").strip() or None
+    db.commit()
+    db.refresh(usuario)
+    crisp.intentar_sincronizar(usuario)  # mantiene el contacto del CRM al día (best-effort)
+    return _usuario_out(usuario)
+
+
+@router.post("/borrar-cuenta")
+def borrar_cuenta(
+    datos: BorrarCuentaIn,
+    usuario: models.Usuario = Depends(usuario_actual),
+    db: Session = Depends(get_db),
+):
+    """Borra DEFINITIVAMENTE la cuenta del contador logueado y TODOS sus datos (clientes,
+    comprobantes, conciliación, alertas). Exige la contraseña actual como segundo chequeo. Es
+    irreversible. Borra los hijos antes que los padres porque en Postgres las FK se fuerzan
+    (a diferencia de SQLite en dev). Ver el mismo criterio en routers/clientes.py::eliminar_cliente."""
+    if not verificar_password(datos.password, usuario.password_hash):
+        raise HTTPException(status_code=401, detail="La contraseña no es correcta.")
+
+    cuits = list(
+        db.scalars(
+            select(models.ClienteARCA.cuit).where(models.ClienteARCA.usuario_id == usuario.id)
+        ).all()
+    )
+    if cuits:
+        db.execute(
+            delete(models.ComprobanteEmitido).where(models.ComprobanteEmitido.cuit.in_(cuits))
+        )
+        db.execute(delete(models.Extraccion).where(models.Extraccion.cuit.in_(cuits)))
+        db.execute(delete(models.MovimientoBancario).where(models.MovimientoBancario.cuit.in_(cuits)))
+        db.execute(delete(models.ClienteARCA).where(models.ClienteARCA.usuario_id == usuario.id))
+    # Alertas notificadas del contador.
+    db.execute(delete(models.AlertaEnviada).where(models.AlertaEnviada.usuario_id == usuario.id))
+    # Auditoría donde figura como admin (FK a usuarios.id, no nullable) → se borra para no violar la FK.
+    db.execute(delete(models.AuditoriaAdmin).where(models.AuditoriaAdmin.admin_id == usuario.id))
+    # Clave fiscal cifrada (Contador): se borra sólo si ya no la referencia ningún cliente (de nadie).
+    if usuario.cuit:
+        en_uso = db.scalar(
+            select(models.ClienteARCA.cuit)
+            .where(models.ClienteARCA.cuit_contador == usuario.cuit)
+            .limit(1)
+        )
+        if en_uso is None:
+            db.execute(delete(models.Contador).where(models.Contador.cuit == usuario.cuit))
+    db.delete(usuario)
     db.commit()
     return {"ok": True}
 

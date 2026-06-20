@@ -2,7 +2,7 @@
  * Auth del contador (login propio de Órbita) contra el backend.
  * Sólo HTTP: la sesión (token + usuario en localStorage) la maneja src/lib/cuenta.ts.
  */
-import { apiGet, apiPost, BASE_URL } from './apiClient';
+import { apiGet, apiPatch, apiPost, BASE_URL } from './apiClient';
 import { tokenActual } from '@/lib/cuenta';
 
 export interface Usuario {
@@ -61,6 +61,25 @@ export function cambiarPassword(
     password_actual: passwordActual,
     password_nueva: passwordNueva,
   });
+}
+
+export interface PerfilPayload {
+  nombre: string;
+  apellido: string;
+  telefono: string;
+  estudio: string;
+  matricula?: string;
+}
+
+/** Actualiza los datos editables de la cuenta (nombre, apellido, teléfono, estudio, matrícula).
+ *  Devuelve el usuario actualizado para refrescar la sesión. */
+export function actualizarPerfil(datos: PerfilPayload): Promise<Usuario> {
+  return apiPatch<Usuario>('/auth/perfil', datos);
+}
+
+/** Borra definitivamente la cuenta del contador logueado. Requiere la contraseña (segundo chequeo). */
+export function borrarCuenta(password: string): Promise<{ ok: boolean }> {
+  return apiPost('/auth/borrar-cuenta', { password });
 }
 
 /** Pide el enlace de recuperación de contraseña. Responde igual exista o no el email. */

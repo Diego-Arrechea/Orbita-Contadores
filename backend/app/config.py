@@ -84,13 +84,13 @@ class Settings(BaseSettings):
     crisp_token_key: str = ""
     crisp_tier: str = "website"  # "website" (Website Token) | "plugin" (token del Marketplace)
 
-    # --- WhatsApp (Twilio) — envío de alertas ---
-    # Para probar: Twilio Console → Messaging → Try it out → Send a WhatsApp message (Sandbox).
-    # Copiá Account SID y Auth Token (home de la Console) y el número del sandbox en TWILIO_WHATSAPP_FROM
-    # (ej. +14155238886). Si quedan vacíos, el envío es un no-op (no rompe nada).
-    twilio_account_sid: str = ""
-    twilio_auth_token: str = ""
-    twilio_whatsapp_from: str = ""
+    # --- WhatsApp — envío de alertas (gateway Baileys de Órbita, app de mensajería) ---
+    # El backend NO le pega al worker directo: usa el endpoint de alto nivel /api/bot/propose, que
+    # resuelve/crea contacto + conversación, persiste el saliente y lo manda por Baileys.
+    # whatsapp_bot_secret es SECRETO → va en .env (NO en código). Sin él, el envío es un no-op.
+    whatsapp_bot_url: str = "https://app.orbitaglobalmarketing.com/api/bot/propose"
+    whatsapp_inbox_id: str = "492e0ec4-b4be-4e2a-9116-0bbf3355df5d"  # inbox de Contadores (prod)
+    whatsapp_bot_secret: str = ""  # BOT_WEBHOOK_SECRET de prod (header x-bot-secret); setear en .env
 
     # --- Email (SMTP) — envío del enlace de recuperación de contraseña ---
     # Cualquier proveedor SMTP sirve (Gmail con App Password, Resend, SendGrid, Mailgun, etc.).

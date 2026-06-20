@@ -107,12 +107,55 @@ def _migrar_usuarios(conn) -> None:
         )
 
 
+def _columnas(conn, tabla: str) -> set[str]:
+    """Nombres de columna de `tabla` (vacío si no existe). Portable SQLite + Postgres."""
+    if settings.database_url.startswith("sqlite"):
+        info = conn.execute(text(f"PRAGMA table_info({tabla})")).fetchall()
+        return {row[1] for row in info}
+    return {
+        row[0]
+        for row in conn.execute(
+            text("SELECT column_name FROM information_schema.columns WHERE table_name = :t"),
+            {"t": tabla},
+        )
+    }
+
+
+def _migrar_alertas_enviadas(conn) -> None:
+    """Agrega `severidad`/`activa` a `alertas_enviadas` (motor de alertas 'solo lo nuevo').
+    Portable SQLite + Postgres. Las filas viejas (bitácora del cooldown anterior) se marcan
+    activa=FALSE para que no supriman alertas vigentes: el motor las re-enviará una vez como nuevas."""
+    es_sqlite = settings.database_url.startswith("sqlite")
+    cols = _columnas(conn, "alertas_enviadas")
+    if not cols:  # tabla recién creada por create_all: ya trae las columnas
+        return
+    if "severidad" not in cols:
+        conn.execute(
+            text("ALTER TABLE alertas_enviadas ADD COLUMN severidad VARCHAR(10) DEFAULT 'urgente'")
+        )
+    if "activa" not in cols:
+        conn.execute(
+            text(
+                "ALTER TABLE alertas_enviadas ADD COLUMN activa BOOLEAN DEFAULT TRUE"
+                if not es_sqlite
+                else "ALTER TABLE alertas_enviadas ADD COLUMN activa BOOLEAN DEFAULT 1"
+            )
+        )
+        # Backfill SÓLO al crear la columna (idempotente): las filas previas dejan de suprimir.
+        conn.execute(
+            text("UPDATE alertas_enviadas SET activa = FALSE")
+            if not es_sqlite
+            else text("UPDATE alertas_enviadas SET activa = 0")
+        )
+
+
 def asegurar_columnas() -> None:
     """Migración ligera (sin Alembic): agrega columnas nuevas a tablas ya existentes.
     create_all() crea tablas faltantes pero NO altera las existentes."""
-    # Migración de `usuarios` (panel admin): portable a SQLite y Postgres.
+    # Migraciones portables a SQLite y Postgres.
     with engine.begin() as conn:
         _migrar_usuarios(conn)
+        _migrar_alertas_enviadas(conn)
 
     # El resto son migraciones de tablas que sólo existen viejas en el SQLite de desarrollo.
     if not settings.database_url.startswith("sqlite"):

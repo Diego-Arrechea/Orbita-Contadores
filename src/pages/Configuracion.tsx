@@ -13,6 +13,10 @@ import {
   KeyRound,
   MailCheck,
   MailWarning,
+  Clock,
+  UserCog,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,6 +25,22 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useNavigate } from 'react-router-dom';
 import {
   Table,
   TableBody,
@@ -33,26 +53,42 @@ import { CATEGORIAS } from '@/data/categorias';
 import { useConfig } from '@/context/ConfigContext';
 import { CAUSALES_EXCLUSION } from '@/data/causales';
 import { formatCurrency } from '@/lib/utils';
-import { enviarWhatsappPrueba } from '@/services/notificacionesService';
 import {
   cambiarPassword,
   getMe,
   reenviarConfirmacion,
   mensajeDeError,
+  actualizarPerfil,
+  borrarCuenta,
 } from '@/services/authService';
-import { actualizarUsuarioGuardado, usuarioActual } from '@/lib/cuenta';
+import { actualizarUsuarioGuardado, logoutCuenta, usuarioActual } from '@/lib/cuenta';
+import { enviarPruebaWhatsapp } from '@/services/notificacionesService';
+import type { ConfigNotificaciones, TipoNotificable } from '@/types';
+
+// Etiquetas (en términos del dominio) de los tipos de alerta que el contador puede recibir.
+const TIPOS_NOTIFICABLES: { tipo: TipoNotificable; label: string }[] = [
+  { tipo: 'tope', label: 'Cerca o por encima del tope' },
+  { tipo: 'recategorizacion', label: 'Debería recategorizarse' },
+  { tipo: 'ventana', label: 'Cierre de ventana de recategorización' },
+  { tipo: 'exclusion', label: 'Gastos altos / riesgo de exclusión' },
+  { tipo: 'cuota', label: 'Cuota del mes impaga' },
+  { tipo: 'vencimiento', label: 'Vencimiento de cuota próximo' },
+  { tipo: 'sync', label: 'No pudimos actualizar sus datos' },
+];
 
 export function Configuracion() {
+  const navigate = useNavigate();
   const { config, guardarConfig } = useConfig();
   const [conf, setConf] = useState(config);
   // El provider arranca en defaults y refina con lo guardado de la cuenta: cuando llega, refrescamos
   // el formulario (si el usuario ya estaba editando con el backend frío —caso raro—, se le pisa).
   useEffect(() => setConf(config), [config]);
-  const [guardado, setGuardado] = useState<'fechas' | 'umbrales' | null>(null);
+  const [guardado, setGuardado] = useState<'fechas' | 'umbrales' | 'notificaciones' | null>(null);
   const [errorGuardar, setErrorGuardar] = useState('');
-  const [numPrueba, setNumPrueba] = useState('');
-  const [enviando, setEnviando] = useState(false);
-  const [resultado, setResultado] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  // Prueba de envío por WhatsApp (tab WhatsApp): manda un mensaje de ejemplo al número de la cuenta.
+  const [enviandoPrueba, setEnviandoPrueba] = useState(false);
+  const [resultadoPrueba, setResultadoPrueba] = useState<{ ok: boolean; msg: string } | null>(null);
 
   // Cambio de contraseña (tab Seguridad).
   const [passActual, setPassActual] = useState('');
@@ -61,19 +97,45 @@ export function Configuracion() {
   const [cambiandoPass, setCambiandoPass] = useState(false);
   const [resultadoPass, setResultadoPass] = useState<{ ok: boolean; msg: string } | null>(null);
 
-  // Confirmación de correo (tab Seguridad). Arrancamos con lo que haya en la sesión y refrescamos
+  // Confirmación de correo (tab Cuenta). Arrancamos con lo que haya en la sesión y refrescamos
   // contra el backend al montar (las sesiones viejas no traen el campo → null = todavía no sabemos).
-  const emailCuenta = usuarioActual()?.email ?? '';
+  const usuarioSesion = usuarioActual();
+  const emailCuenta = usuarioSesion?.email ?? '';
   const [emailConfirmado, setEmailConfirmado] = useState<boolean | null>(
-    () => usuarioActual()?.email_confirmado ?? null
+    () => usuarioSesion?.email_confirmado ?? null
   );
   const [reenvio, setReenvio] = useState<'idle' | 'enviando' | 'enviado' | 'error'>('idle');
+
+  // Datos editables de la cuenta (tab Cuenta). Identidad (email/CUIT/DNI) NO se edita acá.
+  const [perfil, setPerfil] = useState({
+    nombre: usuarioSesion?.nombre ?? '',
+    apellido: usuarioSesion?.apellido ?? '',
+    telefono: usuarioSesion?.telefono ?? '',
+    estudio: usuarioSesion?.estudio ?? '',
+    matricula: usuarioSesion?.matricula ?? '',
+  });
+  const [guardandoPerfil, setGuardandoPerfil] = useState(false);
+  const [resultadoPerfil, setResultadoPerfil] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  // Borrar cuenta (tab Cuenta): diálogo con re-autenticación por contraseña (segundo chequeo).
+  const [dialogBorrar, setDialogBorrar] = useState(false);
+  const [passBorrar, setPassBorrar] = useState('');
+  const [borrando, setBorrando] = useState(false);
+  const [errorBorrar, setErrorBorrar] = useState('');
 
   useEffect(() => {
     getMe()
       .then(u => {
         actualizarUsuarioGuardado(u);
         setEmailConfirmado(u.email_confirmado ?? true);
+        // Refrescamos el formulario con los datos frescos del backend (al montar nadie está tipeando).
+        setPerfil({
+          nombre: u.nombre,
+          apellido: u.apellido,
+          telefono: u.telefono,
+          estudio: u.estudio,
+          matricula: u.matricula ?? '',
+        });
       })
       .catch(() => {});
   }, []);
@@ -118,6 +180,47 @@ export function Configuracion() {
     }
   }
 
+  async function guardarPerfil() {
+    setResultadoPerfil(null);
+    if (!perfil.nombre.trim() || !perfil.apellido.trim() || !perfil.estudio.trim()) {
+      setResultadoPerfil({ ok: false, msg: 'Nombre, apellido y estudio no pueden quedar vacíos.' });
+      return;
+    }
+    if (perfil.telefono.trim().length < 6) {
+      setResultadoPerfil({ ok: false, msg: 'Ingresá un teléfono válido.' });
+      return;
+    }
+    setGuardandoPerfil(true);
+    try {
+      const u = await actualizarPerfil({
+        nombre: perfil.nombre.trim(),
+        apellido: perfil.apellido.trim(),
+        telefono: perfil.telefono.trim(),
+        estudio: perfil.estudio.trim(),
+        matricula: perfil.matricula.trim() || undefined,
+      });
+      actualizarUsuarioGuardado(u); // refresca la sesión (Sidebar/Topbar toman el nombre nuevo)
+      setResultadoPerfil({ ok: true, msg: 'Datos de la cuenta actualizados.' });
+    } catch (e) {
+      setResultadoPerfil({ ok: false, msg: mensajeDeError(e) });
+    } finally {
+      setGuardandoPerfil(false);
+    }
+  }
+
+  async function confirmarBorrado() {
+    setErrorBorrar('');
+    setBorrando(true);
+    try {
+      await borrarCuenta(passBorrar);
+      logoutCuenta(); // limpia token + caché y manda al login (la cuenta ya no existe)
+      navigate('/login');
+    } catch (e) {
+      setErrorBorrar(mensajeDeError(e));
+      setBorrando(false); // en éxito no reseteamos: el componente se desmonta al navegar
+    }
+  }
+
   // Edita una de las dos ventanas (fecha límite / efecto desde) en el estado local. El cambio recién
   // impacta a los clientes cuando se aprieta "Guardar fechas".
   function setVentana(i: number, campo: 'fechaLimite' | 'efectoDesde', valor: string) {
@@ -157,16 +260,42 @@ export function Configuracion() {
     }
   }
 
-  async function probarWhatsapp() {
-    setEnviando(true);
-    setResultado(null);
+  // Edita el sub-bloque de notificaciones en el estado local (impacta al apretar "Guardar").
+  function setNotif(parcial: Partial<ConfigNotificaciones>) {
+    setConf(prev => ({ ...prev, notificaciones: { ...prev.notificaciones, ...parcial } }));
+    setGuardado(null);
+  }
+
+  function toggleTipo(tipo: TipoNotificable) {
+    const actuales = conf.notificaciones.tipos;
+    setNotif({
+      tipos: actuales.includes(tipo)
+        ? actuales.filter(t => t !== tipo)
+        : [...actuales, tipo],
+    });
+  }
+
+  async function guardarNotificaciones() {
+    setErrorGuardar('');
     try {
-      const r = await enviarWhatsappPrueba(numPrueba.trim() || undefined);
-      setResultado({ ok: true, msg: `Enviado a ${r.destino}. Revisá tu WhatsApp.` });
+      await guardarConfig({ notificaciones: conf.notificaciones });
+      setGuardado('notificaciones');
     } catch (e) {
-      setResultado({ ok: false, msg: mensajeDeError(e) });
+      setGuardado(null);
+      setErrorGuardar(mensajeDeError(e));
+    }
+  }
+
+  async function probarEnvio() {
+    setEnviandoPrueba(true);
+    setResultadoPrueba(null);
+    try {
+      await enviarPruebaWhatsapp();
+      setResultadoPrueba({ ok: true, msg: 'Te enviamos un WhatsApp de prueba. Revisá tu teléfono.' });
+    } catch (e) {
+      setResultadoPrueba({ ok: false, msg: mensajeDeError(e) });
     } finally {
-      setEnviando(false);
+      setEnviandoPrueba(false);
     }
   }
 
@@ -193,7 +322,7 @@ export function Configuracion() {
           <TabsTrigger value="categorias" className="shrink-0"><Database className="h-3.5 w-3.5" />Categorías</TabsTrigger>
           <TabsTrigger value="causales" className="shrink-0"><Info className="h-3.5 w-3.5" />Causales</TabsTrigger>
           <TabsTrigger value="notificaciones" className="shrink-0"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
-          <TabsTrigger value="seguridad" className="shrink-0"><KeyRound className="h-3.5 w-3.5" />Seguridad</TabsTrigger>
+          <TabsTrigger value="cuenta" className="shrink-0"><UserCog className="h-3.5 w-3.5" />Cuenta</TabsTrigger>
         </TabsList>
 
         <TabsContent value="ventanas">
@@ -464,63 +593,270 @@ export function Configuracion() {
 
         <TabsContent value="notificaciones">
           <Card className="p-4 sm:p-6">
-            <div className="text-base font-semibold mb-1">Alertas por WhatsApp</div>
+            {(() => {
+              const n = conf.notificaciones;
+              return (
+                <>
+                  <div className="text-base font-semibold mb-1">Alertas por WhatsApp</div>
+                  <p className="text-sm text-muted-foreground mb-5">
+                    Recibí por WhatsApp las novedades de tu cartera. Te avisamos sólo cuando aparece
+                    algo <strong>nuevo</strong>: no repetimos lo que ya te avisamos.
+                  </p>
+
+                  {/* Interruptor maestro */}
+                  <div className="flex items-center justify-between rounded-xl border border-border bg-muted/20 p-4">
+                    <div className="pr-4">
+                      <div className="text-sm font-medium">Recibir alertas por WhatsApp</div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Al activarlo, te llegan los avisos según lo que configures abajo.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={n.activo}
+                      onClick={() => setNotif({ activo: !n.activo })}
+                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                        n.activo ? 'bg-primary' : 'bg-muted-foreground/30'
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                          n.activo ? 'translate-x-5' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Probar el canal: manda un WhatsApp de ejemplo al número de la cuenta. Disponible
+                      siempre (aunque las alertas estén apagadas), para confirmar que funciona. */}
+                  <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-muted/10 p-4">
+                    <div className="flex-1 min-w-[12rem]">
+                      <div className="text-sm font-medium">Probar el canal</div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Te mandamos un WhatsApp de ejemplo a tu número para que veas cómo llega.
+                      </p>
+                    </div>
+                    <Button variant="outline" onClick={probarEnvio} disabled={enviandoPrueba}>
+                      {enviandoPrueba ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" /> Enviando…
+                        </>
+                      ) : (
+                        <>
+                          <MessageCircle className="h-4 w-4" /> Enviarme una prueba
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  {resultadoPrueba && (
+                    <div
+                      className={`mt-3 flex items-start gap-2 rounded-lg px-3.5 py-2.5 text-sm border ${
+                        resultadoPrueba.ok
+                          ? 'bg-success/10 border-success/25'
+                          : 'bg-danger/10 border-danger/25'
+                      }`}
+                    >
+                      {resultadoPrueba.ok ? (
+                        <CheckCircle2 className="h-4 w-4 text-success shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="h-4 w-4 text-danger shrink-0 mt-0.5" />
+                      )}
+                      <span className="text-foreground/80">{resultadoPrueba.msg}</span>
+                    </div>
+                  )}
+
+                  {/* Ajustes (se atenúan si está desactivado) */}
+                  <div
+                    className={`mt-5 space-y-6 transition-opacity ${
+                      n.activo ? '' : 'opacity-50 pointer-events-none'
+                    }`}
+                    aria-disabled={!n.activo}
+                  >
+                    {/* Ventana horaria */}
+                    <div>
+                      <Label className="flex items-center gap-1.5">
+                        <Clock className="h-4 w-4 text-muted-foreground" /> Horario para recibir avisos
+                      </Label>
+                      <p className="text-xs text-muted-foreground mt-1 mb-2.5">
+                        Sólo te escribimos dentro de esta franja. Lo que surja fuera de hora se junta
+                        y te llega al abrir la ventana.
+                      </p>
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-muted-foreground">Entre</span>
+                        <SelectHora valor={n.horaDesde} onChange={h => setNotif({ horaDesde: h })} />
+                        <span className="text-muted-foreground">y</span>
+                        <SelectHora valor={n.horaHasta} onChange={h => setNotif({ horaHasta: h })} />
+                        <span className="text-muted-foreground">hs</span>
+                      </div>
+                      {n.horaDesde === n.horaHasta && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Con el mismo horario de inicio y fin, te avisamos a cualquier hora del día.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Tipos */}
+                    <div>
+                      <Label>Sobre qué temas querés que te avisemos</Label>
+                      <p className="text-xs text-muted-foreground mt-1 mb-2.5">
+                        Te avisamos de cada tema marcado cuando aparece una novedad, sea urgente o un
+                        aviso preventivo.
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {TIPOS_NOTIFICABLES.map(({ tipo, label }) => {
+                          const sel = n.tipos.includes(tipo);
+                          return (
+                            <button
+                              key={tipo}
+                              type="button"
+                              onClick={() => toggleTipo(tipo)}
+                              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                                sel
+                                  ? 'border-primary/40 bg-primary/10 text-foreground'
+                                  : 'border-border bg-muted/20 text-muted-foreground hover:text-foreground'
+                              }`}
+                            >
+                              <span
+                                className={`flex h-4 w-4 items-center justify-center rounded-[5px] border ${
+                                  sel ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40'
+                                }`}
+                              >
+                                {sel && <CheckCircle2 className="h-3 w-3" />}
+                              </span>
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 mt-6">
+                    {guardado === 'notificaciones' && (
+                      <span className="flex items-center gap-1.5 text-sm text-success">
+                        <CheckCircle2 className="h-4 w-4" /> Guardado.
+                      </span>
+                    )}
+                    <Button onClick={guardarNotificaciones}>
+                      <Save className="h-4 w-4" /> Guardar alertas
+                    </Button>
+                  </div>
+                </>
+              );
+            })()}
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="cuenta" className="space-y-4">
+          <Card className="p-4 sm:p-6">
+            <div className="text-base font-semibold mb-1">Datos de la cuenta</div>
             <p className="text-sm text-muted-foreground mb-5">
-              Las alertas urgentes de tu cartera pueden llegarte por WhatsApp. Configurá las
-              credenciales de Twilio en <code className="text-foreground">backend/.env</code> y probá
-              el envío acá.
+              Actualizá tus datos de contacto y profesionales. El correo y el CUIT son los que
+              identifican tu cuenta y no se modifican desde acá.
             </p>
 
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end max-w-xl">
+            <div className="grid gap-3 sm:grid-cols-2 max-w-2xl">
               <div className="space-y-1.5">
-                <Label htmlFor="num-prueba">Número de prueba (opcional)</Label>
+                <Label htmlFor="perfil-nombre">Nombre</Label>
                 <Input
-                  id="num-prueba"
-                  value={numPrueba}
-                  onChange={e => setNumPrueba(e.target.value)}
-                  placeholder="Vacío = el teléfono de tu cuenta"
+                  id="perfil-nombre"
+                  value={perfil.nombre}
+                  onChange={e => {
+                    setPerfil(p => ({ ...p, nombre: e.target.value }));
+                    setResultadoPerfil(null);
+                  }}
                 />
               </div>
-              <Button onClick={probarWhatsapp} disabled={enviando}>
-                {enviando ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Enviando…
-                  </>
-                ) : (
-                  <>
-                    <MessageCircle className="h-4 w-4" /> Enviar prueba
-                  </>
-                )}
-              </Button>
+              <div className="space-y-1.5">
+                <Label htmlFor="perfil-apellido">Apellido</Label>
+                <Input
+                  id="perfil-apellido"
+                  value={perfil.apellido}
+                  onChange={e => {
+                    setPerfil(p => ({ ...p, apellido: e.target.value }));
+                    setResultadoPerfil(null);
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="perfil-telefono">Teléfono</Label>
+                <Input
+                  id="perfil-telefono"
+                  value={perfil.telefono}
+                  onChange={e => {
+                    setPerfil(p => ({ ...p, telefono: e.target.value }));
+                    setResultadoPerfil(null);
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="perfil-matricula">Matrícula</Label>
+                <Input
+                  id="perfil-matricula"
+                  value={perfil.matricula}
+                  placeholder="Opcional"
+                  onChange={e => {
+                    setPerfil(p => ({ ...p, matricula: e.target.value }));
+                    setResultadoPerfil(null);
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="perfil-estudio">Estudio</Label>
+                <Input
+                  id="perfil-estudio"
+                  value={perfil.estudio}
+                  onChange={e => {
+                    setPerfil(p => ({ ...p, estudio: e.target.value }));
+                    setResultadoPerfil(null);
+                  }}
+                />
+              </div>
+              {/* Identidad: sólo lectura. */}
+              <div className="space-y-1.5">
+                <Label>Correo</Label>
+                <Input value={usuarioSesion?.email ?? ''} disabled readOnly />
+              </div>
+              <div className="space-y-1.5">
+                <Label>CUIT</Label>
+                <Input value={usuarioSesion?.cuit ?? ''} disabled readOnly />
+              </div>
             </div>
 
-            {resultado && (
+            {resultadoPerfil && (
               <div
-                className={`mt-4 flex items-start gap-2 rounded-lg px-3.5 py-2.5 text-sm border ${
-                  resultado.ok
+                className={`mt-4 flex items-start gap-2 rounded-lg px-3.5 py-2.5 text-sm border max-w-2xl ${
+                  resultadoPerfil.ok
                     ? 'bg-success/10 border-success/25'
                     : 'bg-danger/10 border-danger/25'
                 }`}
               >
-                {resultado.ok ? (
+                {resultadoPerfil.ok ? (
                   <CheckCircle2 className="h-4 w-4 text-success shrink-0 mt-0.5" />
                 ) : (
                   <AlertCircle className="h-4 w-4 text-danger shrink-0 mt-0.5" />
                 )}
-                <span className="text-foreground/80">{resultado.msg}</span>
+                <span className="text-foreground/80">{resultadoPerfil.msg}</span>
               </div>
             )}
 
-            <p className="text-xs text-muted-foreground mt-4">
-              Para probar sin el trámite de Meta usá el <strong>Sandbox de Twilio</strong>: desde tu
-              WhatsApp mandá <code className="text-foreground">join &lt;palabra&gt;</code> al número del
-              sandbox y después enviá la prueba. En Argentina, si no te llega, probá el número con el
-              9 (ej. +54 9 221…).
-            </p>
+            <div className="flex justify-end mt-5 max-w-2xl">
+              <Button onClick={guardarPerfil} disabled={guardandoPerfil}>
+                {guardandoPerfil ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Guardando…
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4" /> Guardar datos
+                  </>
+                )}
+              </Button>
+            </div>
           </Card>
-        </TabsContent>
 
-        <TabsContent value="seguridad" className="space-y-4">
           <Card className="p-4 sm:p-6">
             <div className="text-base font-semibold mb-1">Confirmación de correo</div>
             <p className="text-sm text-muted-foreground mb-5">
@@ -667,6 +1003,83 @@ export function Configuracion() {
               </Button>
             </div>
           </Card>
+
+          {/* Zona de peligro: borrar la cuenta (al final, con doble chequeo). */}
+          <Card className="p-4 sm:p-6 border-danger/40">
+            <div className="flex items-center gap-2 text-base font-semibold mb-1 text-danger">
+              <AlertTriangle className="h-4 w-4" /> Borrar cuenta
+            </div>
+            <p className="text-sm text-muted-foreground mb-5 max-w-2xl">
+              Borra tu cuenta y <strong>todos tus datos de forma permanente</strong>: tus clientes,
+              sus comprobantes, la conciliación y las alertas. Esta acción <strong>no se puede
+              deshacer</strong>.
+            </p>
+            <Button variant="destructive" onClick={() => { setPassBorrar(''); setErrorBorrar(''); setDialogBorrar(true); }}>
+              <Trash2 className="h-4 w-4" /> Borrar mi cuenta
+            </Button>
+          </Card>
+
+          <Dialog open={dialogBorrar} onOpenChange={o => { if (!borrando) setDialogBorrar(o); }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-danger">
+                  <AlertTriangle className="h-5 w-5" /> ¿Borrar tu cuenta?
+                </DialogTitle>
+                <DialogDescription>
+                  Vas a borrar definitivamente tu cuenta y todos tus datos (clientes, comprobantes,
+                  conciliación y alertas). Esta acción no se puede deshacer. Para confirmar, ingresá
+                  tu contraseña.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="pass-borrar">Contraseña</Label>
+                <Input
+                  id="pass-borrar"
+                  type="password"
+                  autoComplete="current-password"
+                  value={passBorrar}
+                  onChange={e => {
+                    setPassBorrar(e.target.value);
+                    setErrorBorrar('');
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && passBorrar && !borrando) confirmarBorrado();
+                  }}
+                />
+                {errorBorrar && (
+                  <p className="flex items-center gap-1.5 text-sm text-danger pt-1">
+                    <AlertCircle className="h-4 w-4 shrink-0" /> {errorBorrar}
+                  </p>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setDialogBorrar(false)}
+                  disabled={borrando}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={confirmarBorrado}
+                  disabled={borrando || !passBorrar}
+                >
+                  {borrando ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" /> Borrando…
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" /> Borrar definitivamente
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
       </Tabs>
     </div>
@@ -680,6 +1093,24 @@ interface CampoNumeroProps {
   value: number;
   sufijo: string;
   onChange: (v: number) => void;
+}
+
+/** Selector de hora (0–23) para la ventana de notificaciones. */
+function SelectHora({ valor, onChange }: { valor: number; onChange: (h: number) => void }) {
+  return (
+    <Select value={String(valor)} onValueChange={v => onChange(Number(v))}>
+      <SelectTrigger className="h-9 w-[5.5rem]">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {Array.from({ length: 24 }, (_, h) => (
+          <SelectItem key={h} value={String(h)}>
+            {String(h).padStart(2, '0')}:00
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 }
 
 function CampoNumero({ icon, label, hint, value, sufijo, onChange }: CampoNumeroProps) {

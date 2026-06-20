@@ -204,16 +204,23 @@ class Extraccion(Base):
 
 
 class AlertaEnviada(Base):
-    """Bitácora de alertas ya notificadas por WhatsApp, para no reenviar la misma (cuit+tipo)
-    antes del cooldown. La 'fuente de verdad' de qué alertas existen sigue siendo el cálculo;
-    esto sólo evita el spam diario de una alerta que persiste."""
+    """ESTADO de cada alerta notificada por contador, para mandar SÓLO lo nuevo y no reenviar lo ya
+    avisado. Clave lógica = (usuario_id, cuit, tipo, severidad). Una alerta vigente con `activa=True`
+    ya fue avisada y no se repite; cuando se resuelve se pone `activa=False`, así si reaparece más
+    tarde vuelve a contar como nueva. La 'fuente de verdad' de qué alertas existen es el cálculo
+    (services/alertas.py); esto sólo registra qué se envió."""
 
     __tablename__ = "alertas_enviadas"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     usuario_id: Mapped[int] = mapped_column(Integer, ForeignKey("usuarios.id"), index=True)
     cuit: Mapped[str] = mapped_column(String(11), index=True)
-    tipo: Mapped[str] = mapped_column(String(20))  # cuota | vencimiento | sync
+    tipo: Mapped[str] = mapped_column(String(20))  # tope | recategorizacion | ventana | exclusion | cuota | vencimiento | sync
+    # Severidad con la que se avisó (urgente | aviso | datos). Forma parte de la clave: si una alerta
+    # escala (aviso → urgente) cuenta como nueva y se vuelve a avisar.
+    severidad: Mapped[str] = mapped_column(String(10), default="urgente", server_default="urgente")
+    # True = alerta vigente ya avisada (no reenviar). False = resuelta (re-armada para futuros avisos).
+    activa: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     enviada_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

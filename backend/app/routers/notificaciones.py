@@ -1,8 +1,9 @@
-"""Notificaciones por WhatsApp. Por ahora: un envío de prueba para validar el canal (Twilio)."""
+"""Notificaciones por WhatsApp. La configuración (si recibe, ventana horaria, nivel y tipos) vive en
+la cuenta del contador (config_json.notificaciones) y se edita desde Configuración. Acá sólo queda la
+vista previa, que NO envía: sirve para que el contador vea qué alertas tiene y cuáles serían nuevas."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -13,43 +14,41 @@ from ..services import alertas, whatsapp
 router = APIRouter(prefix="/api/notificaciones", tags=["notificaciones"])
 
 
-class PruebaIn(BaseModel):
-    # Opcional: si no se manda, usa el teléfono del contador logueado.
-    numero: str | None = None
+@router.get("/vista-previa")
+def vista_previa(
+    db: Session = Depends(get_db), usuario: models.Usuario = Depends(usuario_actual)
+):
+    """Qué alertas tiene hoy el contador (ya filtradas por su config) y cuáles serían NUEVAS. No
+    envía ni persiste nada: es la misma evaluación que corre el motor, pero de sólo lectura."""
+    return alertas.previsualizar(db, usuario)
 
 
 @router.post("/prueba")
-def enviar_prueba(datos: PruebaIn, usuario: models.Usuario = Depends(usuario_actual)):
-    """Manda un WhatsApp de prueba (alerta de ejemplo) al número indicado o al del contador."""
+def enviar_prueba(usuario: models.Usuario = Depends(usuario_actual)):
+    """Manda un WhatsApp de ejemplo al teléfono del contador logueado, para que confirme que el canal
+    funciona y que su número está bien. No depende de la config de alertas (sirve aunque las tenga
+    apagadas)."""
     if not whatsapp.configurado():
         raise HTTPException(
             status_code=503,
-            detail="WhatsApp no está configurado: faltan las credenciales de Twilio en backend/.env.",
+            detail="El envío por WhatsApp todavía no está disponible. Probá de nuevo más tarde.",
         )
-    destino = (datos.numero or usuario.telefono or "").strip()
+    destino = (usuario.telefono or "").strip()
     if not destino:
-        raise HTTPException(status_code=400, detail="No hay número de destino.")
-
+        raise HTTPException(
+            status_code=400,
+            detail="Tu cuenta no tiene un teléfono cargado. Agregalo en Configuración → Cuenta.",
+        )
     mensaje = (
-        f"🔔 *Órbita* — alerta de prueba\n\n"
-        f"Hola {usuario.nombre}, así te van a llegar las alertas de tu cartera.\n"
-        f"Ejemplo: \"Comercial Aragón SRL está al 92% del tope de su categoría\".\n\n"
+        f"🔔 *Órbita* — prueba de alertas\n\n"
+        f"Hola {usuario.nombre}, así te van a llegar las novedades de tu cartera.\n"
+        f"Ejemplo: \"Comercial Aragón SRL superó el tope de su categoría\".\n\n"
         f"_Mensaje de prueba, podés ignorarlo._"
     )
     try:
-        sid = whatsapp.enviar_whatsapp(destino, mensaje)
+        whatsapp.enviar_whatsapp(destino, mensaje)
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=502, detail=f"No se pudo enviar: {e}") from e
-    return {"enviado": True, "destino": destino, "sid": sid}
-
-
-@router.post("/evaluar")
-def evaluar(db: Session = Depends(get_db), usuario: models.Usuario = Depends(usuario_actual)):
-    """Evalúa las alertas de dato-directo del contador logueado y le manda el resumen por WhatsApp.
-    Es el mismo flujo que corre el sync diario, pero acotado a vos (para probar al instante)."""
-    if not whatsapp.configurado():
         raise HTTPException(
-            status_code=503,
-            detail="WhatsApp no está configurado: faltan las credenciales de Twilio en backend/.env.",
-        )
-    return alertas.evaluar_y_notificar(db, solo_usuario_id=usuario.id)
+            status_code=502, detail="No se pudo enviar la prueba. Probá de nuevo en un momento."
+        ) from e
+    return {"enviado": True, "destino": destino}

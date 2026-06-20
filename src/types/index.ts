@@ -148,6 +148,31 @@ export interface VentanaRecategorizacion {
   efectoDesde: string;
 }
 
+/** Tipos de alerta que el contador puede elegir recibir por WhatsApp. Incluye 'vencimiento' (aviso
+ *  de cuota próxima a vencer), que el motor de notificaciones genera aunque no se muestre como alerta
+ *  en la app. El resto coincide con `TipoAlerta` de src/lib/alertas.ts. */
+export type TipoNotificable =
+  | 'tope'
+  | 'recategorizacion'
+  | 'ventana'
+  | 'exclusion'
+  | 'cuota'
+  | 'vencimiento'
+  | 'sync';
+
+/** Preferencias de alertas por WhatsApp del contador (qué recibir y cuándo). El motor del backend
+ *  (services/alertas.py) las respeta. El medio de envío se configura en una etapa posterior. */
+export interface ConfigNotificaciones {
+  /** Recibir alertas por WhatsApp (interruptor maestro). */
+  activo: boolean;
+  /** Ventana horaria disponible para recibir avisos (hora AR, 0–23). desde === hasta = todo el día. */
+  horaDesde: number;
+  horaHasta: number;
+  /** Tipos de alerta que el contador quiere recibir. Cada tema enabled se manda cuando aparece,
+   *  sin importar si es urgente o aviso (la importancia ya la transmite el texto de cada alerta). */
+  tipos: TipoNotificable[];
+}
+
 export interface Configuracion {
   ventanas: VentanaRecategorizacion[];
   /** Inflación mensual estimada para proyectar la facturación a 12 meses (0.02 = 2%/mes; 0 = sin inflación). */
@@ -159,4 +184,6 @@ export interface Configuracion {
   /** Fracción de la cuota del mes a partir de la cual una deuda impaga es urgente (0.10 = 10%).
    *  Por debajo, la deuda se reporta como aviso (no urgente). */
   umbralDeudaCuotaUrgente: number;
+  /** Preferencias de alertas por WhatsApp. */
+  notificaciones: ConfigNotificaciones;
 }
