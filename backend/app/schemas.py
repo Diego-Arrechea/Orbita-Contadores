@@ -129,6 +129,16 @@ class ClienteOut(BaseModel):
     tiene_comprobantes: bool = False  # para el semáforo 'sin datos' sin necesidad de bajarlos
 
 
+class NotificacionesIn(BaseModel):
+    """Preferencias de alertas por WhatsApp del contador (sub-bloque de la config). El front manda el
+    objeto completo al guardar; el motor (services/alertas.py) lo lee para decidir qué/cuándo enviar."""
+
+    activo: bool | None = None  # recibir alertas por WhatsApp (master on/off)
+    horaDesde: int | None = None  # noqa: N815 — ventana horaria disponible (0–23, AR)
+    horaHasta: int | None = None  # noqa: N815
+    tipos: list[str] | None = None  # subconjunto de tope|recategorizacion|ventana|exclusion|cuota|vencimiento|sync
+
+
 class ConfiguracionIn(BaseModel):
     """Preferencias del contador. Todos opcionales: el PUT mergea (parcial) sobre lo ya guardado y el
     front completa con sus defaults. `ventanas` lleva la forma que define el front
@@ -143,6 +153,7 @@ class ConfiguracionIn(BaseModel):
     # ese %, la deuda se reporta como aviso (no urgente): evita que un resto de $200 grite "urgente".
     umbralDeudaCuotaUrgente: float | None = None  # noqa: N815
     ventanas: list[dict] | None = None
+    notificaciones: NotificacionesIn | None = None
 
 
 class ConfiguracionOut(ConfiguracionIn):
@@ -294,10 +305,27 @@ class LoginIn(BaseModel):
 
 
 class CambioPasswordIn(BaseModel):
-    """Cambio de contraseña estando logueado (Configuración → Seguridad)."""
+    """Cambio de contraseña estando logueado (Configuración → Cuenta)."""
 
     password_actual: str
     password_nueva: str = Field(min_length=8, max_length=72)  # bcrypt opera sobre <= 72 bytes
+
+
+class PerfilIn(BaseModel):
+    """Edición de los datos de la cuenta desde Configuración → Cuenta. Sólo campos editables: el
+    email y el CUIT son identidad/login y no se tocan acá; el DNI tampoco (dato fiscal)."""
+
+    nombre: str = Field(min_length=1, max_length=80)
+    apellido: str = Field(min_length=1, max_length=80)
+    telefono: str = Field(min_length=6, max_length=30)
+    estudio: str = Field(min_length=1, max_length=120)
+    matricula: str | None = Field(default=None, max_length=40)
+
+
+class BorrarCuentaIn(BaseModel):
+    """Borrado de la propia cuenta. Exige la contraseña actual como segundo chequeo (re-auth)."""
+
+    password: str
 
 
 class RecuperarIn(BaseModel):

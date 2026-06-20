@@ -15,6 +15,15 @@ export const CONFIGURACION_INICIAL: Configuracion = {
   // Una deuda de cuota es urgente sólo si supera el 10% de la cuota del mes; por debajo es un aviso
   // (evita que un resto de intereses/redondeo de $200 se marque como urgente).
   umbralDeudaCuotaUrgente: 0.10,
+  // Alertas por WhatsApp: apagadas por defecto (el contador las activa). Ventana horaria 9–21,
+  // sólo urgentes y todos los tipos. Estos defaults coinciden con NOTIF_DEFAULT del backend
+  // (backend/app/services/alertas.py): si cambiás uno, cambiá el otro.
+  notificaciones: {
+    activo: false,
+    horaDesde: 9,
+    horaHasta: 21,
+    tipos: ['tope', 'recategorizacion', 'ventana', 'exclusion', 'cuota', 'vencimiento', 'sync'],
+  },
 };
 // La config del contador se guarda EN LA CUENTA (backend), no en localStorage. La carga/guardado
 // vive en src/context/ConfigContext.tsx (useConfig). Acá quedan sólo los defaults.
