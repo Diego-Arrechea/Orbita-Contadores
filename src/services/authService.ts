@@ -19,6 +19,7 @@ export interface Usuario {
   email_confirmado?: boolean; // false → mostramos el banner "confirmá tu correo"
   trial_fin?: string | null; // ISO: fin del período de prueba gratis (30 días)
   trial_dias_restantes?: number | null; // snapshot del backend; el front recalcula desde trial_fin
+  aviso_alertas_pendiente?: number; // ingresos que faltan para dejar de mostrar el modal de alertas (0 = no)
 }
 
 export interface AuthResp {
@@ -80,6 +81,12 @@ export function actualizarPerfil(datos: PerfilPayload): Promise<Usuario> {
 /** Borra definitivamente la cuenta del contador logueado. Requiere la contraseña (segundo chequeo). */
 export function borrarCuenta(password: string): Promise<{ ok: boolean }> {
   return apiPost('/auth/borrar-cuenta', { password });
+}
+
+/** Registra que se mostró el modal de lanzamiento de alertas: descuenta un ingreso (descartar=false)
+ *  o lo apaga del todo (descartar=true, botón "Entendido"). Devuelve los ingresos que quedan. */
+export function registrarAvisoAlertas(descartar: boolean): Promise<{ aviso_alertas_pendiente: number }> {
+  return apiPost('/auth/aviso-alertas', { descartar });
 }
 
 /** Pide el enlace de recuperación de contraseña. Responde igual exista o no el email. */

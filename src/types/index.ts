@@ -160,30 +160,42 @@ export type TipoNotificable =
   | 'vencimiento'
   | 'sync';
 
-/** Preferencias de alertas por WhatsApp del contador (qué recibir y cuándo). El motor del backend
- *  (services/alertas.py) las respeta. El medio de envío se configura en una etapa posterior. */
+/** Preferencias del CANAL de alertas por WhatsApp (sólo cómo/cuándo se entrega). El "qué" y "con qué
+ *  criterio" vive en `ConfigAlertas` (por tipo). El motor del backend (services/alertas.py) lo respeta. */
 export interface ConfigNotificaciones {
-  /** Recibir alertas por WhatsApp (interruptor maestro). */
+  /** Recibir alertas por WhatsApp (interruptor maestro del canal). */
   activo: boolean;
   /** Ventana horaria disponible para recibir avisos (hora AR, 0–23). desde === hasta = todo el día. */
   horaDesde: number;
   horaHasta: number;
-  /** Tipos de alerta que el contador quiere recibir. Cada tema enabled se manda cuando aparece,
-   *  sin importar si es urgente o aviso (la importancia ya la transmite el texto de cada alerta). */
-  tipos: TipoNotificable[];
+}
+
+/** Configuración POR TIPO de alerta: si se avisa, con qué criterio (umbral) y —en las numéricas— cada
+ *  cuánto % de subida se vuelve a avisar. El criterio es ÚNICO: rige el semáforo de la app y el WhatsApp. */
+export interface ConfigAlertas {
+  /** Cerca/superó el tope. `avisarPct`: fracción del tope para el aviso (0.80 = 80%). `proyeccionCruce`:
+   *  avisar si se proyecta cruzar el tope. `reavisarSubidaPct`: re-avisar al subir otra fracción del tope. */
+  tope: { activo: boolean; avisarPct: number; proyeccionCruce: boolean; reavisarSubidaPct: number };
+  /** Debería recategorizarse (binario). */
+  recategorizacion: { activo: boolean };
+  /** Cierre de ventana de recategorización: días antes para aviso / para urgente. */
+  ventana: { activo: boolean; avisoDias: number; urgenteDias: number };
+  /** Gastos altos / riesgo de exclusión. `avisarRatioPct`: fracción del tope K para el aviso. */
+  exclusion: { activo: boolean; avisarRatioPct: number; reavisarSubidaPct: number };
+  /** Cuota impaga. `urgenteDesdePct`: fracción de la cuota a partir de la cual la deuda es urgente. */
+  cuota: { activo: boolean; urgenteDesdePct: number; reavisarSubidaPct: number };
+  /** Vencimiento de cuota próximo: cuántos días antes avisar. */
+  vencimiento: { activo: boolean; avisarDiasAntes: number };
+  /** No pudimos actualizar sus datos (binario). */
+  sync: { activo: boolean };
 }
 
 export interface Configuracion {
   ventanas: VentanaRecategorizacion[];
   /** Inflación mensual estimada para proyectar la facturación a 12 meses (0.02 = 2%/mes; 0 = sin inflación). */
   inflacionMensualProyeccion: number;
-  umbralAmarilloPorcentaje: number;
-  umbralAmarilloDias: number;
-  umbralRojoDias: number;
-  umbralRatioGastosAmarillo: number;
-  /** Fracción de la cuota del mes a partir de la cual una deuda impaga es urgente (0.10 = 10%).
-   *  Por debajo, la deuda se reporta como aviso (no urgente). */
-  umbralDeudaCuotaUrgente: number;
-  /** Preferencias de alertas por WhatsApp. */
+  /** Criterio por tipo de alerta (umbral + re-aviso). Reemplaza los umbrales globales. */
+  alertas: ConfigAlertas;
+  /** Canal de entrega por WhatsApp (interruptor maestro + horario). */
   notificaciones: ConfigNotificaciones;
 }

@@ -55,6 +55,10 @@ class Usuario(Base):
     # vivían en localStorage del navegador; ahora se guardan en la cuenta. NULL = usa los defaults
     # del front. Ver routers/configuracion.py.
     config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Aviso de lanzamiento de las alertas: cuántos ingresos más se le muestra el modal "ya podés
+    # configurar tus alertas" (baja de a 1 por sesión; 0 = no mostrar). Se sembró en 2 para los
+    # contadores que ya existían al lanzar la feature; los nuevos arrancan en 0. Ver auth.py.
+    aviso_alertas_pendiente: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Rol del usuario en Órbita. 'contador' = cuenta normal (ve sólo sus clientes); 'admin' = acceso
     # al panel superadmin (gestiona todas las cuentas). Ver routers/admin.py + security.admin_actual.
     rol: Mapped[str] = mapped_column(String(20), default="contador", server_default="contador")
@@ -146,6 +150,12 @@ class ClienteARCA(Base):
     # categoría/etc., pero el override del contador vive acá y se re-aplica al devolver el cliente
     # (gana sobre el dato de ARCA). Ver routers/clientes.py. Nullable = sin ediciones.
     edicion_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Línea de base de alertas: cuándo el motor "fotografió" por primera vez el estado de alertas de
+    # este cliente. NULL = todavía no se baselineó → la próxima pasada registra sus alertas vigentes
+    # como ya conocidas SIN avisar (anti-spam al alta). Ver services/alertas.py::evaluar_y_notificar.
+    alertas_baseline_en: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     creado_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -221,6 +231,10 @@ class AlertaEnviada(Base):
     severidad: Mapped[str] = mapped_column(String(10), default="urgente", server_default="urgente")
     # True = alerta vigente ya avisada (no reenviar). False = resuelta (re-armada para futuros avisos).
     activa: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    # Valor de la métrica cuando se avisó (ej. % del tope, ratio de gastos, deuda/cuota). Se usa para el
+    # RE-AVISO por subida: se re-notifica sólo si el valor actual supera este + el umbral de subida del
+    # tipo. NULL en alertas binarias (recategorización, sync, vencimiento) que no tienen magnitud.
+    valor: Mapped[float | None] = mapped_column(Numeric(15, 4), nullable=True)
     enviada_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

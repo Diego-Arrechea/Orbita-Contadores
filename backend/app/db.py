@@ -64,6 +64,9 @@ def _migrar_usuarios(conn) -> None:
         "email_confirmado": "BOOLEAN DEFAULT FALSE" if not es_sqlite else "BOOLEAN DEFAULT 0",
         "email_token_hash": "VARCHAR(64)",
         "email_token_exp": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
+        # Aviso de lanzamiento de alertas: SIN default a propósito (existing rows → NULL → se siembran
+        # en 2 abajo; los nuevos usan el default 0 del modelo). Cuántos ingresos más mostrar el modal.
+        "aviso_alertas_pendiente": "INTEGER",
     }
     for nombre, tipo in nuevas.items():
         if nombre not in cols:
@@ -92,6 +95,9 @@ def _migrar_usuarios(conn) -> None:
         if not es_sqlite
         else text("UPDATE usuarios SET email_confirmado = 0 WHERE email_confirmado IS NULL")
     )
+    # Aviso de lanzamiento de alertas: los contadores que YA existían lo ven 2 ingresos (idempotente:
+    # sólo toca los NULL recién creados por el ALTER; los nuevos registros arrancan en 0 por el modelo).
+    conn.execute(text("UPDATE usuarios SET aviso_alertas_pendiente = 2 WHERE aviso_alertas_pendiente IS NULL"))
     for email in ADMINS_SEMILLA:
         conn.execute(
             text(
@@ -147,6 +153,20 @@ def _migrar_alertas_enviadas(conn) -> None:
             if not es_sqlite
             else text("UPDATE alertas_enviadas SET activa = 0")
         )
+    if "valor" not in cols:  # valor de la métrica al avisar (para el re-aviso por subida)
+        conn.execute(text("ALTER TABLE alertas_enviadas ADD COLUMN valor NUMERIC(15,4)"))
+
+
+def _migrar_clientes_arca(conn) -> None:
+    """Agrega `alertas_baseline_en` a `clientes_arca` (línea de base de alertas). Portable SQLite +
+    Postgres (el resto de migraciones de clientes_arca abajo son SQLite-only, para la DB de dev)."""
+    es_sqlite = settings.database_url.startswith("sqlite")
+    cols = _columnas(conn, "clientes_arca")
+    if not cols:
+        return
+    if "alertas_baseline_en" not in cols:
+        tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
+        conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN alertas_baseline_en {tipo}"))
 
 
 def asegurar_columnas() -> None:
@@ -156,6 +176,7 @@ def asegurar_columnas() -> None:
     with engine.begin() as conn:
         _migrar_usuarios(conn)
         _migrar_alertas_enviadas(conn)
+        _migrar_clientes_arca(conn)
 
     # El resto son migraciones de tablas que sólo existen viejas en el SQLite de desarrollo.
     if not settings.database_url.startswith("sqlite"):

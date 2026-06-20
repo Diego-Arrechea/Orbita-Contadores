@@ -3,7 +3,6 @@ import {
   Save,
   Calendar,
   Bell,
-  Percent,
   Database,
   Info,
   MessageCircle,
@@ -40,7 +39,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Table,
   TableBody,
@@ -63,32 +62,28 @@ import {
 } from '@/services/authService';
 import { actualizarUsuarioGuardado, logoutCuenta, usuarioActual } from '@/lib/cuenta';
 import { enviarPruebaWhatsapp } from '@/services/notificacionesService';
-import type { ConfigNotificaciones, TipoNotificable } from '@/types';
+import type { ConfigAlertas, ConfigNotificaciones } from '@/types';
 
 // Interruptor del apartado de alertas por WhatsApp en la UI. En false muestra "Próximamente" y NO
-// deja configurar/activar nada (el motor automático todavía no está listo en prod). Poner en true
-// para reactivar el panel completo. Tipado como boolean para no disparar avisos de rama inalcanzable.
-const WHATSAPP_DISPONIBLE: boolean = false;
+// deja activar el CANAL (el motor automático todavía no está listo en prod). Poner en true para
+// reactivarlo. Tipado como boolean para no disparar avisos de rama inalcanzable. OJO: la pestaña
+// "Alertas" (criterio por tipo) NO depende de esto: el contador configura siempre.
+const WHATSAPP_DISPONIBLE: boolean = true;
 
-// Etiquetas (en términos del dominio) de los tipos de alerta que el contador puede recibir.
-const TIPOS_NOTIFICABLES: { tipo: TipoNotificable; label: string }[] = [
-  { tipo: 'tope', label: 'Cerca o por encima del tope' },
-  { tipo: 'recategorizacion', label: 'Debería recategorizarse' },
-  { tipo: 'ventana', label: 'Cierre de ventana de recategorización' },
-  { tipo: 'exclusion', label: 'Gastos altos / riesgo de exclusión' },
-  { tipo: 'cuota', label: 'Cuota del mes impaga' },
-  { tipo: 'vencimiento', label: 'Vencimiento de cuota próximo' },
-  { tipo: 'sync', label: 'No pudimos actualizar sus datos' },
-];
+const TABS_VALIDAS = ['ventanas', 'umbrales', 'notificaciones', 'categorias', 'causales', 'cuenta'];
 
 export function Configuracion() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Deep-link opcional ?tab= (ej. el modal de alertas abre directo en la pestaña Alertas).
+  const tabParam = searchParams.get('tab');
+  const [tab, setTab] = useState(tabParam && TABS_VALIDAS.includes(tabParam) ? tabParam : 'ventanas');
   const { config, guardarConfig } = useConfig();
   const [conf, setConf] = useState(config);
   // El provider arranca en defaults y refina con lo guardado de la cuenta: cuando llega, refrescamos
   // el formulario (si el usuario ya estaba editando con el backend frío —caso raro—, se le pisa).
   useEffect(() => setConf(config), [config]);
-  const [guardado, setGuardado] = useState<'fechas' | 'umbrales' | 'notificaciones' | null>(null);
+  const [guardado, setGuardado] = useState<'fechas' | 'alertas' | 'notificaciones' | null>(null);
   const [errorGuardar, setErrorGuardar] = useState('');
 
   // Prueba de envío por WhatsApp (tab WhatsApp): manda un mensaje de ejemplo al número de la cuenta.
@@ -247,37 +242,33 @@ export function Configuracion() {
     }
   }
 
-  async function guardarUmbrales() {
+  // Edita la config de UN tipo de alerta en el estado local (impacta al apretar "Guardar").
+  function setAlerta<T extends keyof ConfigAlertas>(tipo: T, parcial: Partial<ConfigAlertas[T]>) {
+    setConf(prev => ({
+      ...prev,
+      alertas: { ...prev.alertas, [tipo]: { ...prev.alertas[tipo], ...parcial } },
+    }));
+    setGuardado(null);
+  }
+
+  async function guardarAlertas() {
     setErrorGuardar('');
     try {
       await guardarConfig({
-        umbralAmarilloPorcentaje: conf.umbralAmarilloPorcentaje,
-        umbralRatioGastosAmarillo: conf.umbralRatioGastosAmarillo,
-        umbralAmarilloDias: conf.umbralAmarilloDias,
-        umbralRojoDias: conf.umbralRojoDias,
-        umbralDeudaCuotaUrgente: conf.umbralDeudaCuotaUrgente,
+        alertas: conf.alertas,
         inflacionMensualProyeccion: conf.inflacionMensualProyeccion,
       });
-      setGuardado('umbrales');
+      setGuardado('alertas');
     } catch (e) {
       setGuardado(null);
       setErrorGuardar(mensajeDeError(e));
     }
   }
 
-  // Edita el sub-bloque de notificaciones en el estado local (impacta al apretar "Guardar").
+  // Edita el sub-bloque del canal de notificaciones (interruptor + horario) en el estado local.
   function setNotif(parcial: Partial<ConfigNotificaciones>) {
     setConf(prev => ({ ...prev, notificaciones: { ...prev.notificaciones, ...parcial } }));
     setGuardado(null);
-  }
-
-  function toggleTipo(tipo: TipoNotificable) {
-    const actuales = conf.notificaciones.tipos;
-    setNotif({
-      tipos: actuales.includes(tipo)
-        ? actuales.filter(t => t !== tipo)
-        : [...actuales, tipo],
-    });
   }
 
   async function guardarNotificaciones() {
@@ -320,13 +311,13 @@ export function Configuracion() {
         </div>
       )}
 
-      <Tabs defaultValue="ventanas">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex w-full max-w-full justify-start overflow-x-auto scrollbar-thin">
           <TabsTrigger value="ventanas" className="shrink-0"><Calendar className="h-3.5 w-3.5" />Ventanas</TabsTrigger>
           <TabsTrigger value="umbrales" className="shrink-0"><Bell className="h-3.5 w-3.5" />Alertas</TabsTrigger>
+          <TabsTrigger value="notificaciones" className="shrink-0"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
           <TabsTrigger value="categorias" className="shrink-0"><Database className="h-3.5 w-3.5" />Categorías</TabsTrigger>
           <TabsTrigger value="causales" className="shrink-0"><Info className="h-3.5 w-3.5" />Causales</TabsTrigger>
-          <TabsTrigger value="notificaciones" className="shrink-0"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
           <TabsTrigger value="cuenta" className="shrink-0"><UserCog className="h-3.5 w-3.5" />Cuenta</TabsTrigger>
         </TabsList>
 
@@ -380,67 +371,186 @@ export function Configuracion() {
 
         <TabsContent value="umbrales">
           <Card className="p-4 sm:p-6">
-            <div className="text-base font-semibold mb-1">Configuración de alertas</div>
+            <div className="text-base font-semibold mb-1">Alertas: qué avisar y con qué criterio</div>
             <p className="text-sm text-muted-foreground mb-5">
-              Definí cuándo el sistema marca un cliente en amarillo (aviso) o en rojo (urgente). Los
-              cambios se aplican al recalcular las próximas alertas de tu cartera.
+              Prendé cada tipo de alerta que quieras y ajustá su criterio. El mismo criterio rige el
+              semáforo de la app y los avisos por WhatsApp. Podés configurarlo aunque todavía no tengas
+              el WhatsApp activado.
             </p>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <CampoNumero
-                icon={<Percent className="h-4 w-4 text-muted-foreground" />}
-                label="% del tope para pasar a amarillo"
-                hint="Cuando el cliente consume este porcentaje de su categoría actual."
-                value={conf.umbralAmarilloPorcentaje * 100}
-                sufijo="%"
-                onChange={(v) => setConf({ ...conf, umbralAmarilloPorcentaje: v / 100 })}
+            {/* Una sola columna de filas uniformes (full-width); criterios en línea y compactos. */}
+            <div className="space-y-3">
+              {/* Tope */}
+              {(() => {
+                const t = conf.alertas.tope;
+                return (
+                  <TarjetaAlerta
+                    titulo="Cerca o por encima del tope"
+                    descripcion="Cuando la facturación se acerca o supera el tope de la categoría."
+                    activo={t.activo}
+                    onToggle={() => setAlerta('tope', { activo: !t.activo })}
+                  >
+                    <CampoInline
+                      label="Avisar al llegar al (% del tope)"
+                      value={Math.round(t.avisarPct * 100)}
+                      sufijo="%"
+                      onChange={(v) => setAlerta('tope', { avisarPct: v / 100 })}
+                    />
+                    <CampoInline
+                      label="Re-avisar cada subida de"
+                      value={Math.round(t.reavisarSubidaPct * 100)}
+                      sufijo="%"
+                      onChange={(v) => setAlerta('tope', { reavisarSubidaPct: v / 100 })}
+                    />
+                    <div className="w-full">
+                      <FilaCheck
+                        label="Avisar también si se proyecta cruzar el tope"
+                        checked={t.proyeccionCruce}
+                        onToggle={() => setAlerta('tope', { proyeccionCruce: !t.proyeccionCruce })}
+                      />
+                    </div>
+                  </TarjetaAlerta>
+                );
+              })()}
+
+              {/* Recategorización */}
+              <TarjetaAlerta
+                titulo="Debería recategorizarse"
+                descripcion="Cuando por su facturación le corresponde otra categoría."
+                activo={conf.alertas.recategorizacion.activo}
+                onToggle={() => setAlerta('recategorizacion', { activo: !conf.alertas.recategorizacion.activo })}
               />
-              <CampoNumero
-                icon={<Percent className="h-4 w-4 text-muted-foreground" />}
-                label="% del umbral legal de ratio para amarillo"
-                hint="Por encima de este porcentaje del umbral 80%/40% se prende alerta."
-                value={conf.umbralRatioGastosAmarillo * 100}
-                sufijo="%"
-                onChange={(v) => setConf({ ...conf, umbralRatioGastosAmarillo: v / 100 })}
+
+              {/* Ventana */}
+              {(() => {
+                const v = conf.alertas.ventana;
+                return (
+                  <TarjetaAlerta
+                    titulo="Cierre de ventana de recategorización"
+                    descripcion="Cuando se acerca la fecha límite para recategorizar."
+                    activo={v.activo}
+                    onToggle={() => setAlerta('ventana', { activo: !v.activo })}
+                  >
+                    <CampoInline
+                      label="Aviso (amarillo) desde"
+                      value={v.avisoDias}
+                      sufijo="días"
+                      onChange={(n) => setAlerta('ventana', { avisoDias: n })}
+                    />
+                    <CampoInline
+                      label="Urgente (rojo) desde"
+                      value={v.urgenteDias}
+                      sufijo="días"
+                      onChange={(n) => setAlerta('ventana', { urgenteDias: n })}
+                    />
+                  </TarjetaAlerta>
+                );
+              })()}
+
+              {/* Gastos / exclusión */}
+              {(() => {
+                const e = conf.alertas.exclusion;
+                return (
+                  <TarjetaAlerta
+                    titulo="Gastos altos / riesgo de exclusión"
+                    descripcion="Cuando las compras son una proporción alta del tope máximo (tope K)."
+                    activo={e.activo}
+                    onToggle={() => setAlerta('exclusion', { activo: !e.activo })}
+                  >
+                    <CampoInline
+                      label="Avisar al llegar al (% del tope K)"
+                      value={Math.round(e.avisarRatioPct * 100)}
+                      sufijo="%"
+                      onChange={(v) => setAlerta('exclusion', { avisarRatioPct: v / 100 })}
+                    />
+                    <CampoInline
+                      label="Re-avisar cada subida de"
+                      value={Math.round(e.reavisarSubidaPct * 100)}
+                      sufijo="%"
+                      onChange={(v) => setAlerta('exclusion', { reavisarSubidaPct: v / 100 })}
+                    />
+                  </TarjetaAlerta>
+                );
+              })()}
+
+              {/* Cuota */}
+              {(() => {
+                const c = conf.alertas.cuota;
+                return (
+                  <TarjetaAlerta
+                    titulo="Cuota del mes impaga"
+                    descripcion="Cuando queda saldo pendiente. Por debajo del % es aviso; por encima, urgente."
+                    activo={c.activo}
+                    onToggle={() => setAlerta('cuota', { activo: !c.activo })}
+                  >
+                    <CampoInline
+                      label="Urgente desde (% de la cuota)"
+                      value={Math.round(c.urgenteDesdePct * 100)}
+                      sufijo="%"
+                      onChange={(v) => setAlerta('cuota', { urgenteDesdePct: v / 100 })}
+                    />
+                    <CampoInline
+                      label="Re-avisar cada subida de"
+                      value={Math.round(c.reavisarSubidaPct * 100)}
+                      sufijo="%"
+                      onChange={(v) => setAlerta('cuota', { reavisarSubidaPct: v / 100 })}
+                    />
+                  </TarjetaAlerta>
+                );
+              })()}
+
+              {/* Vencimiento */}
+              {(() => {
+                const v = conf.alertas.vencimiento;
+                return (
+                  <TarjetaAlerta
+                    titulo="Vencimiento de cuota próximo"
+                    descripcion="Un recordatorio antes de que venza la cuota."
+                    activo={v.activo}
+                    onToggle={() => setAlerta('vencimiento', { activo: !v.activo })}
+                  >
+                    <CampoInline
+                      label="Avisar con anticipación de"
+                      value={v.avisarDiasAntes}
+                      sufijo="días"
+                      onChange={(n) => setAlerta('vencimiento', { avisarDiasAntes: n })}
+                    />
+                  </TarjetaAlerta>
+                );
+              })()}
+
+              {/* Sync */}
+              <TarjetaAlerta
+                titulo="No pudimos actualizar sus datos"
+                descripcion="Cuando no se pudieron traer los datos más recientes del cliente."
+                activo={conf.alertas.sync.activo}
+                onToggle={() => setAlerta('sync', { activo: !conf.alertas.sync.activo })}
               />
-              <CampoNumero
-                icon={<Calendar className="h-4 w-4 text-muted-foreground" />}
-                label="Días antes de ventana → amarillo"
-                value={conf.umbralAmarilloDias}
-                sufijo="días"
-                onChange={(v) => setConf({ ...conf, umbralAmarilloDias: v })}
-              />
-              <CampoNumero
-                icon={<Calendar className="h-4 w-4 text-muted-foreground" />}
-                label="Días antes de ventana → rojo"
-                value={conf.umbralRojoDias}
-                sufijo="días"
-                onChange={(v) => setConf({ ...conf, umbralRojoDias: v })}
-              />
-              <CampoNumero
-                icon={<Percent className="h-4 w-4 text-muted-foreground" />}
-                label="% de la cuota para deuda urgente"
-                hint="Una deuda de cuota es urgente sólo si supera este % de la cuota del mes. Por debajo, es un aviso (evita marcar urgente un resto chico)."
-                value={conf.umbralDeudaCuotaUrgente * 100}
-                sufijo="%"
-                onChange={(v) => setConf({ ...conf, umbralDeudaCuotaUrgente: v / 100 })}
-              />
-              <CampoNumero
-                icon={<Percent className="h-4 w-4 text-muted-foreground" />}
-                label="Inflación mensual estimada"
-                hint="Proyecta la facturación a 12 meses (compuesta). 0% = sin inflación."
-                value={conf.inflacionMensualProyeccion * 100}
+            </div>
+
+            <Separator className="my-5" />
+            <TarjetaAlerta
+              titulo="Inflación mensual estimada (proyección)"
+              descripcion="Proyecta la facturación a 12 meses (compuesta) para anticipar el cruce de tope."
+              activo={true}
+              onToggle={() => {}}
+              ocultarInterruptor
+            >
+              <CampoInline
+                label="Inflación mensual"
+                value={Math.round(conf.inflacionMensualProyeccion * 1000) / 10}
                 sufijo="%"
                 onChange={(v) => setConf({ ...conf, inflacionMensualProyeccion: v / 100 })}
               />
-            </div>
+            </TarjetaAlerta>
+
             <div className="flex items-center justify-end gap-3 mt-5">
-              {guardado === 'umbrales' && (
+              {guardado === 'alertas' && (
                 <span className="flex items-center gap-1.5 text-sm text-success">
                   <CheckCircle2 className="h-4 w-4" /> Guardado.
                 </span>
               )}
-              <Button onClick={guardarUmbrales}>
+              <Button onClick={guardarAlertas}>
                 <Save className="h-4 w-4" /> Guardar alertas
               </Button>
             </div>
@@ -686,70 +796,31 @@ export function Configuracion() {
                     </div>
                   )}
 
-                  {/* Ajustes (se atenúan si está desactivado) */}
-                  <div
-                    className={`mt-5 space-y-6 transition-opacity ${
-                      n.activo ? '' : 'opacity-50 pointer-events-none'
-                    }`}
-                    aria-disabled={!n.activo}
-                  >
-                    {/* Ventana horaria */}
-                    <div>
-                      <Label className="flex items-center gap-1.5">
-                        <Clock className="h-4 w-4 text-muted-foreground" /> Horario para recibir avisos
-                      </Label>
-                      <p className="text-xs text-muted-foreground mt-1 mb-2.5">
-                        Sólo te escribimos dentro de esta franja. Lo que surja fuera de hora se junta
-                        y te llega al abrir la ventana.
-                      </p>
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="text-muted-foreground">Entre</span>
-                        <SelectHora valor={n.horaDesde} onChange={h => setNotif({ horaDesde: h })} />
-                        <span className="text-muted-foreground">y</span>
-                        <SelectHora valor={n.horaHasta} onChange={h => setNotif({ horaHasta: h })} />
-                        <span className="text-muted-foreground">hs</span>
-                      </div>
-                      {n.horaDesde === n.horaHasta && (
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Con el mismo horario de inicio y fin, te avisamos a cualquier hora del día.
-                        </p>
-                      )}
+                  {/* Horario (parte del canal). Qué tipos recibir y con qué criterio se configura en
+                      la pestaña "Alertas". */}
+                  <div className="mt-5">
+                    <Label className="flex items-center gap-1.5">
+                      <Clock className="h-4 w-4 text-muted-foreground" /> Horario para recibir avisos
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-1 mb-2.5">
+                      Sólo te escribimos dentro de esta franja. Lo que surja fuera de hora se junta y te
+                      llega al abrir la ventana.
+                    </p>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-muted-foreground">Entre</span>
+                      <SelectHora valor={n.horaDesde} onChange={h => setNotif({ horaDesde: h })} />
+                      <span className="text-muted-foreground">y</span>
+                      <SelectHora valor={n.horaHasta} onChange={h => setNotif({ horaHasta: h })} />
+                      <span className="text-muted-foreground">hs</span>
                     </div>
-
-                    {/* Tipos */}
-                    <div>
-                      <Label>Sobre qué temas querés que te avisemos</Label>
-                      <p className="text-xs text-muted-foreground mt-1 mb-2.5">
-                        Te avisamos de cada tema marcado cuando aparece una novedad, sea urgente o un
-                        aviso preventivo.
+                    {n.horaDesde === n.horaHasta && (
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Con el mismo horario de inicio y fin, te avisamos a cualquier hora del día.
                       </p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {TIPOS_NOTIFICABLES.map(({ tipo, label }) => {
-                          const sel = n.tipos.includes(tipo);
-                          return (
-                            <button
-                              key={tipo}
-                              type="button"
-                              onClick={() => toggleTipo(tipo)}
-                              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                                sel
-                                  ? 'border-primary/40 bg-primary/10 text-foreground'
-                                  : 'border-border bg-muted/20 text-muted-foreground hover:text-foreground'
-                              }`}
-                            >
-                              <span
-                                className={`flex h-4 w-4 items-center justify-center rounded-[5px] border ${
-                                  sel ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40'
-                                }`}
-                              >
-                                {sel && <CheckCircle2 className="h-3 w-3" />}
-                              </span>
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-3">
+                      ¿Qué temas y con qué criterio? Se configura en la pestaña <strong>Alertas</strong>.
+                    </p>
                   </div>
 
                   <div className="flex items-center justify-end gap-3 mt-6">
@@ -1105,15 +1176,6 @@ export function Configuracion() {
   );
 }
 
-interface CampoNumeroProps {
-  icon: React.ReactNode;
-  label: string;
-  hint?: string;
-  value: number;
-  sufijo: string;
-  onChange: (v: number) => void;
-}
-
 /** Selector de hora (0–23) para la ventana de notificaciones. */
 function SelectHora({ valor, onChange }: { valor: number; onChange: (h: number) => void }) {
   return (
@@ -1132,25 +1194,116 @@ function SelectHora({ valor, onChange }: { valor: number; onChange: (h: number) 
   );
 }
 
-function CampoNumero({ icon, label, hint, value, sufijo, onChange }: CampoNumeroProps) {
+/** Interruptor on/off (mismo estilo en el canal y en cada tipo de alerta). */
+function Interruptor({ activo, onToggle }: { activo: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={activo}
+      onClick={onToggle}
+      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+        activo ? 'bg-primary' : 'bg-muted-foreground/30'
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+          activo ? 'translate-x-5' : ''
+        }`}
+      />
+    </button>
+  );
+}
+
+/** Tarjeta de un tipo de alerta: título + interruptor + (opcional) campos de criterio. */
+function TarjetaAlerta({
+  titulo,
+  descripcion,
+  activo,
+  onToggle,
+  children,
+  ocultarInterruptor = false,
+}: {
+  titulo: string;
+  descripcion?: string;
+  activo: boolean;
+  onToggle: () => void;
+  children?: React.ReactNode;
+  ocultarInterruptor?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-muted/10 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="pr-2">
+          <div className="text-sm font-medium">{titulo}</div>
+          {descripcion && <p className="text-xs text-muted-foreground mt-0.5">{descripcion}</p>}
+        </div>
+        {!ocultarInterruptor && <Interruptor activo={activo} onToggle={onToggle} />}
+      </div>
+      {children && (
+        <div
+          className={`mt-4 flex flex-wrap items-end gap-x-6 gap-y-3 transition-opacity ${
+            activo ? '' : 'opacity-50'
+          }`}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Campo numérico COMPACTO en línea (label arriba + input chico con sufijo). Para los criterios. */
+function CampoInline({
+  label,
+  value,
+  sufijo,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  sufijo: string;
+  onChange: (v: number) => void;
+}) {
   return (
     <div className="space-y-1.5">
-      <Label className="flex items-center gap-1.5">
-        {icon}
-        {label}
-      </Label>
-      <div className="relative">
+      <Label className="text-xs font-normal text-muted-foreground">{label}</Label>
+      <div className="relative w-36">
         <Input
           type="number"
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="pr-12"
+          className="h-9 pr-14 tabular-nums"
         />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
           {sufijo}
         </span>
       </div>
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
+
+/** Fila con checkbox (para sub-opciones binarias dentro de una tarjeta de alerta). */
+function FilaCheck({
+  label,
+  checked,
+  onToggle,
+}: {
+  label: string;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button type="button" onClick={onToggle} className="flex items-center gap-2 text-left text-sm">
+      <span
+        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border ${
+          checked ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/40'
+        }`}
+      >
+        {checked && <CheckCircle2 className="h-3 w-3" />}
+      </span>
+      <span className="text-foreground/80">{label}</span>
+    </button>
+  );
+}
+

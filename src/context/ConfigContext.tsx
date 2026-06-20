@@ -18,7 +18,7 @@ import {
 import { apiGet, apiPut } from '@/services/apiClient';
 import { CONFIGURACION_INICIAL } from '@/data/configuracion';
 import { ventanasRecategorizacion } from '@/lib/recategorizacion';
-import type { Configuracion } from '@/types';
+import type { Configuracion, ConfigAlertas } from '@/types';
 
 interface ConfigContextValue {
   config: Configuracion; // SIEMPRE presente (arranca en defaults)
@@ -34,14 +34,47 @@ const ConfigContext = createContext<ConfigContextValue | null>(null);
  * contador las haya editado a mano (misma regla que la vieja cargarConfiguracion()).
  */
 function combinar(guardado: Partial<Configuracion> | null | undefined): Configuracion {
-  const limpio: Partial<Configuracion> = {};
-  for (const [k, v] of Object.entries(guardado ?? {})) {
-    if (v !== null && v !== undefined) (limpio as Record<string, unknown>)[k] = v;
+  // `guardado` puede traer la forma NUEVA (alertas{}) o la VIEJA (umbral* sueltos + notificaciones.tipos).
+  const g = (guardado ?? {}) as Record<string, unknown>;
+  const limpio: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(g)) {
+    if (v !== null && v !== undefined) limpio[k] = v;
   }
+
+  // Criterio por tipo: arranca de los defaults y aplica (1) el mapeo de los umbrales VIEJOS si existen
+  // (back-compat) y (2) lo guardado en la forma nueva (gana). Deep-merge por tipo para tolerar parciales.
+  const I = CONFIGURACION_INICIAL.alertas;
+  const num = (x: unknown, def: number) => (typeof x === 'number' ? x : def);
+  const viejo = limpio as Record<string, number | undefined>;
+  const guardadas = (limpio.alertas ?? {}) as Partial<ConfigAlertas>;
+  const alertas: ConfigAlertas = {
+    tope: { ...I.tope, avisarPct: num(viejo.umbralAmarilloPorcentaje, I.tope.avisarPct), ...(guardadas.tope ?? {}) },
+    recategorizacion: { ...I.recategorizacion, ...(guardadas.recategorizacion ?? {}) },
+    ventana: {
+      ...I.ventana,
+      avisoDias: num(viejo.umbralAmarilloDias, I.ventana.avisoDias),
+      urgenteDias: num(viejo.umbralRojoDias, I.ventana.urgenteDias),
+      ...(guardadas.ventana ?? {}),
+    },
+    exclusion: { ...I.exclusion, avisarRatioPct: num(viejo.umbralRatioGastosAmarillo, I.exclusion.avisarRatioPct), ...(guardadas.exclusion ?? {}) },
+    cuota: { ...I.cuota, urgenteDesdePct: num(viejo.umbralDeudaCuotaUrgente, I.cuota.urgenteDesdePct), ...(guardadas.cuota ?? {}) },
+    vencimiento: { ...I.vencimiento, ...(guardadas.vencimiento ?? {}) },
+    sync: { ...I.sync, ...(guardadas.sync ?? {}) },
+  };
+
+  const nb = (x: unknown, def: boolean) => (typeof x === 'boolean' ? x : def);
+  const ng = (limpio.notificaciones ?? {}) as Record<string, unknown>;
+  const N = CONFIGURACION_INICIAL.notificaciones;
   return {
     ...CONFIGURACION_INICIAL,
-    ...limpio,
-    ventanas: limpio.ventanas ?? ventanasRecategorizacion(),
+    inflacionMensualProyeccion: num(viejo.inflacionMensualProyeccion, CONFIGURACION_INICIAL.inflacionMensualProyeccion),
+    ventanas: (limpio.ventanas as Configuracion['ventanas']) ?? ventanasRecategorizacion(),
+    alertas,
+    notificaciones: {
+      activo: nb(ng.activo, N.activo),
+      horaDesde: num(ng.horaDesde, N.horaDesde),
+      horaHasta: num(ng.horaHasta, N.horaHasta),
+    },
   };
 }
 

@@ -5,6 +5,7 @@ import { Topbar } from './Topbar';
 import { ImpersonacionBanner } from './ImpersonacionBanner';
 import { ConfirmacionEmailBanner } from './ConfirmacionEmailBanner';
 import { SoporteChat } from '@/components/shared/SoporteChat';
+import { AvisoAlertas } from '@/components/shared/AvisoAlertas';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 export function AppLayout() {
@@ -34,6 +35,7 @@ export function AppLayout() {
         </div>
       </div>
       <SoporteChat />
+      <AvisoAlertas />
     </TooltipProvider>
   );
 }
