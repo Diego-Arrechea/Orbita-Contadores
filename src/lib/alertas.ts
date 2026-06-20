@@ -71,9 +71,9 @@ export function derivarAlertas(
       'Superó el tope de su categoría',
       `Facturó el ${formatPercent(pct, 0)} del tope anual. Riesgo de exclusión.`,
     );
-  } else if (pct >= config.umbralAmarilloPorcentaje) {
+  } else if (pct >= config.alertas.tope.avisarPct) {
     add('aviso', 'tope', 'Cerca del tope', `Lleva el ${formatPercent(pct, 0)} del tope de su categoría.`);
-  } else if (calc.fechaProyectadaCruceTope) {
+  } else if (config.alertas.tope.proyeccionCruce && calc.fechaProyectadaCruceTope) {
     add(
       'aviso',
       'tope',
@@ -95,14 +95,14 @@ export function derivarAlertas(
   // Ventana de recategorización próxima.
   const dias = calc.diasParaProximaVentana;
   if (Number.isFinite(dias) && calc.proximaVentana) {
-    if (dias <= config.umbralRojoDias) {
+    if (dias <= config.alertas.ventana.urgenteDias) {
       add(
         'urgente',
         'ventana',
         'Cierra la ventana de recategorización',
         `Faltan ${dias} días (vence el ${formatDate(calc.proximaVentana.fechaLimite, 'long')}).`,
       );
-    } else if (dias <= config.umbralAmarilloDias) {
+    } else if (dias <= config.alertas.ventana.avisoDias) {
       add('aviso', 'ventana', 'Se viene la recategorización', `Faltan ${dias} días para la próxima ventana.`);
     }
   }
@@ -115,7 +115,7 @@ export function derivarAlertas(
       'Riesgo de exclusión por gastos',
       `Sus compras son el ${formatPercent(calc.ratioGastosTopeCatK, 0)} del tope K (supera el ${formatPercent(calc.ratioUmbralLegal, 0)} permitido).`,
     );
-  } else if (calc.ratioGastosTopeCatK >= config.umbralRatioGastosAmarillo) {
+  } else if (calc.ratioGastosTopeCatK >= config.alertas.exclusion.avisarRatioPct) {
     add('aviso', 'exclusion', 'Gastos altos', `Sus compras son el ${formatPercent(calc.ratioGastosTopeCatK, 0)} del tope K.`);
   }
 
@@ -125,7 +125,7 @@ export function derivarAlertas(
   if (cliente.estadoCuotaMesActual === 'con-deuda') {
     const deuda = cliente.cuotaDeuda ?? 0;
     const cuotaMes = cliente.proxVencImporte ?? 0;
-    const esChica = cuotaMes > 0 && deuda > 0 && deuda < cuotaMes * config.umbralDeudaCuotaUrgente;
+    const esChica = cuotaMes > 0 && deuda > 0 && deuda < cuotaMes * config.alertas.cuota.urgenteDesdePct;
     if (esChica) {
       add(
         'aviso',

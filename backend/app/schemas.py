@@ -133,27 +133,28 @@ class NotificacionesIn(BaseModel):
     """Preferencias de alertas por WhatsApp del contador (sub-bloque de la config). El front manda el
     objeto completo al guardar; el motor (services/alertas.py) lo lee para decidir qué/cuándo enviar."""
 
-    activo: bool | None = None  # recibir alertas por WhatsApp (master on/off)
+    activo: bool | None = None  # recibir alertas por WhatsApp (master on/off del canal)
     horaDesde: int | None = None  # noqa: N815 — ventana horaria disponible (0–23, AR)
     horaHasta: int | None = None  # noqa: N815
-    tipos: list[str] | None = None  # subconjunto de tope|recategorizacion|ventana|exclusion|cuota|vencimiento|sync
 
 
 class ConfiguracionIn(BaseModel):
     """Preferencias del contador. Todos opcionales: el PUT mergea (parcial) sobre lo ya guardado y el
-    front completa con sus defaults. `ventanas` lleva la forma que define el front
-    (VentanaRecategorizacion: semestre/fechaLimite/efectoDesde)."""
+    front completa con sus defaults. `ventanas` y `alertas` van como dict con la forma que define el
+    front (ver src/types/index.ts: VentanaRecategorizacion y ConfigAlertas)."""
 
     inflacionMensualProyeccion: float | None = None  # noqa: N815
+    # Criterio por tipo de alerta (umbral + re-aviso). Dict tolerante (forma = ConfigAlertas del front).
+    alertas: dict | None = None
+    ventanas: list[dict] | None = None
+    notificaciones: NotificacionesIn | None = None
+    # --- Back-compat: umbrales globales VIEJOS. El front ya no los manda (usa `alertas`), pero se
+    # conservan acá para que un config_json viejo sobreviva el round-trip y el front los mapee. ---
     umbralAmarilloPorcentaje: float | None = None  # noqa: N815
     umbralAmarilloDias: int | None = None  # noqa: N815
     umbralRojoDias: int | None = None  # noqa: N815
     umbralRatioGastosAmarillo: float | None = None  # noqa: N815
-    # Fracción de la cuota del mes a partir de la cual una deuda es URGENTE (0.10 = 10%). Debajo de
-    # ese %, la deuda se reporta como aviso (no urgente): evita que un resto de $200 grite "urgente".
     umbralDeudaCuotaUrgente: float | None = None  # noqa: N815
-    ventanas: list[dict] | None = None
-    notificaciones: NotificacionesIn | None = None
 
 
 class ConfiguracionOut(ConfiguracionIn):
@@ -328,6 +329,13 @@ class BorrarCuentaIn(BaseModel):
     password: str
 
 
+class AvisoAlertasIn(BaseModel):
+    """Registro de que el contador vio el aviso de lanzamiento de alertas. `descartar=True` lo apaga
+    para siempre (botón 'Entendido'); False sólo descuenta un ingreso (se mostró esta sesión)."""
+
+    descartar: bool = False
+
+
 class RecuperarIn(BaseModel):
     """Pedido de recuperación de contraseña ("olvidé mi contraseña"): sólo el email."""
 
@@ -385,6 +393,8 @@ class UsuarioOut(BaseModel):
     # desde trial_fin para que el conteo no quede viejo entre cargas).
     trial_fin: str | None = None
     trial_dias_restantes: int | None = None
+    # Ingresos que faltan para dejar de mostrar el modal de "ya podés configurar tus alertas" (0 = no).
+    aviso_alertas_pendiente: int = 0
 
 
 class AuthOut(BaseModel):

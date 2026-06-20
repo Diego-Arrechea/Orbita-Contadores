@@ -13,6 +13,7 @@ from ..config import settings
 from ..db import get_db
 from ..schemas import (
     AuthOut,
+    AvisoAlertasIn,
     BorrarCuentaIn,
     CambioPasswordIn,
     ConfirmarEmailIn,
@@ -57,6 +58,7 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         email_confirmado=bool(u.email_confirmado),
         trial_fin=u.trial_fin.isoformat() if u.trial_fin else None,
         trial_dias_restantes=dias_restantes_trial(u.trial_fin),
+        aviso_alertas_pendiente=u.aviso_alertas_pendiente or 0,
     )
 
 
@@ -130,6 +132,22 @@ def login(datos: LoginIn, db: Session = Depends(get_db)):
 def me(usuario: models.Usuario = Depends(usuario_actual)):
     """Devuelve el contador logueado (sirve para rehidratar la sesión en el front)."""
     return _usuario_out(usuario)
+
+
+@router.post("/aviso-alertas")
+def aviso_alertas(
+    datos: AvisoAlertasIn,
+    usuario: models.Usuario = Depends(usuario_actual),
+    db: Session = Depends(get_db),
+):
+    """El front avisa que mostró el modal de lanzamiento de alertas: `descartar=True` lo apaga del
+    todo ('Entendido'); si no, descuenta un ingreso. Devuelve los ingresos que quedan."""
+    if datos.descartar:
+        usuario.aviso_alertas_pendiente = 0
+    else:
+        usuario.aviso_alertas_pendiente = max(0, (usuario.aviso_alertas_pendiente or 0) - 1)
+    db.commit()
+    return {"aviso_alertas_pendiente": usuario.aviso_alertas_pendiente}
 
 
 @router.post("/logout")

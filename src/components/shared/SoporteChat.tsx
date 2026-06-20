@@ -119,6 +119,13 @@ function TooltipSoporte() {
     };
   }, []);
 
+  // Compacta el launcher de Crisp (CSS en index.css) sólo mientras el chat está cerrado: al abrir,
+  // el panel queda con el tamaño nativo de Crisp.
+  useEffect(() => {
+    document.body.classList.toggle('crisp-compacto', !abierto);
+    return () => document.body.classList.remove('crisp-compacto');
+  }, [abierto]);
+
   if (!WEBSITE_ID || !hover || abierto) return null;
 
   return (

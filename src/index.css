@@ -60,11 +60,22 @@
     height: 100%;
   }
 
+  /* Densidad de la UI en escritorio. Como casi todo en Tailwind está en `rem` (texto,
+     paddings, anchos, gaps), bajar el tamaño de fuente raíz escala TODA la interfaz de
+     forma proporcional —igual que el zoom del navegador, pero horneado en la app—.
+     Para agrandar/achicar todo: subí o bajá este único porcentaje (100% = tamaño original).
+     Sólo en ≥1024px: en mobile no se usa zoom y achicar el texto lo dejaría ilegible. */
+  @media (min-width: 1024px) {
+    html {
+      font-size: 80%;
+    }
+  }
+
   body {
     font-family: 'Inter', system-ui, sans-serif;
     background: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-size: 15px;
+    font-size: 0.9375rem; /* 15px al tamaño raíz original; escala con la perilla de arriba */
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -100,5 +111,19 @@
   }
   .bg-sidebar {
     background: hsl(var(--sidebar));
+  }
+
+  /* Achica el launcher de Crisp. En pantallas angostas Crisp entra en "modo celular" y agranda
+     el ícono; lo bajamos un poco para que no quede desproporcionado con el resto de la UI ya
+     compactada. SOLO cuando el chat está CERRADO (la clase la togglea SoporteChat según el estado
+     abierto/cerrado) → al abrir, el panel del chat queda como Crisp lo maneja, sin deformar. Y SOLO
+     en ≥1024px: en un celular real el ícono mantiene su tamaño táctil.
+     Usamos `zoom` (no `transform: scale`): `transform` convierte al contenedor en bloque contenedor
+     de sus hijos `position: fixed` (el panel de Crisp), lo que rompía el layout y generaba scroll
+     infinito. `zoom` encoge igual pero sin crear ese bloque contenedor. */
+  @media (min-width: 1024px) {
+    body.crisp-compacto #crisp-chatbox {
+      zoom: 0.8;
+    }
   }
 }
