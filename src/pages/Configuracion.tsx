@@ -65,6 +65,11 @@ import { actualizarUsuarioGuardado, logoutCuenta, usuarioActual } from '@/lib/cu
 import { enviarPruebaWhatsapp } from '@/services/notificacionesService';
 import type { ConfigNotificaciones, TipoNotificable } from '@/types';
 
+// Interruptor del apartado de alertas por WhatsApp en la UI. En false muestra "Próximamente" y NO
+// deja configurar/activar nada (el motor automático todavía no está listo en prod). Poner en true
+// para reactivar el panel completo. Tipado como boolean para no disparar avisos de rama inalcanzable.
+const WHATSAPP_DISPONIBLE: boolean = false;
+
 // Etiquetas (en términos del dominio) de los tipos de alerta que el contador puede recibir.
 const TIPOS_NOTIFICABLES: { tipo: TipoNotificable; label: string }[] = [
   { tipo: 'tope', label: 'Cerca o por encima del tope' },
@@ -594,6 +599,20 @@ export function Configuracion() {
         <TabsContent value="notificaciones">
           <Card className="p-4 sm:p-6">
             {(() => {
+              if (!WHATSAPP_DISPONIBLE) {
+                return (
+                  <div className="py-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-base font-semibold">Alertas por WhatsApp</span>
+                      <Badge variant="muted">Próximamente</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground max-w-xl">
+                      Estamos terminando de afinar las alertas por WhatsApp. Muy pronto vas a poder
+                      configurar acá qué novedades de tu cartera querés recibir y en qué horario.
+                    </p>
+                  </div>
+                );
+              }
               const n = conf.notificaciones;
               return (
                 <>
