@@ -41,11 +41,13 @@ export interface RegistroPayload {
 }
 
 export function registrar(datos: RegistroPayload): Promise<AuthResp> {
-  return apiPost<AuthResp>('/auth/registro', datos);
+  return apiPost<AuthResp>('/auth/registro', datos, { publico: true });
 }
 
 export function login(email: string, password: string): Promise<AuthResp> {
-  return apiPost<AuthResp>('/auth/login', { email, password });
+  // `publico: true` → un 401 acá es "credenciales incorrectas" (no "sesión expirada"): el caller
+  // muestra el detalle del backend ("Email o contraseña incorrectos").
+  return apiPost<AuthResp>('/auth/login', { email, password }, { publico: true });
 }
 
 /** Datos del contador logueado (rehidrata/valida la sesión). Lanza si el token no sirve. */
@@ -91,7 +93,7 @@ export function registrarAvisoAlertas(descartar: boolean): Promise<{ aviso_alert
 
 /** Pide el enlace de recuperación de contraseña. Responde igual exista o no el email. */
 export function recuperarPassword(email: string): Promise<{ mensaje: string }> {
-  return apiPost('/auth/recuperar', { email });
+  return apiPost('/auth/recuperar', { email }, { publico: true });
 }
 
 /** Fija una contraseña nueva usando el token del enlace de recuperación. */
@@ -99,12 +101,12 @@ export function restablecerPassword(
   token: string,
   passwordNueva: string
 ): Promise<{ ok: boolean }> {
-  return apiPost('/auth/restablecer', { token, password_nueva: passwordNueva });
+  return apiPost('/auth/restablecer', { token, password_nueva: passwordNueva }, { publico: true });
 }
 
 /** Confirma el email usando el token del enlace que se mandó al registrarse (ruta pública). */
 export function confirmarEmail(token: string): Promise<{ ok: boolean }> {
-  return apiPost('/auth/confirmar-email', { token });
+  return apiPost('/auth/confirmar-email', { token }, { publico: true });
 }
 
 /** Reenvía el correo de confirmación al contador logueado (botón del banner). */
