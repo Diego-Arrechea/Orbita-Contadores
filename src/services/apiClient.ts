@@ -25,9 +25,11 @@ function conAuth(base?: Record<string, string>): Record<string, string> | undefi
   return Object.keys(headers).length ? headers : undefined;
 }
 
-async function handle<T>(res: Response): Promise<T> {
-  if (res.status === 401) {
-    // Token inválido o expirado: cerramos sesión y mandamos al login.
+async function handle<T>(res: Response, publico = false): Promise<T> {
+  // El 401 "cerrar sesión + ir al login" SÓLO aplica a requests AUTENTICADAS (token vencido/ inválido).
+  // En endpoints públicos (login, registro, recuperación) un 401 es un error de credenciales: hay que
+  // devolver el detalle del backend (ej. "Email o contraseña incorrectos"), NO "tu sesión expiró".
+  if (res.status === 401 && !publico) {
     logoutCuenta();
     if (!window.location.pathname.startsWith('/login')) window.location.href = '/login';
     throw new Error('Tu sesión expiró. Iniciá sesión de nuevo.');
@@ -43,12 +45,12 @@ export function apiGet<T>(path: string): Promise<T> {
   return fetch(`${BASE_URL}${path}`, { headers: conAuth() }).then(handle<T>);
 }
 
-export function apiPost<T>(path: string, body?: unknown): Promise<T> {
+export function apiPost<T>(path: string, body?: unknown, opts?: { publico?: boolean }): Promise<T> {
   return fetch(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: conAuth(body !== undefined ? { 'Content-Type': 'application/json' } : undefined),
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  }).then(handle<T>);
+  }).then(res => handle<T>(res, opts?.publico));
 }
 
 export function apiPut<T>(path: string, body?: unknown): Promise<T> {
