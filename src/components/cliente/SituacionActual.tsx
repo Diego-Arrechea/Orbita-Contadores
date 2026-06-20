@@ -47,9 +47,15 @@ export function SituacionActual({ cliente, calc }: Props) {
   // sigue moviendo proyecciones/recategorización; ARCA es la foto oficial de "dónde estás hoy".
   const facturacionComputada =
     calc.mesesConActividad < 12 ? calc.facturacionUltimos12Anualizada : calc.facturacionUltimos12;
-  const tieneOficial = cliente.facturacion12mOficial != null;
-  const facturacionMostrada = cliente.facturacion12mOficial ?? facturacionComputada;
-  const topeMostrado = cliente.topeCategoriaOficial ?? categoriaActual.topeAnual;
+  // El facturómetro oficial sólo se considera válido si trae un monto > 0: a veces el panel de ARCA
+  // responde 0 por una carga incompleta del AJAX (con la fecha de corte ya puesta) → ese 0 NO es real
+  // (lo delata tener comprobantes por encima). En ese caso caemos al cálculo propio (sin rotularlo
+  // "Según ARCA"), en vez de mostrar $0 sobre un cliente que sí facturó.
+  const tieneOficial = cliente.facturacion12mOficial != null && cliente.facturacion12mOficial > 0;
+  const topeOficialValido =
+    cliente.topeCategoriaOficial != null && cliente.topeCategoriaOficial > 0;
+  const facturacionMostrada = tieneOficial ? cliente.facturacion12mOficial! : facturacionComputada;
+  const topeMostrado = topeOficialValido ? cliente.topeCategoriaOficial! : categoriaActual.topeAnual;
   const porcentajeMostrado = topeMostrado > 0 ? facturacionMostrada / topeMostrado : 0;
 
   return (
