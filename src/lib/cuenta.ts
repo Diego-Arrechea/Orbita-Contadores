@@ -19,6 +19,10 @@ export interface Cuenta {
 
 const LS_TOKEN = 'orbita_token';
 const LS_USUARIO = 'orbita_usuario';
+// Guard del modal de aviso de alertas (sessionStorage, por pestaña). Lo limpiamos en cada login para
+// que el modal se re-evalúe por usuario: si no, al cambiar de cuenta en la misma pestaña el flag de la
+// cuenta anterior tapaba el modal de la nueva. Lo consume src/components/shared/AvisoAlertas.tsx.
+export const SS_AVISO_ALERTAS = 'orbita_aviso_alertas_sesion';
 // Mientras un admin está "entrando como" otro contador, guardamos acá su sesión original (la de
 // admin) para poder volver. Si existen, es señal de que hay una impersonación en curso.
 const LS_IMP_TOKEN = 'orbita_admin_token';
@@ -45,6 +49,8 @@ export function iniciarSesion(auth: AuthResp): Cuenta {
   try {
     localStorage.setItem(LS_TOKEN, auth.token);
     localStorage.setItem(LS_USUARIO, JSON.stringify(auth.usuario));
+    // Cambió la identidad: re-evaluar el modal de aviso para la cuenta nueva (ver SS_AVISO_ALERTAS).
+    sessionStorage.removeItem(SS_AVISO_ALERTAS);
   } catch {
     /* ignore */
   }

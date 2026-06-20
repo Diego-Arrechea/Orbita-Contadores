@@ -17,10 +17,11 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { getMe, registrarAvisoAlertas } from '@/services/authService';
-import { actualizarUsuarioGuardado, usuarioActual } from '@/lib/cuenta';
+import { actualizarUsuarioGuardado, usuarioActual, SS_AVISO_ALERTAS } from '@/lib/cuenta';
 
-// Guard por sesión del navegador: que un refresh no "queme" otro de los ingresos.
-const LS_SESION = 'orbita_aviso_alertas_sesion';
+// Guard por sesión del navegador: que un refresh no "queme" otro de los ingresos. `iniciarSesion` lo
+// limpia en cada login para que el modal se re-evalúe al cambiar de cuenta (ver cuenta.ts).
+const LS_SESION = SS_AVISO_ALERTAS;
 
 export function AvisoAlertas() {
   const navigate = useNavigate();
