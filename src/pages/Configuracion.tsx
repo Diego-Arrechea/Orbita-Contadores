@@ -20,6 +20,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -1020,9 +1021,8 @@ export function Configuracion() {
             <div className="grid gap-3 max-w-md">
               <div className="space-y-1.5">
                 <Label htmlFor="pass-actual">Contraseña actual</Label>
-                <Input
+                <PasswordInput
                   id="pass-actual"
-                  type="password"
                   autoComplete="current-password"
                   value={passActual}
                   onChange={e => {
@@ -1033,9 +1033,8 @@ export function Configuracion() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="pass-nueva">Nueva contraseña</Label>
-                <Input
+                <PasswordInput
                   id="pass-nueva"
-                  type="password"
                   autoComplete="new-password"
                   value={passNueva}
                   onChange={e => {
@@ -1046,9 +1045,8 @@ export function Configuracion() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="pass-repetir">Repetir nueva contraseña</Label>
-                <Input
+                <PasswordInput
                   id="pass-repetir"
-                  type="password"
                   autoComplete="new-password"
                   value={passRepetir}
                   onChange={e => {
@@ -1124,9 +1122,8 @@ export function Configuracion() {
 
               <div className="space-y-1.5">
                 <Label htmlFor="pass-borrar">Contraseña</Label>
-                <Input
+                <PasswordInput
                   id="pass-borrar"
-                  type="password"
                   autoComplete="current-password"
                   value={passBorrar}
                   onChange={e => {

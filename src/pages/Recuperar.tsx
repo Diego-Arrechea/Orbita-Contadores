@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Orbit, AlertCircle, CheckCircle2, Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { recuperarPassword, restablecerPassword, mensajeDeError } from '@/services/authService';
 
@@ -128,9 +129,8 @@ function Restablecer({ token }: { token: string }) {
       <form className="space-y-4" onSubmit={guardar}>
         <div className="space-y-1.5">
           <Label htmlFor="pass">Nueva contraseña</Label>
-          <Input
+          <PasswordInput
             id="pass"
-            type="password"
             autoComplete="new-password"
             placeholder="••••••••"
             value={pass}
@@ -142,9 +142,8 @@ function Restablecer({ token }: { token: string }) {
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="repetir">Repetir contraseña</Label>
-          <Input
+          <PasswordInput
             id="repetir"
-            type="password"
             autoComplete="new-password"
             placeholder="••••••••"
             value={repetir}
