@@ -4,6 +4,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Orbit, ShieldCheck, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { login, mensajeDeError } from '@/services/authService';
 import { iniciarSesion } from '@/lib/cuenta';
@@ -82,9 +83,8 @@ export function Login() {
                   ¿Olvidaste tu contraseña?
                 </Link>
               </div>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 autoComplete="current-password"
                 placeholder="••••••••"
                 value={password}

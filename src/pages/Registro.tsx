@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Orbit, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { registrar, mensajeDeError } from '@/services/authService';
 import { iniciarSesion } from '@/lib/cuenta';
@@ -47,17 +48,27 @@ function Campo({
   prefijo?: string;
   hint?: string;
 }) {
-  const input = (
-    <Input
-      id={id}
-      type={type}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      autoComplete={autoComplete}
-      className={prefijo ? 'rounded-l-none' : undefined}
-    />
-  );
+  const input =
+    type === 'password' ? (
+      <PasswordInput
+        id={id}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        className={prefijo ? 'rounded-l-none' : undefined}
+      />
+    ) : (
+      <Input
+        id={id}
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        className={prefijo ? 'rounded-l-none' : undefined}
+      />
+    );
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>
