@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Orbit, Printer, ArrowLeft, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,12 +9,23 @@ import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
 import { getCategoria } from '@/data/categorias';
 import { cuentaActual } from '@/lib/cuenta';
 import { useConfig } from '@/context/ConfigContext';
+import { derivarAlertas, ordenarPorSeveridad, type Severidad } from '@/lib/alertas';
+import { accionesSugeridas, esPendienteRespaldo } from '@/lib/reporteCliente';
+import { getMovimientos } from '@/services/movimientosService';
+import type { MovimientoBancario } from '@/types';
 import { formatCurrency, formatCuit, formatDate, formatPercent } from '@/lib/utils';
 
 function mesLegible(mes: string): string {
   const [y, m] = mes.split('-');
   return m && y ? `${m}/${y}` : mes;
 }
+
+const SEV_DOT: Record<Severidad, string> = {
+  urgente: 'bg-danger',
+  aviso: 'bg-warning',
+  datos: 'bg-muted-foreground',
+  ok: 'bg-success',
+};
 
 export function ReporteCliente() {
   const { id } = useParams<{ id: string }>();
@@ -22,9 +34,21 @@ export function ReporteCliente() {
   // la ficha es instantáneo. enabled evita pedir cuando se usa el mock.
   const { data: clienteReal, isLoading: cargando } = useClienteReal(id, !clienteMock);
   const { config } = useConfig();
+  const [movimientos, setMovimientos] = useState<MovimientoBancario[]>([]);
 
   const cliente = clienteMock ?? clienteReal ?? undefined;
   const cuenta = cuentaActual();
+
+  // Movimientos para el bloque "pendientes de respaldo": para clientes reales se piden al backend;
+  // para los mock (demo) se usan los embebidos.
+  useEffect(() => {
+    if (!cliente) return;
+    if (cliente.fuente === 'arca') {
+      getMovimientos(cliente.cuit).then(setMovimientos).catch(() => setMovimientos([]));
+    } else {
+      setMovimientos(cliente.movimientosBancarios ?? []);
+    }
+  }, [cliente?.id, cliente?.fuente, cliente?.cuit]);
 
   if (cargando) {
     return <div className="p-12 text-center text-muted-foreground">Generando reporte…</div>;
@@ -45,6 +69,9 @@ export function ReporteCliente() {
   const cat = getCategoria(cliente.categoria);
   const debeRecategorizar = !noMono && calc.categoriaCorresponde.codigo !== cliente.categoria;
   const ultimos12 = ventana12Meses(cliente.historialMensual);
+  const alertas = ordenarPorSeveridad(derivarAlertas(cliente, calc, config));
+  const pendientes = movimientos.filter(esPendienteRespaldo);
+  const acciones = accionesSugeridas(cliente, calc, alertas, pendientes.length);
 
   return (
     <div className="min-h-full bg-muted/30 print:bg-white">
@@ -145,6 +172,10 @@ export function ReporteCliente() {
                 label="Próximo vencimiento"
                 valor={cliente.proxVencFecha ?? '—'}
               />
+              <Metrica label="Deuda de cuota" valor={formatCurrency(cliente.cuotaDeuda ?? 0)} />
+              {!!cliente.cuotaSaldoFavor && cliente.cuotaSaldoFavor > 0 && (
+                <Metrica label="Saldo a favor" valor={formatCurrency(cliente.cuotaSaldoFavor)} />
+              )}
             </div>
 
             {debeRecategorizar && (
@@ -192,6 +223,62 @@ export function ReporteCliente() {
             </table>
           </>
         )}
+
+        {/* Alertas */}
+        <h2 className="text-base font-semibold mt-8 mb-3">Alertas</h2>
+        {alertas.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Sin alertas activas para este cliente.</p>
+        ) : (
+          <ul className="space-y-2">
+            {alertas.map(a => (
+              <li key={a.id} className="flex items-start gap-2.5 text-sm">
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${SEV_DOT[a.severidad]}`} />
+                <span>
+                  <span className="font-medium">{a.titulo}.</span>{' '}
+                  <span className="text-muted-foreground">{a.detalle}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Movimientos pendientes de respaldo fiscal */}
+        <h2 className="text-base font-semibold mt-8 mb-3">Movimientos pendientes de respaldo fiscal</h2>
+        {pendientes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No hay movimientos pendientes de respaldo.</p>
+        ) : (
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-border/60 text-left text-muted-foreground">
+                <th className="py-2 font-medium">Fecha</th>
+                <th className="py-2 font-medium">Originante</th>
+                <th className="py-2 font-medium text-right">Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pendientes.map(m => (
+                <tr key={m.id} className="border-b border-border/40">
+                  <td className="py-1.5 tabular-nums whitespace-nowrap">{formatDate(m.fecha)}</td>
+                  <td className="py-1.5">
+                    {m.nombreOriginante || m.descripcion || '—'}
+                    {m.cuitOriginante && (
+                      <span className="text-muted-foreground"> · {formatCuit(m.cuitOriginante)}</span>
+                    )}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums">{formatCurrency(m.monto)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {/* Acciones sugeridas */}
+        <h2 className="text-base font-semibold mt-8 mb-3">Acciones sugeridas</h2>
+        <ul className="list-disc pl-5 space-y-1 text-sm">
+          {acciones.map((a, i) => (
+            <li key={i}>{a}</li>
+          ))}
+        </ul>
 
         <footer className="mt-10 pt-5 border-t border-border/60 text-xs text-muted-foreground">
           Generado con Órbita a partir de datos de ARCA. Documento informativo de apoyo; no reemplaza

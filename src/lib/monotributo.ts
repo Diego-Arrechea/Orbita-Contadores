@@ -48,6 +48,14 @@ export interface CalculoCliente {
   categoriaConInflacion: Categoria;
   diasParaProximaVentana: number;
   proximaVentana?: VentanaRecategorizacion;
+  // Valores intermedios expuestos para la trazabilidad ("ver detalle"): son los mismos insumos que
+  // usan los cálculos de arriba, para poder explicarle al contador de dónde sale cada número sin
+  // recalcular (y sin riesgo de que el detalle diverja de lo que se muestra).
+  nivelTope: number; // facturación autoritativa usada para tope/categoría (oficial o anualizada propia)
+  topeReferencia: number; // tope contra el que se mide (oficial de ARCA o de la tabla)
+  promedioMensualUlt3: number; // promedio de los últimos 3 meses (base de las proyecciones)
+  facturacionConInflacion: number; // proyección a 12m con inflación compuesta
+  inflacionMensualUsada: number; // tasa mensual aplicada en esa proyección
 }
 
 export function calcularCliente(
@@ -143,6 +151,11 @@ export function calcularCliente(
     categoriaConInflacion,
     diasParaProximaVentana: proxima?.dias ?? Infinity,
     proximaVentana: proxima,
+    nivelTope,
+    topeReferencia: topeRef,
+    promedioMensualUlt3: promUlt3,
+    facturacionConInflacion,
+    inflacionMensualUsada: r,
   };
 }
 

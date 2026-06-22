@@ -6,15 +6,19 @@ import { formatCurrency, formatDate, formatPercent } from '@/lib/utils';
 import { getCategoria } from '@/data/categorias';
 import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
 import { esAdminReal } from '@/lib/cuenta';
+import { VerDetalle } from '@/components/cliente/VerDetalle';
+import { detallesSituacion } from '@/lib/trazabilidad';
 import type { CalculoCliente } from '@/lib/monotributo';
 import type { Cliente } from '@/types';
 
 interface Props {
   cliente: Cliente;
   calc: CalculoCliente;
+  /** Salta a la solapa con el detalle de comprobantes que componen la facturación 12m. */
+  onVerComprobantes?: () => void;
 }
 
-export function SituacionActual({ cliente, calc }: Props) {
+export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
   if (!esMonotributista(cliente)) {
     const esRI = cliente.regimen === 'responsable_inscripto';
     return (
@@ -58,15 +62,19 @@ export function SituacionActual({ cliente, calc }: Props) {
   const topeMostrado = topeOficialValido ? cliente.topeCategoriaOficial! : categoriaActual.topeAnual;
   const porcentajeMostrado = topeMostrado > 0 ? facturacionMostrada / topeMostrado : 0;
 
+  // Trazabilidad: explicación de cada valor calculado de esta vista (ver botones ⓘ).
+  const d = detallesSituacion(cliente, calc);
+
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       <Card className="p-5 sm:p-7 col-span-full lg:col-span-2">
         <div className="flex items-start justify-between mb-4">
           <div>
-            <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
+            <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1 inline-flex items-center gap-1.5">
               Facturación últimos 12 meses
+              <VerDetalle detalle={d.facturacion12m} />
               {!tieneOficial && calc.mesesConActividad < 12 && (
-                <span className="ml-2 text-warning-foreground normal-case tracking-normal">
+                <span className="ml-1 text-warning-foreground normal-case tracking-normal">
                   (anualizada con {calc.mesesConActividad}m de actividad)
                 </span>
               )}
@@ -88,16 +96,29 @@ export function SituacionActual({ cliente, calc }: Props) {
         <ProgresoTope porcentaje={porcentajeMostrado} showLabel={false} />
 
         <div className="flex items-center justify-between text-xs mt-2">
-          <span className="text-muted-foreground">
+          <span className="text-muted-foreground inline-flex items-center gap-1.5">
             {formatPercent(porcentajeMostrado, 1)} consumido
+            <VerDetalle detalle={d.porcentajeTope} />
           </span>
           {calc.fechaProyectadaCruceTope && (
             <span className="text-muted-foreground inline-flex items-center gap-1">
               <CalendarClock className="h-3 w-3" />
               Proyección cruce: {formatDate(calc.fechaProyectadaCruceTope, 'long')}
+              <VerDetalle detalle={d.proyeccionCruce} align="end" />
             </span>
           )}
         </div>
+
+        {onVerComprobantes && (
+          <button
+            type="button"
+            onClick={onVerComprobantes}
+            className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            Ver los comprobantes que lo componen
+            <ArrowRight className="h-3 w-3" />
+          </button>
+        )}
 
         {tieneOficial && (
           <div className="mt-1 text-[11px] text-muted-foreground">
@@ -115,7 +136,10 @@ export function SituacionActual({ cliente, calc }: Props) {
         {debeRecategorizar && (
           <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-warning/15 border border-warning/30 px-3 py-2.5 text-sm">
             <TrendingUp className="h-4 w-4 text-warning-foreground" />
-            <span>Con la facturación actual debería recategorizarse a</span>
+            <span className="inline-flex items-center gap-1.5">
+              Con la facturación actual debería recategorizarse a
+              <VerDetalle detalle={d.recategorizacion} />
+            </span>
             <Badge variant="warning" className="font-semibold">
               Cat. {calc.categoriaCorresponde.codigo}
             </Badge>
@@ -128,8 +152,9 @@ export function SituacionActual({ cliente, calc }: Props) {
       </Card>
 
       <Card className="p-5 sm:p-7">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
+        <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1 inline-flex items-center gap-1.5">
           Próxima ventana
+          <VerDetalle detalle={d.proximaVentana} />
         </div>
         <div className="flex items-baseline gap-2">
           <div className="text-3xl font-semibold tabular-nums">
@@ -150,8 +175,9 @@ export function SituacionActual({ cliente, calc }: Props) {
 
       <Card className="p-5 sm:p-7">
         <div className="flex items-center justify-between mb-1">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
             Ratio compras / tope K
+            <VerDetalle detalle={d.ratioGastos} />
           </div>
           {calc.ratioSuperadoLegal && (
             <Badge variant="danger" className="text-[10px]">
@@ -170,8 +196,9 @@ export function SituacionActual({ cliente, calc }: Props) {
       </Card>
 
       <Card className="p-5 sm:p-7">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
+        <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1 inline-flex items-center gap-1.5">
           Proyección con inflación
+          <VerDetalle detalle={d.proyeccionInflacion} />
         </div>
         <div className="flex items-baseline gap-2">
           <div className="text-3xl sm:text-4xl font-semibold tabular-nums tracking-tight">
@@ -191,8 +218,9 @@ export function SituacionActual({ cliente, calc }: Props) {
       <Card className="p-5 sm:p-7">
         <div className="flex items-center gap-2 mb-1">
           <CreditCard className="h-4 w-4 text-muted-foreground" />
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
             Cuota del mes
+            <VerDetalle detalle={d.cuota} />
           </div>
         </div>
         <div className="flex items-baseline gap-2">

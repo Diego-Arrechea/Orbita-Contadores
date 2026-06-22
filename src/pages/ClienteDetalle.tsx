@@ -7,6 +7,7 @@ import {
   Pencil,
   Trash2,
   FileText,
+  FileSpreadsheet,
   MoreVertical,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -34,6 +35,9 @@ import { useConfig } from '@/context/ConfigContext';
 import { calcularCliente } from '@/lib/monotributo';
 import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
 import { formatCuit, formatDate } from '@/lib/utils';
+import { derivarAlertas } from '@/lib/alertas';
+import { descargarReporteExcel } from '@/lib/reporteExcel';
+import { getMovimientos } from '@/services/movimientosService';
 import { useClienteReal } from '@/lib/queries';
 import { EditarClienteDialog } from '@/components/cliente/EditarClienteDialog';
 import { EliminarClienteDialog } from '@/components/cliente/EliminarClienteDialog';
@@ -55,6 +59,8 @@ export function ClienteDetalle() {
     useClienteReal(id, !clienteMock);
   const [editarOpen, setEditarOpen] = useState(false);
   const [eliminarOpen, setEliminarOpen] = useState(false);
+  const [tab, setTab] = useState('situacion');
+  const [generandoExcel, setGenerandoExcel] = useState(false);
   const { config } = useConfig();
 
   // El backend ya aplica las ediciones del contador sobre el dato de ARCA; el front sólo elige mock o
@@ -83,6 +89,23 @@ export function ClienteDetalle() {
 
   const calc = calcularCliente(cliente, config.ventanas, config.inflacionMensualProyeccion);
 
+  // Descarga el papel de trabajo del cliente en Excel. Para clientes reales trae los movimientos del
+  // backend (para el bloque "pendientes de respaldo"); para los mock usa los embebidos.
+  const descargarExcel = async () => {
+    setGenerandoExcel(true);
+    try {
+      const movimientos = esReal
+        ? await getMovimientos(cliente.cuit)
+        : (cliente.movimientosBancarios ?? []);
+      const alertas = derivarAlertas(cliente, calc, config);
+      descargarReporteExcel({ cliente, calc, alertas, movimientos });
+    } catch (e) {
+      console.error('No se pudo generar el Excel del cliente', e);
+    } finally {
+      setGenerandoExcel(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <Button
@@ -94,7 +117,7 @@ export function ClienteDetalle() {
         <ChevronLeft className="h-4 w-4" /> Volver al dashboard
       </Button>
 
-      <Tabs defaultValue="situacion" className="space-y-5">
+      <Tabs value={tab} onValueChange={setTab} className="space-y-5">
         <Card className="overflow-hidden p-0 border-primary/15">
           <div
             className="p-4 sm:p-7 relative"
@@ -165,8 +188,17 @@ export function ClienteDetalle() {
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem asChild>
                       <Link to={`/clientes/${cliente.id}/reporte`}>
-                        <FileText /> Reporte
+                        <FileText /> Reporte (PDF)
                       </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={generandoExcel}
+                      onSelect={e => {
+                        e.preventDefault();
+                        void descargarExcel();
+                      }}
+                    >
+                      <FileSpreadsheet /> {generandoExcel ? 'Generando Excel…' : 'Descargar Excel'}
                     </DropdownMenuItem>
                     <DropdownMenuItem onSelect={() => setTimeout(() => setEditarOpen(true), 0)}>
                       <Pencil /> Editar
