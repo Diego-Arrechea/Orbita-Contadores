@@ -20,6 +20,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatCurrency, cn } from '@/lib/utils';
+import { VerDetalle } from '@/components/cliente/VerDetalle';
+import { detalleHistorico } from '@/lib/trazabilidad';
 import type { Cliente } from '@/types';
 
 interface Props {
@@ -40,7 +42,10 @@ export function HistoricoMensual({ cliente }: Props) {
     <Card className="p-4 sm:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
         <div>
-          <div className="text-base font-semibold">Histórico de últimos 13 meses</div>
+          <div className="text-base font-semibold inline-flex items-center gap-1.5">
+            Histórico de últimos 13 meses
+            <VerDetalle detalle={detalleHistorico} />
+          </div>
           <div className="text-sm text-muted-foreground">
             Comprobantes emitidos netos (descontando notas de crédito) e ingresos no facturados marcados por el contador.
           </div>

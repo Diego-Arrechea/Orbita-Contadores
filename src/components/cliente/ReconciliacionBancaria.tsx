@@ -55,6 +55,8 @@ import {
   type ImportarResumen,
 } from '@/services/movimientosService';
 import { DropZone, Stat, CONFIANZA_TONO } from '@/components/cliente/conciliacionShared';
+import { VerDetalle } from '@/components/cliente/VerDetalle';
+import { detalleConciliacion } from '@/lib/trazabilidad';
 
 const TARGET_FIELDS: { value: CampoDestino; label: string }[] = [
   { value: 'fecha', label: 'Fecha del movimiento' },
@@ -535,8 +537,9 @@ function ResultadosTable({
       </div>
 
       <div className="flex flex-col gap-3 p-4 border-b border-border/60 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-sm text-muted-foreground max-w-xl">
+        <div className="text-sm text-muted-foreground max-w-xl inline-flex items-center gap-1.5">
           Cada acreditación se cruzó con una factura emitida por importe y CUIT originante.
+          <VerDetalle detalle={detalleConciliacion} />
         </div>
         <div className="flex gap-2 shrink-0">
           <Button variant={filtro === 'todos' ? 'default' : 'outline'} size="sm" onClick={() => setFiltro('todos')}>
