@@ -25,6 +25,7 @@ import { AlertaBadge } from '@/components/shared/AlertaBadge';
 import { SituacionActual } from '@/components/cliente/SituacionActual';
 import { EstadoCuenta } from '@/components/cliente/EstadoCuenta';
 import { HistoricoMensual } from '@/components/cliente/HistoricoMensual';
+import { FacturacionDetalle } from '@/components/cliente/FacturacionDetalle';
 import { ReconciliacionBancaria } from '@/components/cliente/ReconciliacionBancaria';
 import { ListaComprobantes } from '@/components/cliente/ListaComprobantes';
 // import { CausalesList } from '@/components/cliente/CausalesList'; // oculto por ahora (ver tab "causales")
@@ -253,6 +254,7 @@ export function ClienteDetalle() {
               <TabsTrigger value="situacion" className={tabTriggerClass}>Situación actual</TabsTrigger>
               <TabsTrigger value="estado-cuenta" className={tabTriggerClass}>Estado de cuenta</TabsTrigger>
               <TabsTrigger value="historico" className={tabTriggerClass}>Histórico mensual</TabsTrigger>
+              <TabsTrigger value="facturacion" className={tabTriggerClass}>Facturación 12m</TabsTrigger>
               <TabsTrigger value="reconciliacion" className={tabTriggerClass}>Reconciliación bancaria</TabsTrigger>
               <TabsTrigger value="comprobantes" className={tabTriggerClass}>Comprobantes</TabsTrigger>
               {/* Causales de exclusión: oculta por ahora (vacía para clientes reales). Reactivar cuando un contador la pida. */}
@@ -263,13 +265,20 @@ export function ClienteDetalle() {
         </Card>
 
         <TabsContent value="situacion" className="mt-0">
-          <SituacionActual cliente={cliente} calc={calc} />
+          <SituacionActual
+            cliente={cliente}
+            calc={calc}
+            onVerComprobantes={() => setTab('facturacion')}
+          />
         </TabsContent>
         <TabsContent value="estado-cuenta" className="mt-0">
           <EstadoCuenta cliente={cliente} />
         </TabsContent>
         <TabsContent value="historico" className="mt-0">
           <HistoricoMensual cliente={cliente} />
+        </TabsContent>
+        <TabsContent value="facturacion" className="mt-0">
+          <FacturacionDetalle cliente={cliente} />
         </TabsContent>
         <TabsContent value="reconciliacion" className="mt-0">
           <ReconciliacionBancaria cliente={cliente} />
