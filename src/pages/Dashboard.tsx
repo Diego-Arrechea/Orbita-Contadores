@@ -11,6 +11,9 @@ import {
   Calendar,
   TrendingUp,
   RefreshCcw,
+  ArrowUp,
+  ArrowDown,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -45,10 +48,50 @@ import type { EstadoAlerta, TipoActividad } from '@/types';
 
 const orden: Record<EstadoAlerta, number> = { rojo: 0, gris: 1, amarillo: 2, verde: 3 };
 
+// Fila ya calculada que alimenta la tabla/tarjetas.
+type FilaCliente = {
+  cliente: (typeof CLIENTES)[number];
+  calc: ReturnType<typeof calcularCliente>;
+  estado: EstadoAlerta;
+};
+
+// Columnas por las que se puede ordenar. Cada una expone un valor comparable
+// (número o string); los nulos van siempre al final sin importar el sentido.
+type ColumnaOrden = 'nombre' | 'categoria' | 'tope' | 'ratio' | 'ventana' | 'estado' | 'extraccion';
+
+const accesoresOrden: Record<ColumnaOrden, (f: FilaCliente) => number | string | null> = {
+  nombre: f => f.cliente.nombre.toLowerCase(),
+  categoria: f => (esMonotributista(f.cliente) ? f.cliente.categoria ?? '' : null),
+  tope: f => (esMonotributista(f.cliente) ? f.calc.porcentajeTopeActual : null),
+  ratio: f => (esMonotributista(f.cliente) ? f.calc.ratioGastosTopeCatK : null),
+  ventana: f =>
+    esMonotributista(f.cliente) && Number.isFinite(f.calc.diasParaProximaVentana)
+      ? f.calc.diasParaProximaVentana
+      : null,
+  estado: f => orden[f.estado],
+  extraccion: f => (f.cliente.ultimaExtraccion ? Date.parse(f.cliente.ultimaExtraccion) : null),
+};
+
+type Sentido = 'asc' | 'desc';
+
 export function Dashboard() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroAlerta, setFiltroAlerta] = useState<EstadoAlerta | 'todos'>('todos');
   const [filtroActividad, setFiltroActividad] = useState<TipoActividad | 'todos'>('todos');
+  // Orden por defecto: por estado (rojo primero), igual que antes.
+  const [ordenarPor, setOrdenarPor] = useState<ColumnaOrden>('estado');
+  const [sentido, setSentido] = useState<Sentido>('asc');
+
+  // Click en un encabezado: si ya es la columna activa, alterna asc/desc;
+  // si es otra, la activa en ascendente.
+  const ordenarColumna = (col: ColumnaOrden) => {
+    if (ordenarPor === col) {
+      setSentido(s => (s === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setOrdenarPor(col);
+      setSentido('asc');
+    }
+  };
   const cuenta = cuentaActual();
   // Cartera cacheada (React Query). El InvalidadorCache global la re-trae al terminar una carga o
   // sincronización en segundo plano; el botón de refrescar usa refetch(). Sin backend → [] + mock.
@@ -70,6 +113,8 @@ export function Dashboard() {
   );
 
   const filtrados = useMemo(() => {
+    const acceso = accesoresOrden[ordenarPor];
+    const factor = sentido === 'asc' ? 1 : -1;
     return clientesConCalculo
       .filter(({ cliente, estado }) => {
         if (filtroAlerta !== 'todos' && estado !== filtroAlerta) return false;
@@ -83,8 +128,21 @@ export function Dashboard() {
         }
         return true;
       })
-      .sort((a, b) => orden[a.estado] - orden[b.estado]);
-  }, [clientesConCalculo, busqueda, filtroAlerta, filtroActividad]);
+      .sort((a, b) => {
+        const va = acceso(a);
+        const vb = acceso(b);
+        // Los valores sin dato (no monotributo, sin extracción…) van siempre al final.
+        if (va === null && vb === null) return 0;
+        if (va === null) return 1;
+        if (vb === null) return -1;
+        if (typeof va === 'string' || typeof vb === 'string') {
+          return factor * String(va).localeCompare(String(vb), 'es');
+        }
+        return factor * (va - vb);
+      });
+  }, [clientesConCalculo, busqueda, filtroAlerta, filtroActividad, ordenarPor, sentido]);
+
+  const propsOrden = { ordenarPor, sentido, onOrdenar: ordenarColumna };
 
   const resumen = useMemo(() => {
     const counts = { rojo: 0, amarillo: 0, gris: 0, verde: 0 };
@@ -204,13 +262,13 @@ export function Dashboard() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[280px]">Cliente</TableHead>
-              <TableHead>Categoría</TableHead>
-              <TableHead className="w-[220px]">% tope consumido</TableHead>
-              <TableHead>Ratio gastos</TableHead>
-              <TableHead>Próx. ventana</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead>Última extracción</TableHead>
+              <HeadOrdenable col="nombre" label="Cliente" className="w-[280px]" {...propsOrden} />
+              <HeadOrdenable col="categoria" label="Categoría" {...propsOrden} />
+              <HeadOrdenable col="tope" label="% tope consumido" className="w-[220px]" {...propsOrden} />
+              <HeadOrdenable col="ratio" label="Ratio gastos" {...propsOrden} />
+              <HeadOrdenable col="ventana" label="Próx. ventana" {...propsOrden} />
+              <HeadOrdenable col="estado" label="Estado" {...propsOrden} />
+              <HeadOrdenable col="extraccion" label="Última extracción" {...propsOrden} />
               <TableHead className="w-[40px]" />
             </TableRow>
           </TableHeader>
@@ -425,6 +483,42 @@ export function Dashboard() {
         </div>
       </Card>
     </div>
+  );
+}
+
+interface HeadOrdenableProps {
+  col: ColumnaOrden;
+  label: string;
+  className?: string;
+  ordenarPor: ColumnaOrden;
+  sentido: Sentido;
+  onOrdenar: (col: ColumnaOrden) => void;
+}
+
+function HeadOrdenable({ col, label, className, ordenarPor, sentido, onOrdenar }: HeadOrdenableProps) {
+  const activa = ordenarPor === col;
+  return (
+    <TableHead className={className}>
+      <button
+        type="button"
+        onClick={() => onOrdenar(col)}
+        className={`-ml-1 inline-flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:text-foreground ${
+          activa ? 'text-foreground' : ''
+        }`}
+        aria-label={`Ordenar por ${label}`}
+      >
+        {label}
+        {activa ? (
+          sentido === 'asc' ? (
+            <ArrowUp className="h-3.5 w-3.5" />
+          ) : (
+            <ArrowDown className="h-3.5 w-3.5" />
+          )
+        ) : (
+          <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" />
+        )}
+      </button>
+    </TableHead>
   );
 }
 
