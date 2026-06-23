@@ -121,9 +121,12 @@ export function Dashboard() {
         if (filtroActividad !== 'todos' && cliente.tipoActividad !== filtroActividad) return false;
         if (busqueda) {
           const q = busqueda.toLowerCase();
+          const digitos = busqueda.replace(/\D/g, '');
+          // OJO: cuit.includes('') es true para todos → si la búsqueda no tiene dígitos (ej. un
+          // nombre), NO comparamos contra el CUIT; si no, no filtraría nada al buscar por nombre.
           return (
             cliente.nombre.toLowerCase().includes(q) ||
-            cliente.cuit.includes(busqueda.replace(/\D/g, ''))
+            (digitos !== '' && cliente.cuit.includes(digitos))
           );
         }
         return true;
