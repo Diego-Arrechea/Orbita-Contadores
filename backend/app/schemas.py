@@ -395,6 +395,8 @@ class UsuarioOut(BaseModel):
     trial_dias_restantes: int | None = None
     # Ingresos que faltan para dejar de mostrar el modal de "ya podés configurar tus alertas" (0 = no).
     aviso_alertas_pendiente: int = 0
+    # Rollout gateado de facturación electrónica: el front muestra "Emitir comprobante" sólo si True.
+    facturacion_habilitada: bool = False
 
 
 class AuthOut(BaseModel):

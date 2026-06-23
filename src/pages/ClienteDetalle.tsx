@@ -8,6 +8,7 @@ import {
   Trash2,
   FileText,
   FileSpreadsheet,
+  FilePlus2,
   MoreVertical,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -38,10 +39,12 @@ import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
 import { formatCuit, formatDate } from '@/lib/utils';
 import { derivarAlertas } from '@/lib/alertas';
 import { descargarReporteExcel } from '@/lib/reporteExcel';
+import { puedeFacturar } from '@/lib/cuenta';
 import { getMovimientos } from '@/services/movimientosService';
 import { useClienteReal } from '@/lib/queries';
 import { EditarClienteDialog } from '@/components/cliente/EditarClienteDialog';
 import { EliminarClienteDialog } from '@/components/cliente/EliminarClienteDialog';
+import { EmitirComprobanteDialog } from '@/components/cliente/EmitirComprobanteDialog';
 
 const tabsListClass =
   'flex w-full bg-transparent p-0 h-auto rounded-none gap-5 sm:gap-7 overflow-x-auto scrollbar-thin justify-start';
@@ -62,6 +65,7 @@ export function ClienteDetalle() {
   const [eliminarOpen, setEliminarOpen] = useState(false);
   const [tab, setTab] = useState('situacion');
   const [generandoExcel, setGenerandoExcel] = useState(false);
+  const [facturarOpen, setFacturarOpen] = useState(false);
   const { config } = useConfig();
 
   // El backend ya aplica las ediciones del contador sobre el dato de ARCA; el front sólo elige mock o
@@ -72,6 +76,7 @@ export function ClienteDetalle() {
   );
 
   const esReal = cliente?.fuente === 'arca';
+  const facturarHabilitado = esReal && puedeFacturar();
 
   if (!cliente) {
     return (
@@ -187,6 +192,12 @@ export function ClienteDetalle() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    {facturarHabilitado && (
+                      <DropdownMenuItem onSelect={() => setTimeout(() => setFacturarOpen(true), 0)}>
+                        <FilePlus2 /> Emitir comprobante
+                      </DropdownMenuItem>
+                    )}
+                    {facturarHabilitado && <DropdownMenuSeparator />}
                     <DropdownMenuItem asChild>
                       <Link to={`/clientes/${cliente.id}/reporte`}>
                         <FileText /> Reporte (PDF)
@@ -231,6 +242,14 @@ export function ClienteDetalle() {
                     onEliminado={() => navigate('/')}
                     open={eliminarOpen}
                     onOpenChange={setEliminarOpen}
+                  />
+                )}
+                {facturarHabilitado && (
+                  <EmitirComprobanteDialog
+                    cliente={cliente}
+                    open={facturarOpen}
+                    onOpenChange={setFacturarOpen}
+                    onEmitido={() => void refetchCliente()}
                   />
                 )}
               </div>

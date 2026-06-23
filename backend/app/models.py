@@ -21,8 +21,12 @@ from .db import Base
 
 
 class Contador(Base):
-    """El contador (usuario de Órbita). Guardamos su clave fiscal CIFRADA (Fernet) para
-    sincronizar 'Mis Comprobantes' de sus clientes de forma automática."""
+    """Credencial de acceso a ARCA (CUIT + clave fiscal, cifrada con Fernet) usada para sincronizar
+    'Mis Comprobantes' automáticamente.
+
+    OJO — el nombre es histórico y ENGAÑOSO: esto NO es la clave del contador-usuario de Órbita. El
+    contador NUNCA carga su propia clave fiscal ni su CUIT: carga las credenciales (CUIT + clave
+    fiscal) de sus CLIENTES, y eso es lo que se guarda acá. `cuit` es el de esa credencial de cliente."""
 
     __tablename__ = "contadores"
 
@@ -102,8 +106,9 @@ class Usuario(Base):
 
 
 class ClienteARCA(Base):
-    """Un cliente monitoreado. Se sincroniza vía 'Mis Comprobantes' con la clave de su contador
-    (que lo representa en ARCA). Ya no usa certificado: el scraping va con cuit+clave."""
+    """Un cliente monitoreado. Se sincroniza vía 'Mis Comprobantes' con la clave fiscal del CLIENTE
+    (CUIT + clave que carga el contador; el contador NUNCA usa su propia clave). Ya no usa
+    certificado: el scraping va con cuit+clave."""
 
     __tablename__ = "clientes_arca"
 
@@ -112,8 +117,9 @@ class ClienteARCA(Base):
     cuit_contador: Mapped[str] = mapped_column(
         String(11), ForeignKey("contadores.cuit"), index=True
     )
-    # Dueño en Órbita: el contador-usuario que administra este cliente. Distinto de cuit_contador
-    # (que es la clave fiscal ARCA con la que se sincroniza). Nullable por datos previos al multi-tenant.
+    # Dueño en Órbita: el contador-usuario que administra este cliente. Distinto de cuit_contador,
+    # que es el CUIT de la credencial ARCA (del CLIENTE) con cuya clave fiscal se sincroniza — NO la
+    # clave del contador. Nullable por datos previos al multi-tenant.
     usuario_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("usuarios.id"), nullable=True, index=True
     )
@@ -154,6 +160,15 @@ class ClienteARCA(Base):
     # este cliente. NULL = todavía no se baselineó → la próxima pasada registra sus alertas vigentes
     # como ya conocidas SIN avisar (anti-spam al alta). Ver services/alertas.py::evaluar_y_notificar.
     alertas_baseline_en: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Certificado de facturación electrónica del cliente (WSFEv1), generado on-demand con la clave del
+    # PROPIO cliente (scraping/bootstrap.py → CSR + alias + asociación al WS Facturación Electrónica) y
+    # cifrado con Fernet. Sólo se usa para EMITIR comprobantes desde la app; la sincronización sigue
+    # yendo por clave fiscal. NULL = todavía no se generó (se genera en la primera emisión).
+    cert_cifrado: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    key_cifrado: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    cert_actualizado_en: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     creado_en: Mapped[dt.datetime] = mapped_column(

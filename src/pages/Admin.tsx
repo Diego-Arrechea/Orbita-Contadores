@@ -427,13 +427,17 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
   const [fichaId, setFichaId] = useState<number | null>(null);
 
   const filtrados = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
-    if (!q) return usuarios;
-    return usuarios.filter(u =>
-      [u.nombre, u.apellido, u.email, u.estudio, u.cuit].some(c =>
-        (c ?? '').toLowerCase().includes(q)
-      )
-    );
+    // Cada palabra de la búsqueda debe aparecer en el texto combinado de la cuenta. Así "Juan Pérez"
+    // matchea aunque nombre y apellido sean campos distintos (con .some() por campo fallaba).
+    const tokens = busqueda.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return usuarios;
+    return usuarios.filter(u => {
+      const heno = [u.nombre, u.apellido, u.email, u.estudio, u.cuit]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return tokens.every(t => heno.includes(t));
+    });
   }, [usuarios, busqueda]);
 
   async function toggleActivo(u: AdminUsuario) {
@@ -1261,13 +1265,16 @@ function TabClientes() {
   const error = queryError ? mensajeDeError(queryError) : '';
 
   const filtrados = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
-    if (!q) return clientes;
-    return clientes.filter(c =>
-      [c.nombre, c.cuit, c.contador_email, c.contador_nombre, c.categoria].some(x =>
-        (x ?? '').toLowerCase().includes(q)
-      )
-    );
+    // Mismo criterio que en Cuentas: cada palabra debe aparecer en el texto combinado del cliente.
+    const tokens = busqueda.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return clientes;
+    return clientes.filter(c => {
+      const heno = [c.nombre, c.cuit, c.contador_email, c.contador_nombre, c.categoria]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return tokens.every(t => heno.includes(t));
+    });
   }, [clientes, busqueda]);
 
   const totalFacturado = useMemo(

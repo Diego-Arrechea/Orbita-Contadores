@@ -113,6 +113,11 @@ export function esAdmin(): boolean {
   return usuarioActual()?.rol === 'admin';
 }
 
+/** ¿La cuenta logueada tiene habilitada la facturación electrónica? (rollout gateado por el backend). */
+export function puedeFacturar(): boolean {
+  return usuarioActual()?.facturacion_habilitada === true;
+}
+
 /** ¿El usuario REAL detrás de la sesión es admin? Sigue siendo true mientras "entra como" otro
  * contador (la sesión de admin queda respaldada en LS_IMP_*). Útil para diagnósticos que sólo debe
  * ver el superadmin aunque esté mirando la cartera de un contador impersonado. */

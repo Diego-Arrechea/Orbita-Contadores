@@ -52,11 +52,14 @@ import {
   importarMovimientos,
   getMovimientos,
   clasificarMovimiento,
+  reconciliarPendientes,
   type ImportarResumen,
 } from '@/services/movimientosService';
 import { DropZone, Stat, CONFIANZA_TONO } from '@/components/cliente/conciliacionShared';
 import { VerDetalle } from '@/components/cliente/VerDetalle';
 import { detalleConciliacion } from '@/lib/trazabilidad';
+import { EmitirComprobanteDialog } from '@/components/cliente/EmitirComprobanteDialog';
+import { puedeFacturar } from '@/lib/cuenta';
 
 const TARGET_FIELDS: { value: CampoDestino; label: string }[] = [
   { value: 'fecha', label: 'Fecha del movimiento' },
@@ -97,6 +100,8 @@ function ReconciliacionReal({ cliente }: Props) {
   const [movimientos, setMovimientos] = useState<MovimientoBancario[]>([]);
   const [cargando, setCargando] = useState(true);
   const [clasificandoId, setClasificandoId] = useState<string | null>(null);
+  const [facturarMov, setFacturarMov] = useState<MovimientoBancario | null>(null);
+  const habilitadoFacturar = puedeFacturar();
 
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<RealStep>('idle');
@@ -209,7 +214,27 @@ function ReconciliacionReal({ cliente }: Props) {
         onOpenDialog={openDialog}
         onClasificar={onClasificar}
         clasificandoId={clasificandoId}
+        onFacturar={habilitadoFacturar ? setFacturarMov : undefined}
       />
+
+      {/* Emisión desde un movimiento sin respaldo: prefilleamos el importe. Al emitir, re-corremos el
+          matcher para que el comprobante nuevo quede asociado al movimiento. */}
+      {habilitadoFacturar && (
+        <EmitirComprobanteDialog
+          cliente={cliente}
+          open={!!facturarMov}
+          onOpenChange={o => { if (!o) setFacturarMov(null); }}
+          prefill={{ importe: facturarMov?.monto }}
+          onEmitido={async () => {
+            try {
+              await reconciliarPendientes(cliente.cuit);
+            } catch {
+              /* el comprobante igual quedó emitido; el match se puede re-correr luego */
+            }
+            await cargarMovimientos();
+          }}
+        />
+      )}
 
       <Dialog open={open} onOpenChange={o => { if (!o && step !== 'importing') setOpen(false); }}>
         <DialogPrimitive.Portal>
@@ -460,6 +485,7 @@ interface ResultadosTableProps {
   onOpenDialog: () => void;
   onClasificar?: (mov: MovimientoBancario, marca: 'ingreso-actividad' | 'no-es-venta') => void;
   clasificandoId?: string | null;
+  onFacturar?: (mov: MovimientoBancario) => void;
 }
 
 function ResultadosTable({
@@ -468,6 +494,7 @@ function ResultadosTable({
   onOpenDialog,
   onClasificar,
   clasificandoId,
+  onFacturar,
 }: ResultadosTableProps) {
   const [filtro, setFiltro] = useState<'todos' | 'no-matcheados'>('todos');
 
@@ -575,6 +602,7 @@ function ResultadosTable({
                 mov={m}
                 onClasificar={onClasificar}
                 clasificando={clasificandoId === m.id}
+                onFacturar={onFacturar}
               />
             ))}
           </TableBody>
@@ -588,6 +616,7 @@ function ResultadosTable({
             mov={m}
             onClasificar={onClasificar}
             clasificando={clasificandoId === m.id}
+            onFacturar={onFacturar}
           />
         ))}
       </div>
@@ -600,10 +629,12 @@ function MovimientoCard({
   mov,
   onClasificar,
   clasificando,
+  onFacturar,
 }: {
   mov: MovimientoBancario;
   onClasificar?: (mov: MovimientoBancario, marca: 'ingreso-actividad' | 'no-es-venta') => void;
   clasificando?: boolean;
+  onFacturar?: (mov: MovimientoBancario) => void;
 }) {
   const originante = mov.nombreOriginante || mov.descripcion || '—';
   return (
@@ -639,7 +670,14 @@ function MovimientoCard({
 
       {!mov.comprobanteMatcheadoId &&
         (mov.marcadoComo === 'ingreso-actividad' ? (
-          <Badge variant="warning">Ingreso de actividad</Badge>
+          <span className="inline-flex items-center gap-2">
+            <Badge variant="warning">Ingreso de actividad</Badge>
+            {onFacturar && (
+              <Button size="sm" variant="soft" onClick={() => onFacturar(mov)}>
+                Facturar
+              </Button>
+            )}
+          </span>
         ) : mov.marcadoComo === 'no-es-venta' ? (
           <Badge variant="muted">No es venta</Badge>
         ) : clasificando ? (
@@ -674,10 +712,12 @@ function MovimientoRow({
   mov,
   onClasificar,
   clasificando,
+  onFacturar,
 }: {
   mov: MovimientoBancario;
   onClasificar?: (mov: MovimientoBancario, marca: 'ingreso-actividad' | 'no-es-venta') => void;
   clasificando?: boolean;
+  onFacturar?: (mov: MovimientoBancario) => void;
 }) {
   const originante = mov.nombreOriginante || mov.descripcion || '—';
   return (
@@ -715,7 +755,14 @@ function MovimientoRow({
         {mov.comprobanteMatcheadoId ? (
           <span className="text-muted-foreground text-xs">—</span>
         ) : mov.marcadoComo === 'ingreso-actividad' ? (
-          <Badge variant="warning">Ingreso de actividad</Badge>
+          <span className="inline-flex items-center gap-2">
+            <Badge variant="warning">Ingreso de actividad</Badge>
+            {onFacturar && (
+              <Button size="sm" variant="soft" onClick={() => onFacturar(mov)}>
+                Facturar
+              </Button>
+            )}
+          </span>
         ) : mov.marcadoComo === 'no-es-venta' ? (
           <Badge variant="muted">No es venta</Badge>
         ) : clasificando ? (

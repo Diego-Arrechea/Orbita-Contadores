@@ -167,6 +167,15 @@ def _migrar_clientes_arca(conn) -> None:
     if "alertas_baseline_en" not in cols:
         tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
         conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN alertas_baseline_en {tipo}"))
+    # Certificado de facturación electrónica del cliente (cifrado). BLOB en SQLite, BYTEA en Postgres.
+    blob = "BLOB" if es_sqlite else "BYTEA"
+    ts = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
+    if "cert_cifrado" not in cols:
+        conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN cert_cifrado {blob}"))
+    if "key_cifrado" not in cols:
+        conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN key_cifrado {blob}"))
+    if "cert_actualizado_en" not in cols:
+        conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN cert_actualizado_en {ts}"))
 
 
 def asegurar_columnas() -> None:
