@@ -29,6 +29,20 @@ class Settings(BaseSettings):
     # false = producción ARCA; true = homologación.
     arca_homo: bool = False
 
+    # --- Facturación electrónica en HOMOLOGACIÓN (entorno de pruebas de ARCA) ---
+    # Para probar la emisión (FECAESolicitar) hace falta un certificado de HOMOLOGACIÓN (distinto del
+    # de producción) y el CUIT de prueba a cuyo nombre se emite, habilitado para el WS de Facturación
+    # Electrónica en el portal de homologación de AFIP (WSASS). Rutas a los .pem en el server.
+    # Si quedan vacíos, el endpoint de prueba de emisión responde 400 con instrucciones.
+    arca_homo_cert_path: str = ""  # ruta al certificado de homologación (PEM)
+    arca_homo_key_path: str = ""   # ruta a la clave privada de homologación (PEM)
+    arca_homo_cuit: str = ""       # CUIT emisor de prueba (sin guiones)
+    arca_homo_punto_venta: int = 1  # punto de venta de prueba habilitado en homologación
+
+    # Allowlist de emails habilitados para EMITIR comprobantes (rollout gateado: piloto primero).
+    # Vacío = nadie puede facturar. Coma-separado. Cuando se abra a todos, poné "*".
+    facturacion_emails: str = ""
+
     # Hora (0-23, horario de Argentina) del sync automático diario (scheduler in-process del API).
     sync_hour: int = 3
     # El scheduler diario del API queda APAGADO por defecto: el motor de sincronización continua
@@ -112,3 +126,10 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def facturacion_habilitada(email: str) -> bool:
+    """¿El contador (por email) puede emitir comprobantes? Allowlist FACTURACION_EMAILS;
+    '*' habilita a todos (cuando se abra el rollout)."""
+    crudos = [e.strip().lower() for e in settings.facturacion_emails.split(",") if e.strip()]
+    return "*" in crudos or email.lower() in crudos

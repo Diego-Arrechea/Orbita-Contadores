@@ -15,6 +15,7 @@ from .routers import (
     auth,
     clientes,
     configuracion,
+    facturacion,
     movimientos,
     notificaciones,
     onboarding,
@@ -51,6 +52,7 @@ app.include_router(admin.router)
 app.include_router(admin_sync.router)
 app.include_router(clientes.router)
 app.include_router(configuracion.router)
+app.include_router(facturacion.router)
 app.include_router(movimientos.router)
 app.include_router(notificaciones.router)
 app.include_router(onboarding.router)

@@ -9,6 +9,8 @@ Devuelve datos CRUDOS (el mapeo al formato de Órbita lo hace el servicio/schema
 """
 from __future__ import annotations
 
+import datetime as dt
+
 from zeep import Client, Transport
 
 from ..config import settings
@@ -92,3 +94,180 @@ def listar_emitidos(
                 except Exception:  # noqa: BLE001 — un comprobante problemático no corta la sync
                     continue
     return out
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# EMISIÓN (FECAESolicitar) — facturar desde la app
+# ════════════════════════════════════════════════════════════════════════════
+
+# Tipos de comprobante clase C (monotributo: no discrimina IVA).
+CBTE_FACTURA_C = 11
+CBTE_NOTA_DEBITO_C = 12
+CBTE_NOTA_CREDITO_C = 13
+
+
+class FacturacionError(RuntimeError):
+    """Error de emisión: ARCA rechazó el comprobante o devolvió errores de validación.
+    Lleva el detalle estructurado (errores de request + observaciones del comprobante)."""
+
+    def __init__(self, mensaje: str, *, errores=None, observaciones=None, resultado=None):
+        super().__init__(mensaje)
+        self.errores = errores or []
+        self.observaciones = observaciones or []
+        self.resultado = resultado
+
+
+def _ymd(d: dt.date) -> int:
+    return int(d.strftime("%Y%m%d"))
+
+
+def _extraer_errores(resp) -> list[str]:
+    out: list[str] = []
+    errs = getattr(resp, "Errors", None)
+    if errs and getattr(errs, "Err", None):
+        for e in errs.Err:
+            out.append(f"{getattr(e, 'Code', '')}: {getattr(e, 'Msg', '')}".strip())
+    return out
+
+
+def _extraer_obs(det_resp) -> list[str]:
+    out: list[str] = []
+    if det_resp is None:
+        return out
+    obs = getattr(det_resp, "Observaciones", None)
+    if obs and getattr(obs, "Obs", None):
+        for o in obs.Obs:
+            out.append(f"{getattr(o, 'Code', '')}: {getattr(o, 'Msg', '')}".strip())
+    return out
+
+
+def proximo_numero(cuit_emisor, cert_bytes, key_bytes, punto_venta, cbte_tipo, homo=None):
+    """Siguiente número a emitir para (punto de venta, tipo). Es el último autorizado + 1."""
+    if homo is None:
+        homo = settings.arca_homo
+    token, sign = get_token_sign("wsfe", cert_bytes, key_bytes, cuit_emisor, homo)
+    wsdl = WSDL_HOMO if homo else WSDL_PROD
+    client = Client(wsdl, transport=Transport(session=make_session()))
+    auth = {"Token": token, "Sign": sign, "Cuit": int(cuit_emisor)}
+    ult = client.service.FECompUltimoAutorizado(Auth=auth, PtoVta=punto_venta, CbteTipo=cbte_tipo)
+    return (getattr(ult, "CbteNro", 0) or 0) + 1
+
+
+def emitir_comprobante_c(
+    cuit_emisor: str | int,
+    cert_bytes: bytes,
+    key_bytes: bytes,
+    *,
+    cbte_tipo: int,
+    punto_venta: int,
+    importe_total: float,
+    concepto: int = 1,  # 1 productos · 2 servicios · 3 ambos
+    doc_tipo: int = 99,  # 80 CUIT · 96 DNI · 99 consumidor final
+    doc_nro: str | int = 0,
+    condicion_iva_receptor: int = 5,  # RG 5616 (obligatorio). 5 = Consumidor Final · 1 = RI · 4 = Exento · 6 = Monotributo
+
+    fecha: dt.date | None = None,
+    fch_serv_desde: dt.date | None = None,
+    fch_serv_hasta: dt.date | None = None,
+    fch_vto_pago: dt.date | None = None,
+    comprobante_asociado: dict | None = None,  # NC: {"tipo":, "punto_venta":, "numero":}
+    homo: bool | None = None,
+) -> dict:
+    """Emite una Factura C (11) o Nota de Crédito C (13) por WSFEv1 (FECAESolicitar).
+
+    Clase C (monotributo): no discrimina IVA → ImpNeto = ImpTotal, ImpIVA = 0, sin nodo Iva.
+    Devuelve el comprobante autorizado (con CAE y su vencimiento). Lanza FacturacionError si ARCA
+    rechaza. `homo=None` toma el entorno de `settings.arca_homo`.
+    """
+    if cbte_tipo not in (CBTE_FACTURA_C, CBTE_NOTA_CREDITO_C):
+        raise ValueError("Sólo se admite Factura C (11) o Nota de Crédito C (13).")
+    if concepto not in (1, 2, 3):
+        raise ValueError("Concepto inválido (1 productos, 2 servicios, 3 ambos).")
+    if homo is None:
+        homo = settings.arca_homo
+    fecha = fecha or dt.date.today()
+    total = round(float(importe_total), 2)
+    if total <= 0:
+        raise ValueError("El importe total debe ser mayor a 0.")
+
+    token, sign = get_token_sign("wsfe", cert_bytes, key_bytes, cuit_emisor, homo)
+    wsdl = WSDL_HOMO if homo else WSDL_PROD
+    client = Client(wsdl, transport=Transport(session=make_session()))
+    auth = {"Token": token, "Sign": sign, "Cuit": int(cuit_emisor)}
+
+    ult = client.service.FECompUltimoAutorizado(Auth=auth, PtoVta=punto_venta, CbteTipo=cbte_tipo)
+    numero = (getattr(ult, "CbteNro", 0) or 0) + 1
+
+    det = {
+        "Concepto": concepto,
+        "DocTipo": doc_tipo,
+        "DocNro": int(doc_nro or 0),
+        "CondicionIVAReceptorId": condicion_iva_receptor,
+        "CbteDesde": numero,
+        "CbteHasta": numero,
+        "CbteFch": _ymd(fecha),
+        "ImpTotal": total,
+        "ImpTotConc": 0,
+        "ImpNeto": total,
+        "ImpOpEx": 0,
+        "ImpIVA": 0,
+        "ImpTrib": 0,
+        "MonId": "PES",
+        "MonCotiz": 1,
+    }
+    # Servicios / ambos: ARCA exige el período de servicio y el vto de pago.
+    if concepto in (2, 3):
+        det["FchServDesde"] = _ymd(fch_serv_desde or fecha)
+        det["FchServHasta"] = _ymd(fch_serv_hasta or fecha)
+        det["FchVtoPago"] = _ymd(fch_vto_pago or fecha)
+    # Nota de crédito: debe referenciar el comprobante que corrige/anula.
+    if cbte_tipo == CBTE_NOTA_CREDITO_C:
+        if not comprobante_asociado:
+            raise ValueError("La Nota de Crédito C requiere el comprobante asociado.")
+        det["CbtesAsoc"] = {
+            "CbteAsoc": [
+                {
+                    "Tipo": int(comprobante_asociado["tipo"]),
+                    "PtoVta": int(comprobante_asociado["punto_venta"]),
+                    "Nro": int(comprobante_asociado["numero"]),
+                }
+            ]
+        }
+
+    req = {
+        "FeCabReq": {"CantReg": 1, "PtoVta": punto_venta, "CbteTipo": cbte_tipo},
+        "FeDetReq": {"FECAEDetRequest": [det]},
+    }
+    resp = client.service.FECAESolicitar(Auth=auth, FeCAEReq=req)
+
+    errores = _extraer_errores(resp)
+    cab = getattr(resp, "FeCabResp", None)
+    resultado = getattr(cab, "Resultado", "R") if cab else "R"
+    det_resp = None
+    try:
+        det_resp = resp.FeDetResp.FECAEDetResponse[0]
+    except Exception:  # noqa: BLE001 — respuesta sin detalle (rechazo de request)
+        det_resp = None
+    observaciones = _extraer_obs(det_resp)
+    cae = (getattr(det_resp, "CAE", "") or "") if det_resp else ""
+    cae_vto = (getattr(det_resp, "CAEFchVto", "") or "") if det_resp else ""
+
+    if resultado != "A" or not cae:
+        msg = "; ".join(errores + observaciones) or "ARCA rechazó el comprobante."
+        raise FacturacionError(
+            msg, errores=errores, observaciones=observaciones, resultado=resultado
+        )
+
+    return {
+        "cbte_tipo": cbte_tipo,
+        "punto_venta": punto_venta,
+        "numero": numero,
+        "fecha": fecha.strftime("%Y-%m-%d"),
+        "importe_total": total,
+        "cae": str(cae),
+        "cae_vto": str(cae_vto),
+        "doc_tipo": doc_tipo,
+        "doc_nro": str(doc_nro or 0),
+        "observaciones": observaciones,
+        "homologacion": homo,
+    }
