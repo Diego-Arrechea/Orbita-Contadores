@@ -198,7 +198,8 @@ def fase_c(ctx, page, cuit: str, alias: str) -> bytes:
             )
         _comun.click_robusto(page, ver.first)
         page = _comun.esperar_en_pestanas(ctx, SEL_DESCARGAR, 20000) or page  # detalle del cert
-    with page.expect_download() as dl:
+    # 90s (no el default de 30s): bajo carga del VPS la descarga del .crt tarda más y se cortaba.
+    with page.expect_download(timeout=90000) as dl:
         _comun.click_robusto(page, page.locator(SEL_DESCARGAR).first)
     return Path(dl.value.path()).read_bytes()
 

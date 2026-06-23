@@ -9,6 +9,7 @@ import {
   FileText,
   FileSpreadsheet,
   FilePlus2,
+  UserPlus,
   MoreVertical,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -114,14 +115,19 @@ export function ClienteDetalle() {
 
   return (
     <div className="space-y-5">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => navigate('/')}
-        className="-ml-3 -mb-2 text-muted-foreground hover:text-foreground"
-      >
-        <ChevronLeft className="h-4 w-4" /> Volver al dashboard
-      </Button>
+      <div className="flex items-center justify-between gap-2 -mb-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate('/')}
+          className="-ml-3 text-muted-foreground hover:text-foreground"
+        >
+          <ChevronLeft className="h-4 w-4" /> Volver al dashboard
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => navigate('/clientes/nuevo')}>
+          <UserPlus className="h-4 w-4" /> Agregar otro cliente
+        </Button>
+      </div>
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-5">
         <Card className="overflow-hidden p-0 border-primary/15">

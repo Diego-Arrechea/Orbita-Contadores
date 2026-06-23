@@ -77,7 +77,11 @@ def puntos_venta(db: Session, cuit: str) -> list[dict] | None:
     if cred is None:
         return None
     cert, key, emisor = cred
-    return wsfev1.listar_puntos_venta(emisor, cert, key)
+    pvs = wsfev1.listar_puntos_venta(emisor, cert, key)
+    if not pvs and settings.arca_homo:
+        # En homologación FEParamGetPtosVenta suele venir vacío, pero el PV de prueba sí emite.
+        return [{"nro": settings.arca_homo_punto_venta, "emision_tipo": "homologación"}]
+    return pvs
 
 
 def asegurar_certificado(
@@ -138,9 +142,13 @@ def emitir(
     # SinPuntoVenta → el front muestra el tutorial para darlo de alta en AFIP.
     if not punto_venta:
         pvs = wsfev1.listar_puntos_venta(cuit_emisor, cert_bytes, key_bytes)
-        if not pvs:
+        if pvs:
+            punto_venta = pvs[0]["nro"]
+        elif settings.arca_homo:
+            # Homologación: FEParamGetPtosVenta viene vacío, pero el PV de prueba sí emite.
+            punto_venta = settings.arca_homo_punto_venta
+        else:
             raise SinPuntoVenta()
-        punto_venta = pvs[0]["nro"]
 
     resultado = wsfev1.emitir_comprobante_c(
         cuit_emisor,
