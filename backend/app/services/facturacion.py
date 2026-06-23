@@ -50,6 +50,36 @@ def _cert_y_emisor(
     return cert, key, cuit
 
 
+class SinPuntoVenta(RuntimeError):
+    """El cliente no tiene ningún punto de venta habilitado para facturación electrónica (Web Service).
+    Hay que darlo de alta en AFIP (ABM Puntos de Venta, sistema 'Web Service')."""
+
+
+def _cert_existente(db: Session, cuit: str) -> tuple[bytes, bytes, str] | None:
+    """(cert, key, cuit_emisor) si YA hay certificado disponible, SIN bootstrapear. None si no hay."""
+    cliente = db.get(models.ClienteARCA, cuit)
+    if settings.arca_homo:
+        if not _homo_configurado():
+            return None
+        return (
+            Path(settings.arca_homo_cert_path).read_bytes(),
+            Path(settings.arca_homo_key_path).read_bytes(),
+            settings.arca_homo_cuit,
+        )
+    if cliente and cliente.cert_cifrado and cliente.key_cifrado:
+        return descifrar(cliente.cert_cifrado), descifrar(cliente.key_cifrado), cuit
+    return None
+
+
+def puntos_venta(db: Session, cuit: str) -> list[dict] | None:
+    """Puntos de venta Web Service del cliente. None si todavía no hay certificado para consultarlos."""
+    cred = _cert_existente(db, cuit)
+    if cred is None:
+        return None
+    cert, key, emisor = cred
+    return wsfev1.listar_puntos_venta(emisor, cert, key)
+
+
 def asegurar_certificado(
     db: Session, cuit: str, on_progress: ProgressCb | None = None
 ) -> tuple[bytes, bytes]:
@@ -88,7 +118,7 @@ def emitir(
     *,
     cbte_tipo: int,
     importe_total: float,
-    punto_venta: int,
+    punto_venta: int | None = None,  # None = auto-detectar el PV Web Service del cliente
     concepto: int = 1,
     doc_tipo: int = 99,
     doc_nro: str = "0",
@@ -103,6 +133,14 @@ def emitir(
         raise ValueError(f"Cliente {cuit} no registrado")
 
     cert_bytes, key_bytes, cuit_emisor = _cert_y_emisor(db, cuit, on_progress)
+
+    # Auto-detectar el punto de venta Web Service si no se forzó uno. Si el cliente no tiene ninguno,
+    # SinPuntoVenta → el front muestra el tutorial para darlo de alta en AFIP.
+    if not punto_venta:
+        pvs = wsfev1.listar_puntos_venta(cuit_emisor, cert_bytes, key_bytes)
+        if not pvs:
+            raise SinPuntoVenta()
+        punto_venta = pvs[0]["nro"]
 
     resultado = wsfev1.emitir_comprobante_c(
         cuit_emisor,
@@ -148,9 +186,18 @@ def contexto(db: Session, cuit: str) -> dict:
         raise ValueError(f"Cliente {cuit} no registrado")
     # En homologación el cert es el de prueba configurado (no se bootstrapea el del cliente).
     tiene = _homo_configurado() if settings.arca_homo else bool(cliente.cert_cifrado and cliente.key_cifrado)
+    # Si ya hay cert, consultamos los puntos de venta Web Service (para auto-seleccionar / avisar si
+    # falta). best-effort: si ARCA falla, devolvemos None y el front no rompe.
+    pvs: list[dict] | None = None
+    if tiene:
+        try:
+            pvs = puntos_venta(db, cuit)
+        except Exception:  # noqa: BLE001
+            pvs = None
     return {
         "tiene_certificado": tiene,
         "homologacion": settings.arca_homo,  # el front avisa "modo prueba" cuando es True
+        "puntos_venta": pvs,  # [{nro, emision_tipo}] | None (None = no se pudo consultar todavía)
         "cert_actualizado_en": (
             cliente.cert_actualizado_en.isoformat() if cliente.cert_actualizado_en else None
         ),

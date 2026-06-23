@@ -1,9 +1,24 @@
 import { apiGet, apiPost } from './apiClient';
 
+export interface PuntoVenta {
+  nro: number;
+  emision_tipo: string;
+}
+
 export interface ContextoFacturacion {
   tiene_certificado: boolean;
   homologacion: boolean;
+  /** Puntos de venta Web Service del cliente. null = todavía no se pudo consultar (sin cert). */
+  puntos_venta: PuntoVenta[] | null;
   cert_actualizado_en: string | null;
+}
+
+/** Estado de un job en segundo plano (generación del certificado). */
+export interface JobProgreso {
+  estado: 'en_proceso' | 'terminado' | 'error';
+  progreso: number;
+  mensaje: string;
+  error?: string | null;
 }
 
 export interface ComprobanteAsociado {
@@ -15,7 +30,7 @@ export interface ComprobanteAsociado {
 export interface FacturarPayload {
   cbte_tipo: number; // 11 = Factura C · 13 = Nota de Crédito C
   importe_total: number;
-  punto_venta: number;
+  punto_venta?: number | null; // null/omitido = el backend auto-detecta el PV Web Service
   concepto: number; // 1 productos · 2 servicios · 3 ambos
   doc_tipo: number; // 80 CUIT · 96 DNI · 99 consumidor final
   doc_nro: string;
@@ -47,6 +62,22 @@ export function getContextoFacturacion(cuit: string): Promise<ContextoFacturacio
 /** Emite una Factura C / Nota de Crédito C a nombre del cliente. Devuelve el CAE. */
 export function facturar(cuit: string, payload: FacturarPayload): Promise<ComprobanteEmitidoResp> {
   return apiPost<ComprobanteEmitidoResp>(`/clientes/${soloDigitos(cuit)}/facturar`, payload);
+}
+
+/** Arranca (en segundo plano) la generación del certificado del cliente. Devuelve el job_id. */
+export function prepararFacturacion(cuit: string): Promise<{ job_id: string }> {
+  return apiPost<{ job_id: string }>(`/clientes/${soloDigitos(cuit)}/facturacion/preparar`);
+}
+
+/** Progreso de la generación del certificado. */
+export function progresoPreparacion(cuit: string, jobId: string): Promise<JobProgreso> {
+  return apiGet<JobProgreso>(`/clientes/${soloDigitos(cuit)}/facturacion/preparar/${jobId}`);
+}
+
+/** ¿El error es el 409 "el cliente no tiene punto de venta Web Service"? */
+export function esErrorSinPuntoVenta(e: unknown): boolean {
+  const raw = e instanceof Error ? e.message : String(e);
+  return raw.includes('sin_punto_venta');
 }
 
 /**

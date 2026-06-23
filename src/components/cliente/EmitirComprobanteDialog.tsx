@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Loader2, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Loader2, CheckCircle2, AlertTriangle, ArrowRight, FileKey2, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,13 +18,18 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   getContextoFacturacion,
   facturar,
+  prepararFacturacion,
+  progresoPreparacion,
   mensajeErrorFacturacion,
+  esErrorSinPuntoVenta,
   type FacturarPayload,
   type ComprobanteEmitidoResp,
+  type PuntoVenta,
 } from '@/services/facturacionService';
 import type { Cliente } from '@/types';
 
@@ -46,7 +51,7 @@ function nombreComprobante(cbteTipo: number): string {
   return cbteTipo === 13 ? 'Nota de Crédito C' : 'Factura C';
 }
 
-type Paso = 'form' | 'confirm' | 'emitiendo' | 'ok';
+type Paso = 'cargando' | 'preparar' | 'preparando' | 'sin-pv' | 'form' | 'confirm' | 'emitiendo' | 'ok';
 
 interface Props {
   cliente: Cliente;
@@ -59,42 +64,81 @@ interface Props {
 }
 
 export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, onEmitido }: Props) {
-  const [paso, setPaso] = useState<Paso>('form');
+  const [paso, setPaso] = useState<Paso>('cargando');
+  const [homo, setHomo] = useState(false);
+  const [puntosVenta, setPuntosVenta] = useState<PuntoVenta[] | null>(null);
+  const [pvSel, setPvSel] = useState<number | null>(null);
+  const [progreso, setProgreso] = useState(0);
+  const [mensajePrep, setMensajePrep] = useState('');
+
   const [tipo, setTipo] = useState<'factura' | 'nc'>('factura');
   const [concepto, setConcepto] = useState(1);
   const [condicion, setCondicion] = useState(5);
   const [cuitReceptor, setCuitReceptor] = useState('');
   const [importe, setImporte] = useState('');
-  const [puntoVenta, setPuntoVenta] = useState('1');
-  const [ncPv, setNcPv] = useState('1');
+  const [ncPv, setNcPv] = useState('');
   const [ncNumero, setNcNumero] = useState('');
-  const [tieneCert, setTieneCert] = useState<boolean | null>(null);
-  const [homo, setHomo] = useState(false);
   const [error, setError] = useState('');
   const [resultado, setResultado] = useState<ComprobanteEmitidoResp | null>(null);
 
-  // Reset al abrir + consulta si el cliente ya tiene certificado (para avisar la espera del bootstrap).
+  const pollRef = useRef<number | null>(null);
+  const detenerPoll = () => {
+    if (pollRef.current) {
+      clearTimeout(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  // Lee el contexto y enruta al paso correcto (sin cert → preparar; sin PV → tutorial; listo → form).
+  const cargarContexto = async () => {
+    setPaso('cargando');
+    setError('');
+    try {
+      const c = await getContextoFacturacion(cliente.cuit);
+      setHomo(c.homologacion);
+      if (!c.tiene_certificado) {
+        setPaso('preparar');
+        return;
+      }
+      if (Array.isArray(c.puntos_venta)) {
+        if (c.puntos_venta.length === 0) {
+          setPaso('sin-pv');
+          return;
+        }
+        setPuntosVenta(c.puntos_venta);
+        setPvSel(c.puntos_venta[0].nro);
+      } else {
+        setPuntosVenta(null);
+        setPvSel(null); // desconocido: el backend lo auto-detecta al emitir
+      }
+      setPaso('form');
+    } catch {
+      // Si no se pudo leer el contexto, dejamos intentar el form (el backend valida igual).
+      setPuntosVenta(null);
+      setPvSel(null);
+      setPaso('form');
+    }
+  };
+
   useEffect(() => {
-    if (!open) return;
-    setPaso('form');
+    if (!open) {
+      detenerPoll();
+      return;
+    }
+    // Reset de campos al abrir.
     setTipo('factura');
     setConcepto(1);
     setCondicion(5);
     setCuitReceptor('');
     setImporte(prefill?.importe ? String(Math.round(prefill.importe)) : '');
-    setPuntoVenta('1');
-    setNcPv('1');
+    setNcPv('');
     setNcNumero('');
     setError('');
     setResultado(null);
-    setTieneCert(null);
-    setHomo(false);
-    getContextoFacturacion(cliente.cuit)
-      .then(c => {
-        setTieneCert(c.tiene_certificado);
-        setHomo(c.homologacion);
-      })
-      .catch(() => setTieneCert(null));
+    setProgreso(0);
+    void cargarContexto();
+    return detenerPoll;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, cliente.cuit, prefill?.importe]);
 
   const cond = CONDICIONES.find(c => c.value === condicion)!;
@@ -106,23 +150,59 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
     (tipo === 'factura' || Number(ncNumero) > 0);
 
   const cerrar = (o: boolean) => {
-    if (paso !== 'emitiendo') onOpenChange(o);
+    if (paso !== 'emitiendo' && paso !== 'preparando') onOpenChange(o);
   };
 
+  // ── Generar el certificado (job en segundo plano) ──
+  const prepararCert = async () => {
+    setPaso('preparando');
+    setError('');
+    setProgreso(5);
+    setMensajePrep('Habilitando la facturación de este cliente…');
+    try {
+      const { job_id } = await prepararFacturacion(cliente.cuit);
+      const poll = async () => {
+        try {
+          const j = await progresoPreparacion(cliente.cuit, job_id);
+          setProgreso(j.progreso);
+          setMensajePrep(j.mensaje);
+          if (j.estado === 'terminado') {
+            await cargarContexto();
+            return;
+          }
+          if (j.estado === 'error') {
+            setError(j.error || j.mensaje || 'No se pudo habilitar la facturación.');
+            setPaso('preparar');
+            return;
+          }
+          pollRef.current = window.setTimeout(poll, 2500);
+        } catch (e) {
+          setError(mensajeErrorFacturacion(e));
+          setPaso('preparar');
+        }
+      };
+      void poll();
+    } catch (e) {
+      setError(mensajeErrorFacturacion(e));
+      setPaso('preparar');
+    }
+  };
+
+  // ── Emitir ──
   const emitir = async () => {
     setPaso('emitiendo');
     setError('');
     const payload: FacturarPayload = {
       cbte_tipo: tipo === 'factura' ? 11 : 13,
       importe_total: importeNum,
-      punto_venta: Number(puntoVenta) || 1,
+      punto_venta: pvSel ?? undefined,
       concepto,
       doc_tipo: cond.docTipo,
       doc_nro: cond.requiereCuit ? cuitDigits : '0',
       condicion_iva_receptor: condicion,
       comprobante_asociado:
         tipo === 'nc'
-          ? { tipo: 11, punto_venta: Number(ncPv) || 1, numero: Number(ncNumero) }
+          ? { tipo: 11, punto_venta: Number(ncPv) || pvSel || 0, numero: Number(ncNumero) }
           : null,
     };
     try {
@@ -131,6 +211,10 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
       setPaso('ok');
       onEmitido?.();
     } catch (e) {
+      if (esErrorSinPuntoVenta(e)) {
+        setPaso('sin-pv');
+        return;
+      }
       setError(mensajeErrorFacturacion(e));
       setPaso('confirm');
     }
@@ -139,7 +223,99 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
   return (
     <Dialog open={open} onOpenChange={cerrar}>
       <DialogContent>
-        {/* ── Formulario (borrador) ── */}
+        {/* ── Cargando contexto ── */}
+        {paso === 'cargando' && (
+          <div className="flex flex-col items-center py-10 text-center">
+            <Loader2 className="h-7 w-7 animate-spin text-primary" />
+            <div className="mt-3 text-sm text-muted-foreground">Cargando…</div>
+          </div>
+        )}
+
+        {/* ── Habilitar facturación (generar cert) ── */}
+        {paso === 'preparar' && (
+          <>
+            <DialogHeader>
+              <div className="flex items-center gap-2">
+                <FileKey2 className="h-5 w-5 text-primary" />
+                <DialogTitle>Habilitar facturación</DialogTitle>
+              </div>
+              <DialogDescription>
+                Para emitir comprobantes de {cliente.nombre} hay que habilitar la facturación
+                electrónica una vez. Es un proceso automático que puede tardar cerca de un minuto.
+              </DialogDescription>
+            </DialogHeader>
+            {error && (
+              <div className="flex items-start gap-2 rounded-lg bg-danger/10 border border-danger/30 px-3 py-2.5 text-sm">
+                <AlertTriangle className="h-4 w-4 text-danger shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={prepararCert}>Habilitar</Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {/* ── Preparando (progreso del job) ── */}
+        {paso === 'preparando' && (
+          <div className="flex flex-col items-center py-8 text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="mt-4 font-medium">Habilitando la facturación…</div>
+            <p className="mt-1 text-sm text-muted-foreground max-w-xs">{mensajePrep}</p>
+            <div className="mt-4 w-full max-w-xs">
+              <Progress value={progreso} className="h-1.5" />
+              <div className="mt-1 text-xs text-muted-foreground tabular-nums">{progreso}%</div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Falta punto de venta Web Service (tutorial) ── */}
+        {paso === 'sin-pv' && (
+          <>
+            <DialogHeader>
+              <div className="flex items-center gap-2">
+                <Store className="h-5 w-5 text-warning-foreground" />
+                <DialogTitle>Falta el punto de venta</DialogTitle>
+              </div>
+              <DialogDescription>
+                {cliente.nombre} todavía no tiene un punto de venta de facturación electrónica
+                (Web Service). Se crea una sola vez en ARCA, con la clave del cliente:
+              </DialogDescription>
+            </DialogHeader>
+
+            <ol className="space-y-2 rounded-lg border border-border/60 bg-muted/30 p-4 text-sm">
+              <PasoTutorial n={1}>
+                Entrá a ARCA con la clave fiscal del cliente y abrí el servicio{' '}
+                <strong>“Administración de puntos de venta y domicilios”</strong>.
+              </PasoTutorial>
+              <PasoTutorial n={2}>
+                Elegí al contribuyente → <strong>ABM Puntos de Venta</strong> →{' '}
+                <strong>Agregar</strong>.
+              </PasoTutorial>
+              <PasoTutorial n={3}>
+                En <strong>Sistema</strong> elegí{' '}
+                <strong>“Factura Electrónica - Monotributo - Web Service”</strong> (el de Web
+                Service, no el de “Comprobantes en línea”).
+              </PasoTutorial>
+              <PasoTutorial n={4}>Asociá el domicilio y confirmá.</PasoTutorial>
+            </ol>
+            <p className="text-xs text-muted-foreground">
+              Cuando lo tengas, volvé acá y reintentá: la app lo detecta solo.
+            </p>
+
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                Cerrar
+              </Button>
+              <Button onClick={cargarContexto}>Ya lo creé, reintentar</Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {/* ── Formulario ── */}
         {paso === 'form' && (
           <>
             <DialogHeader>
@@ -186,7 +362,7 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
                   <div className="grid grid-cols-2 gap-3">
                     <Input
                       inputMode="numeric"
-                      placeholder="Punto de venta"
+                      placeholder={pvSel ? `Punto de venta (${pvSel})` : 'Punto de venta'}
                       value={ncPv}
                       onChange={e => setNcPv(e.target.value.replace(/\D/g, ''))}
                     />
@@ -241,13 +417,28 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="fc-pv">Punto de venta</Label>
-                  <Input
-                    id="fc-pv"
-                    inputMode="numeric"
-                    value={puntoVenta}
-                    onChange={e => setPuntoVenta(e.target.value.replace(/\D/g, ''))}
-                  />
+                  <Label>Punto de venta</Label>
+                  {puntosVenta && puntosVenta.length > 1 ? (
+                    <Select
+                      value={String(pvSel ?? '')}
+                      onValueChange={v => setPvSel(Number(v))}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {puntosVenta.map(p => (
+                          <SelectItem key={p.nro} value={String(p.nro)}>
+                            {p.nro}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="flex h-9 items-center rounded-md border border-border/60 bg-muted/40 px-3 text-sm text-muted-foreground">
+                      {pvSel ?? 'automático'}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -289,20 +480,11 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
                 k="Receptor"
                 v={cond.requiereCuit ? `${cond.label} · ${cuitReceptor}` : cond.label}
               />
-              {tipo === 'nc' && <Fila k="Corrige" v={`${ncPv}-${ncNumero}`} />}
+              {tipo === 'nc' && <Fila k="Corrige" v={`${ncPv || pvSel}-${ncNumero}`} />}
               <Fila k="Concepto" v={CONCEPTOS.find(c => c.value === concepto)?.label ?? ''} />
+              {pvSel != null && <Fila k="Punto de venta" v={String(pvSel)} />}
               <Fila k="Importe" v={formatCurrency(importeNum)} destacado />
             </div>
-
-            {tieneCert === false && (
-              <div className="flex items-start gap-2 rounded-lg bg-warning/15 border border-warning/30 px-3 py-2.5 text-sm">
-                <AlertTriangle className="h-4 w-4 text-warning-foreground shrink-0 mt-0.5" />
-                <span>
-                  Es la primera emisión de este cliente: la habilitación inicial puede tardar cerca de
-                  un minuto. Después es instantáneo.
-                </span>
-              </div>
-            )}
 
             {error && (
               <div className="flex items-start gap-2 rounded-lg bg-danger/10 border border-danger/30 px-3 py-2.5 text-sm">
@@ -325,11 +507,7 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
           <div className="flex flex-col items-center text-center py-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <div className="mt-4 font-medium">Emitiendo el comprobante…</div>
-            <p className="mt-1 text-sm text-muted-foreground max-w-xs">
-              {tieneCert === false
-                ? 'Habilitando la facturación de este cliente (puede tardar ~1 minuto).'
-                : 'Pidiendo el CAE a ARCA.'}
-            </p>
+            <p className="mt-1 text-sm text-muted-foreground max-w-xs">Pidiendo el CAE a ARCA.</p>
           </div>
         )}
 
@@ -363,6 +541,17 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function PasoTutorial({ n, children }: { n: number; children: ReactNode }) {
+  return (
+    <li className="flex gap-2.5">
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary">
+        {n}
+      </span>
+      <span className="leading-relaxed">{children}</span>
+    </li>
   );
 }
 
