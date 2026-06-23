@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..arca import wsfev1
-from ..config import facturacion_habilitada, settings
+from ..config import facturacion_habilitada_para, settings
 from ..db import SessionLocal, get_db
 from ..schemas import JobOut
 from ..scraping import jobs
@@ -32,8 +32,8 @@ router = APIRouter(prefix="/api", tags=["facturacion"])
 
 
 def _exigir_habilitado(usuario: models.Usuario) -> None:
-    """Rollout gateado: sólo los emails en FACTURACION_EMAILS pueden facturar."""
-    if not facturacion_habilitada(usuario.email):
+    """Rollout gateado: emails en FACTURACION_EMAILS + admins pueden facturar."""
+    if not facturacion_habilitada_para(usuario.email, usuario.rol):
         raise HTTPException(
             status_code=403,
             detail="La facturación electrónica todavía no está habilitada para tu cuenta.",

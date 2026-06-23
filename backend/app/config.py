@@ -133,3 +133,10 @@ def facturacion_habilitada(email: str) -> bool:
     '*' habilita a todos (cuando se abra el rollout)."""
     crudos = [e.strip().lower() for e in settings.facturacion_emails.split(",") if e.strip()]
     return "*" in crudos or email.lower() in crudos
+
+
+def facturacion_habilitada_para(email: str, rol: str | None) -> bool:
+    """Como facturacion_habilitada, pero los ADMIN (operadores del sistema) siempre pueden facturar.
+    Sirve también impersonando: la sesión pasa a ser la del contador impersonado, así que el gate se
+    evalúa con SU email/rol."""
+    return rol == "admin" or facturacion_habilitada(email)

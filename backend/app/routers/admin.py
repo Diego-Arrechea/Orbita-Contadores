@@ -27,6 +27,7 @@ from ..schemas import (
     UsuarioOut,
     dias_restantes_trial,
 )
+from ..config import facturacion_habilitada_para
 from ..scraping import jobs
 from ..security import (
     admin_actual,
@@ -56,6 +57,7 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         matricula=u.matricula,
         rol=u.rol,
         email_confirmado=bool(u.email_confirmado),
+        facturacion_habilitada=facturacion_habilitada_para(u.email, u.rol),
         trial_fin=u.trial_fin.isoformat() if u.trial_fin else None,
         trial_dias_restantes=dias_restantes_trial(u.trial_fin),
     )
