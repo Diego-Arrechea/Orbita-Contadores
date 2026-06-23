@@ -141,6 +141,30 @@ def _extraer_obs(det_resp) -> list[str]:
     return out
 
 
+def listar_puntos_venta(cuit_emisor, cert_bytes, key_bytes, homo=None) -> list[dict]:
+    """Puntos de venta del CUIT habilitados para facturar por WEB SERVICE (FEParamGetPtosVenta).
+
+    Sólo devuelve los usables: no bloqueados y sin fecha de baja. Cada uno: {nro, emision_tipo}.
+    Si el cliente no tiene ninguno, la lista viene vacía (necesita dar de alta un PV tipo Web Service)."""
+    if homo is None:
+        homo = settings.arca_homo
+    token, sign = get_token_sign("wsfe", cert_bytes, key_bytes, cuit_emisor, homo)
+    wsdl = WSDL_HOMO if homo else WSDL_PROD
+    client = Client(wsdl, transport=Transport(session=make_session()))
+    auth = {"Token": token, "Sign": sign, "Cuit": int(cuit_emisor)}
+    res = client.service.FEParamGetPtosVenta(Auth=auth)
+    out: list[dict] = []
+    pts = getattr(res, "ResultGet", None)
+    if pts and getattr(pts, "PtoVenta", None):
+        for p in pts.PtoVenta:
+            bloqueado = str(getattr(p, "Bloqueado", "N")).strip().upper() in ("S", "SI", "TRUE")
+            baja = str(getattr(p, "FchBaja", "") or "").strip()
+            if bloqueado or (baja and baja.upper() not in ("", "NULL")):
+                continue
+            out.append({"nro": int(p.Nro), "emision_tipo": str(getattr(p, "EmisionTipo", "") or "")})
+    return sorted(out, key=lambda x: x["nro"])
+
+
 def proximo_numero(cuit_emisor, cert_bytes, key_bytes, punto_venta, cbte_tipo, homo=None):
     """Siguiente número a emitir para (punto de venta, tipo). Es el último autorizado + 1."""
     if homo is None:

@@ -254,6 +254,7 @@ def bootstrap_cliente(
             humanize=True,
             locale="es-AR",
             timezone="America/Argentina/Buenos_Aires",
+            accept_downloads=True,  # SIN esto, page.expect_download() (fase C) cuelga 30s y falla la descarga del .crt
         )
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         try:

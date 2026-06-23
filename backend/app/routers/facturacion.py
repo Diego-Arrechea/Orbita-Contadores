@@ -11,6 +11,7 @@ Ver memoria `credenciales-arca`: el certificado es por CLIENTE, con la clave del
 """
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,7 +21,9 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..arca import wsfev1
 from ..config import facturacion_habilitada, settings
-from ..db import get_db
+from ..db import SessionLocal, get_db
+from ..schemas import JobOut
+from ..scraping import jobs
 from ..security import admin_actual, usuario_actual
 from ..services import facturacion as facturacion_svc
 from .clientes import _cliente_propio
@@ -129,7 +132,7 @@ def contexto_facturacion(
 class FacturarIn(BaseModel):
     cbte_tipo: int = Field(11, description="11 = Factura C · 13 = Nota de Crédito C")
     importe_total: float = Field(..., gt=0)
-    punto_venta: int = 1
+    punto_venta: int | None = Field(None, description="None = auto-detectar el PV Web Service del cliente")
     concepto: int = Field(1, description="1 productos · 2 servicios · 3 ambos")
     doc_tipo: int = Field(99, description="80 CUIT · 96 DNI · 99 consumidor final")
     doc_nro: str = "0"
@@ -162,6 +165,17 @@ def facturar(
             condicion_iva_receptor=body.condicion_iva_receptor,
             comprobante_asociado=asociado,
         )
+    except facturacion_svc.SinPuntoVenta:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "sin_punto_venta",
+                "mensaje": (
+                    "Este cliente no tiene un punto de venta de facturación electrónica (Web Service) "
+                    "dado de alta en ARCA. Hay que crearlo una vez."
+                ),
+            },
+        )
     except wsfev1.FacturacionError as e:
         raise HTTPException(
             status_code=400,
@@ -176,3 +190,57 @@ def facturar(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:  # noqa: BLE001 — bootstrap del cert o WS de ARCA
         raise HTTPException(status_code=502, detail=f"No se pudo emitir el comprobante: {e}")
+
+
+# ── Preparar facturación (generar el cert) como JOB en segundo plano ──────────
+def _correr_preparacion(job_id: str, cuit: str) -> None:
+    """Genera el certificado del cliente (bootstrap, ~1 min) en un thread, reportando progreso."""
+    db = SessionLocal()
+    try:
+        if settings.arca_homo:
+            # En homologación se usa el cert de prueba: no hay nada que generar.
+            jobs.actualizar(job_id, estado="terminado", progreso=100, mensaje="Listo (homologación)")
+            return
+
+        def prog(pct: int, msg: str) -> None:
+            jobs.actualizar(job_id, progreso=min(99, max(0, pct)), mensaje=msg)
+
+        facturacion_svc.asegurar_certificado(db, cuit, on_progress=prog)
+        jobs.actualizar(job_id, estado="terminado", progreso=100, mensaje="Facturación habilitada")
+    except Exception as e:  # noqa: BLE001
+        jobs.actualizar(
+            job_id,
+            estado="error",
+            error=str(e),
+            mensaje="No se pudo habilitar la facturación de este cliente.",
+        )
+    finally:
+        db.close()
+
+
+@router.post("/clientes/{cuit}/facturacion/preparar")
+def preparar_facturacion(
+    cuit: str,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_actual),
+):
+    """Arranca, en segundo plano, la generación del certificado del cliente. Devuelve job_id para
+    seguir el progreso (el bootstrap es scraping y tarda ~1 min)."""
+    _exigir_habilitado(usuario)
+    _cliente_propio(db, cuit, usuario)
+    job_id = jobs.crear_job()
+    threading.Thread(target=_correr_preparacion, args=(job_id, cuit), daemon=True).start()
+    return {"job_id": job_id}
+
+
+@router.get("/clientes/{cuit}/facturacion/preparar/{job_id}", response_model=JobOut)
+def progreso_preparacion(
+    cuit: str,
+    job_id: str,
+    usuario: models.Usuario = Depends(usuario_actual),
+):
+    _exigir_habilitado(usuario)
+    job = jobs.obtener(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job no encontrado.")
+    return job
