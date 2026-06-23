@@ -27,13 +27,13 @@ from ..schemas import (
     UsuarioOut,
     dias_restantes_trial,
 )
-from ..config import facturacion_habilitada_para
 from ..scraping import jobs
 from ..security import (
     admin_actual,
     crear_token,
     generar_password_temporal,
     hashear_password,
+    usuario_puede_facturar,
 )
 from .clientes import _correr_sync, construir_cliente_out
 
@@ -57,7 +57,7 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         matricula=u.matricula,
         rol=u.rol,
         email_confirmado=bool(u.email_confirmado),
-        facturacion_habilitada=facturacion_habilitada_para(u.email, u.rol),
+        facturacion_habilitada=usuario_puede_facturar(u),
         trial_fin=u.trial_fin.isoformat() if u.trial_fin else None,
         trial_dias_restantes=dias_restantes_trial(u.trial_fin),
     )
@@ -432,7 +432,10 @@ def impersonar(
         )
     _registrar(db, admin, "impersonar", target)
     db.commit()
-    return ImpersonarOut(token=crear_token(target.id), usuario=_usuario_out(target))
+    # Es un admin entrando "como" otro: el token lleva el claim 'adm' y marcamos la instancia para
+    # que el flag de facturación salga habilitado (el admin puede probar facturando en cualquier cliente).
+    target._imp_admin = True  # type: ignore[attr-defined]
+    return ImpersonarOut(token=crear_token(target.id, imp_admin=True), usuario=_usuario_out(target))
 
 
 @router.get("/auditoria", response_model=list[AdminAuditoriaOut])

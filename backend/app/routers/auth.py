@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models
-from ..config import facturacion_habilitada_para, settings
+from ..config import settings
 from ..db import get_db
 from ..schemas import (
     AuthOut,
@@ -33,6 +33,7 @@ from ..security import (
     hashear_password,
     hashear_reset_token,
     usuario_actual,
+    usuario_puede_facturar,
     verificar_password,
 )
 from ..services import crisp, email
@@ -59,7 +60,7 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         trial_fin=u.trial_fin.isoformat() if u.trial_fin else None,
         trial_dias_restantes=dias_restantes_trial(u.trial_fin),
         aviso_alertas_pendiente=u.aviso_alertas_pendiente or 0,
-        facturacion_habilitada=facturacion_habilitada_para(u.email, u.rol),
+        facturacion_habilitada=usuario_puede_facturar(u),
     )
 
 
