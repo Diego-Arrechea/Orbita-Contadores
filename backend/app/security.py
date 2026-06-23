@@ -12,7 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from . import models
-from .config import settings
+from .config import facturacion_habilitada_para, settings
 from .db import get_db
 
 ALGORITMO = "HS256"
@@ -73,13 +73,17 @@ def generar_password_temporal() -> str:
     return secrets.token_urlsafe(9)
 
 
-def crear_token(usuario_id: int) -> str:
+def crear_token(usuario_id: int, imp_admin: bool = False) -> str:
     ahora = dt.datetime.now(dt.timezone.utc)
     payload = {
         "sub": str(usuario_id),
         "iat": ahora,
         "exp": ahora + dt.timedelta(minutes=settings.jwt_expire_minutes),
     }
+    # 'adm' = la sesión es una impersonación hecha por un ADMIN: lleva su privilegio (p. ej. facturar
+    # para probar en cualquier cliente), aunque el contador impersonado no esté habilitado.
+    if imp_admin:
+        payload["adm"] = True
     return jwt.encode(payload, _secret(), algorithm=ALGORITMO)
 
 
@@ -110,7 +114,18 @@ def usuario_actual(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tu cuenta está inhabilitada. Escribinos para reactivarla.",
         )
+    # Marca transitoria (no se persiste): la sesión es una impersonación hecha por un admin.
+    usuario._imp_admin = bool(payload.get("adm"))  # type: ignore[attr-defined]
     return usuario
+
+
+def usuario_puede_facturar(usuario: models.Usuario) -> bool:
+    """¿Puede emitir comprobantes? Habilitados por FACTURACION_EMAILS + admins + impersonación de
+    admin (claim 'adm' del token). Pensado para que un admin pueda probar facturando en cualquier
+    cliente al 'entrar como', sin habilitar a los contadores reales."""
+    return facturacion_habilitada_para(usuario.email, usuario.rol) or bool(
+        getattr(usuario, "_imp_admin", False)
+    )
 
 
 def admin_actual(usuario: models.Usuario = Depends(usuario_actual)) -> models.Usuario:
