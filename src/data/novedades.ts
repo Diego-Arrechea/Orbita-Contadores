@@ -56,6 +56,10 @@ export const NOVEDADES: Novedad[] = [
         tipo: 'mejora',
         texto: 'Apenas termina de prepararse, el cliente queda en la lista con todos sus datos, sin que tengas que refrescar.',
       },
+      {
+        tipo: 'mejora',
+        texto: 'Mientras un alta sigue en curso, podés arrancar la carga del próximo cliente desde la misma pantalla, sin esperar a que termine.',
+      },
     ],
   },
   {
