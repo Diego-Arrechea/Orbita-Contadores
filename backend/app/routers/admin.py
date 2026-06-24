@@ -343,12 +343,18 @@ def ficha_contador(usuario_id: int, db: Session = Depends(get_db)):
                 cantidad_comprobantes=conteos.get(c.cuit, 0),
             )
         )
+    # WhatsApp activo = canal prendido en la config + teléfono cargado (lo que exige el motor de
+    # alertas para enviar). Mismo criterio que alertas.evaluar_y_notificar().
+    cfg = json.loads(u.config_json) if u.config_json else {}
+    notif = cfg.get("notificaciones") or {}
+    whatsapp_activo = bool(notif.get("activo")) and bool(u.telefono)
     resumen = AdminContadorResumen(
         total_clientes=len(clientes_arca),
         clientes_con_comprobantes=con_comps,
         comprobantes_total=sum(conteos.values()),
         facturado_12m_total=facturado_total,
         syncs_problemas=problemas,
+        whatsapp_activo=whatsapp_activo,
     )
     return AdminContadorFichaOut(
         usuario=_admin_usuario_out(u, len(clientes_arca)),

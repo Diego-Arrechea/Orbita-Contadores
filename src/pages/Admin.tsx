@@ -33,6 +33,7 @@ import {
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
+  MessageCircle,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -1804,7 +1805,7 @@ function FichaContador({
         </div>
       </Card>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricaCard
           icon={Building2}
           label="Clientes"
@@ -1818,6 +1819,12 @@ function FichaContador({
           label="Con problemas"
           valor={r.syncs_problemas}
           hint={r.syncs_problemas ? 'sincronización sin resolver' : 'todo al día'}
+        />
+        <MetricaCard
+          icon={MessageCircle}
+          label="Avisos por WhatsApp"
+          valor={r.whatsapp_activo ? 'Activado' : 'Desactivado'}
+          hint={r.whatsapp_activo ? 'recibe avisos' : 'no recibe avisos'}
         />
       </div>
 
