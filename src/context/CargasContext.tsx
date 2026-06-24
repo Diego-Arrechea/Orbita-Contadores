@@ -15,6 +15,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   getProgresoMonitoreo,
   cancelarMonitoreo,
@@ -22,6 +23,8 @@ import {
 } from '@/services/onboardingService';
 import { ApiError } from '@/services/apiClient';
 import { formatCuit } from '@/lib/utils';
+import { qkClientes } from '@/lib/queries';
+import type { Cliente } from '@/types';
 
 export interface CargaCliente {
   cuit: string;
@@ -118,9 +121,13 @@ function guardarLS(cargas: CargaJob[]): void {
 }
 
 export function CargasProvider({ children }: { children: ReactNode }) {
+  const qc = useQueryClient();
   const [cargas, setCargas] = useState<CargaJob[]>(() => cargarLS());
   const [version, setVersion] = useState(0);
   const [avisos, setAvisos] = useState<AvisoCarga[]>([]);
+  // Espejo de `cargas` para leerlo desde callbacks estables (cancelar) sin recrearlos en cada poll.
+  const cargasRef = useRef(cargas);
+  cargasRef.current = cargas;
   // Jobs cuyos efectos de finalización ya corrieron (no re-disparar al restaurar / re-pollear).
   const procesados = useRef<Set<string>>(new Set());
   const fallos = useRef<Record<string, number>>({});
@@ -175,16 +182,28 @@ export function CargasProvider({ children }: { children: ReactNode }) {
     setCargas(prev => prev.filter(c => c.jobId !== jobId));
   }, []);
 
-  const cancelar = useCallback((jobId: string) => {
-    // NO la sacamos al toque: el backend tarda en abortar el trabajo en curso y recién ahí borra el
-    // cliente. Dejamos el polling andando y la marcamos "Cancelando…"; cuando el backend confirme
-    // 'cancelado' (el cliente ya borrado), el polling refresca la cartera y saca la carga.
-    setCargas(prev => prev.map(c => (c.jobId === jobId ? { ...c, cancelando: true } : c)));
-    cancelarMonitoreo(jobId).catch(() => {
-      // Si el pedido falló, el alta sigue su curso normal: sacamos el "Cancelando…".
-      setCargas(prev => prev.map(c => (c.jobId === jobId ? { ...c, cancelando: false } : c)));
-    });
-  }, []);
+  const cancelar = useCallback(
+    (jobId: string) => {
+      // Optimista: sacamos YA de la cartera los clientes de esta carga, así desaparecen al instante
+      // de la lista. El backend hace la baja real por detrás (aborta el trabajo en curso y los
+      // borra); cuando confirme 'cancelado' subimos `version` y la cartera se reconcilia.
+      const carga = cargasRef.current.find(c => c.jobId === jobId);
+      const cuits = new Set((carga?.clientes ?? []).map(c => (c.cuit ?? '').replace(/\D/g, '')));
+      if (cuits.size) {
+        qc.setQueryData<Cliente[]>(qkClientes, prev =>
+          Array.isArray(prev) ? prev.filter(c => !cuits.has((c.cuit ?? '').replace(/\D/g, ''))) : prev,
+        );
+      }
+      setCargas(prev => prev.map(c => (c.jobId === jobId ? { ...c, cancelando: true } : c)));
+      cancelarMonitoreo(jobId).catch(() => {
+        // Si el pedido falló, el alta sigue su curso: sacamos el "Cancelando…" y devolvemos el
+        // cliente a la cartera (lo trae el refetch).
+        setCargas(prev => prev.map(c => (c.jobId === jobId ? { ...c, cancelando: false } : c)));
+        void qc.invalidateQueries({ queryKey: qkClientes });
+      });
+    },
+    [qc],
+  );
 
   const activas = cargas.filter(c => c.estado === 'en_proceso');
 
