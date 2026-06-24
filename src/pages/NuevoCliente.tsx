@@ -122,12 +122,11 @@ export function NuevoCliente() {
         </Button>
         <h1 className="text-3xl font-semibold tracking-tight">Nuevo cliente</h1>
         <p className="text-base text-muted-foreground mt-2 max-w-xl">
-          Ingresá tu clave fiscal una sola vez: traemos a quienes tenés a cargo y elegís a cuáles
-          querés seguir.
+          Cargá el CUIT y la clave fiscal de tu cliente y elegí a quién querés seguir.
         </p>
       </div>
 
-      {/* PASO 1 — credenciales del contador */}
+      {/* PASO 1 — credenciales del cliente (CUIT + clave fiscal del cliente, no del contador) */}
       {(paso === 'credenciales' || paso === 'listando') && (
         <Card className="p-4 sm:p-7">
           <div className="flex items-start gap-3 mb-5">
@@ -135,24 +134,23 @@ export function NuevoCliente() {
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div>
-              <div className="font-semibold">Sumá a tus clientes</div>
+              <div className="font-semibold">Datos de tu cliente</div>
               <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                Con tu clave fiscal traemos la lista de quienes tenés a cargo para que elijas a
-                cuáles seguir. Queda guardada cifrada para mantener sus datos al día
-                automáticamente, sin que tengas que volver a cargarla.
+                Cargá el CUIT y la clave fiscal de tu cliente. Quedan guardados cifrados para
+                mantener sus datos al día automáticamente, sin que tengas que volver a cargarlos.
               </div>
             </div>
           </div>
 
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="cuit">CUIT</Label>
+              <Label htmlFor="cuit">CUIT del cliente</Label>
               <Input
                 id="cuit"
                 name="cuit-arca"
                 value={cuit}
                 onChange={e => setCuit(e.target.value)}
-                placeholder="Tu CUIT (sin guiones)"
+                placeholder="CUIT del cliente (sin guiones)"
                 disabled={paso === 'listando'}
                 inputMode="numeric"
                 autoComplete="off"
@@ -165,7 +163,7 @@ export function NuevoCliente() {
               </datalist>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="clave">Clave fiscal</Label>
+              <Label htmlFor="clave">Clave fiscal del cliente</Label>
               <div className="relative">
                 <Input
                   id="clave"
@@ -199,11 +197,11 @@ export function NuevoCliente() {
 
           {paso === 'credenciales' ? (
             <Button onClick={conectar} disabled={!puedeConectar} className="w-full mt-5" size="lg">
-              <KeyRound className="h-4 w-4" /> Conectar y ver a mis clientes
+              <KeyRound className="h-4 w-4" /> Conectar
             </Button>
           ) : (
             <Button disabled className="w-full mt-5" size="lg">
-              <Loader2 className="h-4 w-4 animate-spin" /> Buscando a tus clientes…
+              <Loader2 className="h-4 w-4 animate-spin" /> Conectando…
             </Button>
           )}
         </Card>
