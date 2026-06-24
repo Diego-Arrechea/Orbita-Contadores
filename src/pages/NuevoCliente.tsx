@@ -46,7 +46,8 @@ export function NuevoCliente() {
   const [representados, setRepresentados] = useState<Representado[]>([]);
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [jobId, setJobId] = useState<string | null>(null);
-  const { cargas, registrarCarga } = useCargas();
+  const [cancelandoAlta, setCancelandoAlta] = useState(false);
+  const { cargas, registrarCarga, cancelar } = useCargas();
   // El progreso se lee del contexto global: así sigue corriendo aunque el contador navegue.
   const progreso = jobId ? cargas.find(c => c.jobId === jobId) ?? null : null;
 
@@ -347,7 +348,35 @@ export function NuevoCliente() {
                 La carga sigue en segundo plano. Podés volver al dashboard y seguir trabajando —
                 vas a ver el avance arriba, al lado de las notificaciones.
               </div>
-              <div className="flex justify-end mt-4">
+              <div className="flex items-center justify-between gap-2 mt-4">
+                {cancelandoAlta ? (
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <span className="text-muted-foreground">¿Cancelar el alta?</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-danger hover:text-danger"
+                      onClick={() => {
+                        if (jobId) cancelar(jobId);
+                        navigate('/');
+                      }}
+                    >
+                      Sí, cancelar
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setCancelandoAlta(false)}>
+                      No
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-danger"
+                    onClick={() => setCancelandoAlta(true)}
+                  >
+                    Cancelar alta
+                  </Button>
+                )}
                 <Button onClick={() => navigate('/')}>
                   Volver al dashboard <ArrowRight className="h-4 w-4" />
                 </Button>

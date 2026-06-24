@@ -42,6 +42,23 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-06-24-cancelar-alta',
+    fecha: '2026-06-24',
+    titulo: 'Cancelá un alta si te equivocaste',
+    resumen: 'Si cargaste un cliente por error, ahora podés frenar el alta y se deshace sola.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Mientras un cliente se está dando de alta, podés cancelarlo desde el indicador de cargas (arriba, al lado de las notificaciones) o desde la misma pantalla de alta.',
+      },
+      {
+        tipo: 'nuevo',
+        texto: 'Al cancelar, el cliente cargado por error se quita y no queda en tu cartera.',
+      },
+    ],
+  },
+  {
     id: '2026-06-24-alta-cliente-directa',
     fecha: '2026-06-24',
     titulo: 'Alta de clientes más rápida',

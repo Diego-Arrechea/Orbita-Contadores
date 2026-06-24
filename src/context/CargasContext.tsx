@@ -15,7 +15,11 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { getProgresoMonitoreo, type JobProgreso } from '@/services/onboardingService';
+import {
+  getProgresoMonitoreo,
+  cancelarMonitoreo,
+  type JobProgreso,
+} from '@/services/onboardingService';
 import { ApiError } from '@/services/apiClient';
 import { formatCuit } from '@/lib/utils';
 
@@ -53,6 +57,8 @@ interface CargasContextValue {
   version: number;
   registrarCarga: (jobId: string, clientes: CargaCliente[]) => void;
   descartar: (jobId: string) => void;
+  /** Cancela un alta en curso: el backend aborta y deshace los clientes que hubiera creado. */
+  cancelar: (jobId: string) => void;
   descartarAviso: (id: string) => void;
 }
 
@@ -167,6 +173,13 @@ export function CargasProvider({ children }: { children: ReactNode }) {
     setCargas(prev => prev.filter(c => c.jobId !== jobId));
   }, []);
 
+  const cancelar = useCallback((jobId: string) => {
+    // Best-effort al backend (aborta y deshace el alta) y sacamos la carga de la UI al toque.
+    cancelarMonitoreo(jobId).catch(() => {});
+    procesados.current.add(jobId); // que el polling no dispare efectos de finalización
+    setCargas(prev => prev.filter(c => c.jobId !== jobId));
+  }, []);
+
   const activas = cargas.filter(c => c.estado === 'en_proceso');
 
   // Polling global: corre mientras haya cargas activas. El string de ids reinicia el efecto sólo
@@ -182,6 +195,12 @@ export function CargasProvider({ children }: { children: ReactNode }) {
         const p = await getProgresoMonitoreo(jobId);
         if (cancel) return;
         fallos.current[jobId] = 0;
+        // El alta se canceló (acá o desde otra sesión): el backend ya deshizo lo que hubiera creado.
+        if (p.estado === 'cancelado') {
+          procesados.current.add(jobId);
+          setCargas(prev => prev.filter(c => c.jobId !== jobId));
+          return;
+        }
         let cargaFinal: CargaJob | null = null;
         setCargas(prev =>
           prev.map(c => {
@@ -230,7 +249,7 @@ export function CargasProvider({ children }: { children: ReactNode }) {
 
   return (
     <CargasContext.Provider
-      value={{ cargas, activas, avisos, version, registrarCarga, descartar, descartarAviso }}
+      value={{ cargas, activas, avisos, version, registrarCarga, descartar, cancelar, descartarAviso }}
     >
       {children}
     </CargasContext.Provider>

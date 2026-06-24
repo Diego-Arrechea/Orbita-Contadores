@@ -87,6 +87,47 @@
   }
 }
 
+/* Borde animado de "cliente cargándose": una línea azul recorre el perímetro del recuadro.
+   Se logra rotando el ÁNGULO de un conic-gradient (la variable --borde-ang, animada vía @property)
+   y recortándolo a un anillo de 2px con la técnica de doble máscara (border-box menos content-box).
+   Si el navegador no soporta @property, el ángulo no anima → degrada a un borde azul fijo (aceptable). */
+@property --borde-ang {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes girar-borde {
+  to {
+    --borde-ang: 360deg;
+  }
+}
+
+.borde-cargando {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px; /* grosor del anillo */
+  background: conic-gradient(
+    from var(--borde-ang),
+    transparent 0deg,
+    transparent 190deg,
+    hsl(var(--primary) / 0.12) 270deg,
+    hsl(var(--primary)) 340deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: girar-borde 1.6s linear infinite;
+  pointer-events: none;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
