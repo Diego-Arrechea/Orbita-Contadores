@@ -30,6 +30,9 @@ import {
   MoreVertical,
   MailCheck,
   MailWarning,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -68,6 +71,7 @@ import {
   impersonar,
   listarAuditoria,
   listarSincronizacionesFallidas,
+  listarAvisosNombre,
   reintentarSync,
   estadoSync,
   listarTodosLosClientes,
@@ -78,6 +82,7 @@ import {
   type AdminMetricas,
   type AdminAuditoria,
   type AdminSyncFallida,
+  type AdminAvisoNombre,
   type AdminCliente,
   type AdminContadorFicha,
   type MotorEstado,
@@ -412,6 +417,87 @@ function AccionesCuenta({
 
 // --- Tab: Cuentas ---
 
+// Columnas por las que se puede ordenar la tabla de cuentas (las "Acciones" no se ordenan).
+type ColumnaOrden =
+  | 'contador'
+  | 'prueba'
+  | 'clientes'
+  | 'alta'
+  | 'acceso'
+  | 'cierre'
+  | 'correo'
+  | 'estado';
+
+// Valor comparable de una cuenta para una columna dada. Devuelve null cuando el dato no existe
+// (esos van siempre al final). Las fechas se comparan por timestamp; los badges por un orden lógico.
+function valorOrden(u: AdminUsuario, col: ColumnaOrden): string | number | null {
+  const ts = (iso?: string | null) => {
+    if (!iso) return null;
+    const t = new Date(iso).getTime();
+    return Number.isNaN(t) ? null : t;
+  };
+  switch (col) {
+    case 'contador':
+      return `${u.nombre ?? ''} ${u.apellido ?? ''}`.trim().toLowerCase();
+    case 'prueba':
+      // Los admins no tienen prueba; se ordenan como "sin dato".
+      return u.rol === 'admin' ? null : diasDeTrial(u.trial_fin);
+    case 'clientes':
+      return u.clientes ?? 0;
+    case 'alta':
+      return ts(u.creado_en);
+    case 'acceso':
+      return ts(u.ultimo_acceso);
+    case 'cierre':
+      return ts(u.ultimo_logout);
+    case 'correo':
+      return u.email_confirmado ? 1 : 0;
+    case 'estado':
+      return u.activo ? 1 : 0;
+  }
+}
+
+// Encabezado clicleable que ordena la tabla por su columna y muestra la flecha del sentido actual.
+function EncabezadoOrden({
+  col,
+  orden,
+  onOrdenar,
+  children,
+  className,
+}: {
+  col: ColumnaOrden;
+  orden: { col: ColumnaOrden; dir: 'asc' | 'desc' } | null;
+  onOrdenar: (col: ColumnaOrden) => void;
+  children: ReactNode;
+  className?: string;
+}) {
+  const activo = orden?.col === col;
+  return (
+    <TableHead className={className}>
+      <button
+        type="button"
+        onClick={() => onOrdenar(col)}
+        className={cn(
+          'inline-flex items-center gap-1 select-none hover:text-foreground transition-colors',
+          activo ? 'text-foreground font-semibold' : ''
+        )}
+        title="Ordenar por esta columna"
+      >
+        {children}
+        {activo ? (
+          orden!.dir === 'asc' ? (
+            <ArrowUp className="h-3.5 w-3.5" />
+          ) : (
+            <ArrowDown className="h-3.5 w-3.5" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+        )}
+      </button>
+    </TableHead>
+  );
+}
+
 function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () => void }) {
   const qc = useQueryClient();
   const {
@@ -426,6 +512,13 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
   const [accionError, setAccionError] = useState('');
   const [fichaId, setFichaId] = useState<number | null>(null);
 
+  // Ordenamiento por columna (clic en el encabezado alterna asc/desc). Default: últimos accesos
+  // primero (los que nunca accedieron quedan al final por el manejo de nulos en valorOrden).
+  const [orden, setOrden] = useState<{ col: ColumnaOrden; dir: 'asc' | 'desc' } | null>({
+    col: 'acceso',
+    dir: 'desc',
+  });
+
   const filtrados = useMemo(() => {
     // Cada palabra de la búsqueda debe aparecer en el texto combinado de la cuenta. Así "Juan Pérez"
     // matchea aunque nombre y apellido sean campos distintos (con .some() por campo fallaba).
@@ -439,6 +532,30 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
       return tokens.every(t => heno.includes(t));
     });
   }, [usuarios, busqueda]);
+
+  const ordenados = useMemo(() => {
+    if (!orden) return filtrados;
+    const dir = orden.dir === 'asc' ? 1 : -1;
+    const arr = [...filtrados].sort((a, b) => {
+      const va = valorOrden(a, orden.col);
+      const vb = valorOrden(b, orden.col);
+      // Los valores ausentes (null) van siempre al final, sin importar la dirección.
+      if (va === null && vb === null) return 0;
+      if (va === null) return 1;
+      if (vb === null) return -1;
+      if (typeof va === 'string' && typeof vb === 'string') {
+        return va.localeCompare(vb, 'es') * dir;
+      }
+      return ((va as number) - (vb as number)) * dir;
+    });
+    return arr;
+  }, [filtrados, orden]);
+
+  function ordenarPor(col: ColumnaOrden) {
+    setOrden(prev =>
+      prev?.col === col ? { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: 'asc' }
+    );
+  }
 
   async function toggleActivo(u: AdminUsuario) {
     setAccionando(u.id);
@@ -517,19 +634,35 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Contador</TableHead>
-              <TableHead className="text-center">Prueba</TableHead>
-              <TableHead className="text-center">Clientes</TableHead>
-              <TableHead>Alta</TableHead>
-              <TableHead>Último acceso</TableHead>
-              <TableHead>Último cierre</TableHead>
-              <TableHead className="text-center">Correo</TableHead>
-              <TableHead className="text-center">Estado</TableHead>
+              <EncabezadoOrden col="contador" orden={orden} onOrdenar={ordenarPor}>
+                Contador
+              </EncabezadoOrden>
+              <EncabezadoOrden col="prueba" orden={orden} onOrdenar={ordenarPor} className="text-center">
+                Prueba
+              </EncabezadoOrden>
+              <EncabezadoOrden col="clientes" orden={orden} onOrdenar={ordenarPor} className="text-center">
+                Clientes
+              </EncabezadoOrden>
+              <EncabezadoOrden col="alta" orden={orden} onOrdenar={ordenarPor}>
+                Alta
+              </EncabezadoOrden>
+              <EncabezadoOrden col="acceso" orden={orden} onOrdenar={ordenarPor}>
+                Último acceso
+              </EncabezadoOrden>
+              <EncabezadoOrden col="cierre" orden={orden} onOrdenar={ordenarPor}>
+                Último cierre
+              </EncabezadoOrden>
+              <EncabezadoOrden col="correo" orden={orden} onOrdenar={ordenarPor} className="text-center">
+                Correo
+              </EncabezadoOrden>
+              <EncabezadoOrden col="estado" orden={orden} onOrdenar={ordenarPor} className="text-center">
+                Estado
+              </EncabezadoOrden>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtrados.map(u => (
+            {ordenados.map(u => (
               <TableRow key={u.id}>
                 <TableCell>
                   <button
@@ -580,7 +713,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                 </TableCell>
               </TableRow>
             ))}
-            {filtrados.length === 0 && (
+            {ordenados.length === 0 && (
               <TableRow>
                 <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
                   No hay cuentas que coincidan con la búsqueda.
@@ -592,7 +725,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
       </Card>
 
       <div className="space-y-3 lg:hidden">
-        {filtrados.map(u => (
+        {ordenados.map(u => (
           <Card key={u.id} className="space-y-3 p-4">
             <button
               type="button"
@@ -653,7 +786,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
             </div>
           </Card>
         ))}
-        {filtrados.length === 0 && (
+        {ordenados.length === 0 && (
           <Card className="p-8 text-center text-sm text-muted-foreground">
             No hay cuentas que coincidan con la búsqueda.
           </Card>
@@ -1001,6 +1134,10 @@ function TabMetricas() {
     queryKey: ['admin', 'fallidas'],
     queryFn: listarSincronizacionesFallidas,
   });
+  const { data: avisosNombre = [] } = useQuery({
+    queryKey: ['admin', 'avisos-nombre'],
+    queryFn: listarAvisosNombre,
+  });
 
   if (isLoading) {
     return (
@@ -1046,6 +1183,7 @@ function TabMetricas() {
       </div>
 
       <SyncsFallidas fallidas={fallidas} />
+      <AvisosNombre avisos={avisosNombre} />
     </div>
   );
 }
@@ -1226,6 +1364,64 @@ function SyncsFallidas({ fallidas }: { fallidas: AdminSyncFallida[] }) {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// Avisos (NO fallos) dentro del panel de problemas: clientes cuyo nombre quedó como "Titular <CUIT>"
+// al darse de alta (no se pudo leer el nombre real). Se resuelve renombrándolos a mano desde la
+// ficha; el aviso desaparece solo cuando el nombre efectivo deja de empezar con "Titular".
+function AvisosNombre({ avisos }: { avisos: AdminAvisoNombre[] }) {
+  if (avisos.length === 0) return null;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4 text-warning-foreground" />
+        <h2 className="text-sm font-semibold">Clientes con el nombre sin confirmar</h2>
+        <Badge variant="warning">{avisos.length}</Badge>
+      </div>
+      <p className="-mt-1 text-xs text-muted-foreground">
+        Quedaron cargados como «Titular …» porque no se pudo leer su nombre. Renombralos a mano desde
+        la ficha del cliente; el aviso se va solo al hacerlo.
+      </p>
+
+      {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+      <Card className="hidden overflow-hidden lg:block">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Cliente</TableHead>
+              <TableHead>Contador</TableHead>
+              <TableHead className="text-right">Acción sugerida</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {avisos.map(a => (
+              <TableRow key={a.cuit}>
+                <TableCell className="text-sm">
+                  <div>{a.cliente || '—'}</div>
+                  <div className="text-xs text-muted-foreground tabular-nums">{a.cuit}</div>
+                </TableCell>
+                <TableCell className="text-sm">{a.contador_email || '—'}</TableCell>
+                <TableCell className="text-right text-xs text-warning-foreground">
+                  Renombrar desde la ficha
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Card>
+
+      <div className="space-y-3 lg:hidden">
+        {avisos.map(a => (
+          <Card key={a.cuit} className="space-y-1 p-4 text-sm">
+            <div className="font-medium">{a.cliente || '—'}</div>
+            <div className="text-xs text-muted-foreground tabular-nums">{a.cuit}</div>
+            <div className="text-xs text-muted-foreground break-all">{a.contador_email || '—'}</div>
+            <div className="text-xs text-warning-foreground">Renombrar desde la ficha del cliente</div>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

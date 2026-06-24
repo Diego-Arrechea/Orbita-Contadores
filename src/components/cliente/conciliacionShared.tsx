@@ -73,20 +73,27 @@ export function DropZone({
   );
 }
 
-/** Celda de métrica (KPI) con etiqueta, valor grande y subtítulo opcional, con tono semántico. */
+/**
+ * Celda de métrica (KPI) con etiqueta, valor grande y subtítulo opcional, con tono semántico.
+ * Si recibe `onClick` se comporta como filtro clicable y resalta cuando está `active`.
+ */
 export function Stat({
   label,
   value,
   subtitle,
   tone,
+  onClick,
+  active,
 }: {
   label: string;
   value: string;
   subtitle?: string;
-  tone?: 'success' | 'warning' | 'danger';
+  tone?: 'success' | 'warning' | 'danger' | 'muted' | 'default';
+  onClick?: () => void;
+  active?: boolean;
 }) {
-  return (
-    <div className="p-5">
+  const contenido = (
+    <>
       <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mb-1.5">{label}</div>
       <div
         className={cn(
@@ -94,6 +101,8 @@ export function Stat({
           tone === 'success' && 'text-success',
           tone === 'warning' && 'text-warning-foreground',
           tone === 'danger' && 'text-danger',
+          tone === 'default' && 'text-primary',
+          tone === 'muted' && 'text-muted-foreground',
         )}
       >
         {value}
@@ -104,6 +113,22 @@ export function Stat({
           {subtitle}
         </div>
       )}
-    </div>
+    </>
+  );
+
+  if (!onClick) return <div className="p-5">{contenido}</div>;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'p-5 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40',
+        active && 'bg-primary/5 ring-2 ring-inset ring-primary/40',
+      )}
+    >
+      {contenido}
+    </button>
   );
 }

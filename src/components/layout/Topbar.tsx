@@ -1,6 +1,7 @@
 import { Menu, Orbit } from 'lucide-react';
 import { CargasIndicator } from './CargasIndicator';
 import { NotificacionesIndicator } from './NotificacionesIndicator';
+import { NovedadesIndicator } from './NovedadesIndicator';
 import { TrialIndicator } from './TrialIndicator';
 
 export function Topbar({ onAbrirMenu }: { onAbrirMenu?: () => void }) {
@@ -24,6 +25,7 @@ export function Topbar({ onAbrirMenu }: { onAbrirMenu?: () => void }) {
       <div className="ml-auto flex items-center gap-3 sm:gap-4">
         <TrialIndicator />
         <CargasIndicator />
+        <NovedadesIndicator />
         <NotificacionesIndicator />
       </div>
     </header>
