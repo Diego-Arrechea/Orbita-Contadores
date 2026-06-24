@@ -78,8 +78,8 @@ export function Dashboard() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroAlerta, setFiltroAlerta] = useState<EstadoAlerta | 'todos'>('todos');
   const [filtroActividad, setFiltroActividad] = useState<TipoActividad | 'todos'>('todos');
-  // Orden por defecto: por estado (rojo primero), igual que antes.
-  const [ordenarPor, setOrdenarPor] = useState<ColumnaOrden>('estado');
+  // Orden por defecto: alfabético por nombre del cliente (A→Z).
+  const [ordenarPor, setOrdenarPor] = useState<ColumnaOrden>('nombre');
   const [sentido, setSentido] = useState<Sentido>('asc');
 
   // Click en un encabezado: si ya es la columna activa, alterna asc/desc;

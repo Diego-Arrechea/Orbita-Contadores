@@ -126,6 +126,17 @@ export function listarSincronizacionesFallidas(): Promise<AdminSyncFallida[]> {
   return apiGet<AdminSyncFallida[]>('/admin/sincronizaciones/fallidas');
 }
 
+/** Aviso (no fallo): cliente cuyo nombre quedó como "Titular <CUIT>" al darse de alta. */
+export interface AdminAvisoNombre {
+  cuit: string;
+  cliente?: string | null;
+  contador_email?: string | null;
+}
+
+export function listarAvisosNombre(): Promise<AdminAvisoNombre[]> {
+  return apiGet<AdminAvisoNombre[]>('/admin/clientes/nombre-sin-confirmar');
+}
+
 /** Dispara un reintento de sincronización para cualquier cliente. Devuelve el job_id a poolear. */
 export function reintentarSync(cuit: string): Promise<{ job_id: string }> {
   return apiPost<{ job_id: string }>(`/admin/clientes/${cuit}/reintentar-sync`);

@@ -6,6 +6,7 @@ import {
   Landmark,
   UserPlus,
   Settings,
+  Sparkles,
   Orbit,
   LogOut,
   ShieldCheck,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { cuentaActual, esAdmin, impersonando, logoutCuenta } from '@/lib/cuenta';
+import { useNovedadesVistas } from '@/lib/novedadesVistas';
 import { registrarLogout } from '@/services/authService';
 import { resetChatSoporte } from '@/components/shared/SoporteChat';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -25,6 +27,7 @@ const nav = [
   { to: '/conciliacion', label: 'Conciliación', icon: Landmark },
   { to: '/clientes/nuevo', label: 'Nuevo cliente', icon: UserPlus },
   { to: '/configuracion', label: 'Configuración', icon: Settings },
+  { to: '/novedades', label: 'Novedades', icon: Sparkles },
 ];
 
 const LS_COLAPSADA = 'orbita_sidebar_colapsada';
@@ -61,6 +64,7 @@ function ContenidoSidebar({
   const navigate = useNavigate();
   const location = useLocation();
   const cuenta = cuentaActual();
+  const { noVistas } = useNovedadesVistas();
 
   // El ítem del panel sólo aparece para cuentas admin (la ruta /admin además está protegida en back).
   const items = esAdmin()
@@ -108,13 +112,14 @@ function ContenidoSidebar({
       <nav className={cn('flex-1', colapsada ? 'flex flex-col items-center gap-2' : 'space-y-1')}>
         {items.map(item => {
           const isActive = rutaActiva(location.pathname, item.to, item.end);
+          const tieneAviso = item.to === '/novedades' && noVistas > 0;
           const link = (
             <NavLink
               to={item.to}
               end={item.end}
               onClick={onNavegar}
               className={cn(
-                'flex items-center rounded-xl font-medium transition-colors',
+                'relative flex items-center rounded-xl font-medium transition-colors',
                 colapsada ? 'h-11 w-11 justify-center' : 'gap-3 px-3.5 py-2.5 text-sm',
                 isActive
                   ? 'bg-primary text-primary-foreground shadow-sm'
@@ -123,6 +128,12 @@ function ContenidoSidebar({
             >
               <item.icon className={cn('shrink-0', colapsada ? 'h-5 w-5' : 'h-4 w-4')} />
               {!colapsada && item.label}
+              {tieneAviso &&
+                (colapsada ? (
+                  <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-primary ring-2 ring-[hsl(var(--sidebar))]" />
+                ) : (
+                  <span className="ml-auto h-2 w-2 rounded-full bg-primary" />
+                ))}
             </NavLink>
           );
           return colapsada ? (

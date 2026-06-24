@@ -4,6 +4,7 @@ Todo el router está protegido por `admin_actual`."""
 from __future__ import annotations
 
 import datetime as dt
+import json
 import threading
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,6 +15,7 @@ from .. import models
 from ..db import get_db
 from ..schemas import (
     AdminAuditoriaOut,
+    AdminAvisoNombreOut,
     AdminClienteOut,
     AdminContadorFichaOut,
     AdminContadorResumen,
@@ -237,6 +239,30 @@ def sincronizaciones_fallidas(db: Session = Depends(get_db), limite: int = 50):
                 ultima_sync_ok=_iso(ok_fecha),
             )
         )
+    return out
+
+
+@router.get("/clientes/nombre-sin-confirmar", response_model=list[AdminAvisoNombreOut])
+def clientes_nombre_sin_confirmar(db: Session = Depends(get_db)):
+    """Clientes cuyo nombre quedó en el placeholder 'Titular <CUIT>' (no se pudo leer el nombre real
+    al darlos de alta). Es un AVISO, no un fallo: se resuelve renombrándolo a mano desde la ficha.
+    Se evalúa sobre el nombre EFECTIVO (la edición manual del contador gana sobre el dato crudo), así
+    un cliente ya renombrado deja de aparecer. Al leerse del estado YA persistido, sólo cuenta a los
+    clientes con el alta terminada (no a uno a mitad de carga)."""
+    filas = db.execute(
+        select(models.ClienteARCA, models.Usuario.email).outerjoin(
+            models.Usuario, models.Usuario.id == models.ClienteARCA.usuario_id
+        )
+    ).all()
+
+    out = []
+    for c, email in filas:
+        edic = json.loads(c.edicion_json) if c.edicion_json else {}
+        nombre = (edic.get("nombre") or c.nombre or "").strip()
+        if nombre.lower().startswith("titular"):
+            out.append(
+                AdminAvisoNombreOut(cuit=c.cuit, cliente=nombre or None, contador_email=email)
+            )
     return out
 
 

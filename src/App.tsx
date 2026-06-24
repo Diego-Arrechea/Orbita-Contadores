@@ -36,6 +36,7 @@ import { ReporteCliente } from '@/pages/ReporteCliente';
 import { NuevoCliente } from '@/pages/NuevoCliente';
 import { Conciliacion } from '@/pages/Conciliacion';
 import { Configuracion } from '@/pages/Configuracion';
+import { Novedades } from '@/pages/Novedades';
 import { Admin } from '@/pages/Admin';
 
 export default function App() {
@@ -82,6 +83,7 @@ export default function App() {
         <Route path="/conciliacion" element={<Conciliacion />} />
         <Route path="/clientes/nuevo" element={<NuevoCliente />} />
         <Route path="/clientes/:id" element={<ClienteDetalle />} />
+        <Route path="/novedades" element={<Novedades />} />
         <Route path="/configuracion" element={<Configuracion />} />
         <Route
           path="/admin"

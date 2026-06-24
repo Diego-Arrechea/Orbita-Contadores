@@ -538,6 +538,15 @@ class AdminSyncFallidaOut(BaseModel):
     ultima_sync_ok: str | None = None  # ISO de la última sync exitosa del cliente (contexto)
 
 
+class AdminAvisoNombreOut(BaseModel):
+    """Aviso (NO fallo) del panel: un cliente cuyo nombre quedó como 'Titular <CUIT>' al darse de
+    alta porque no se pudo leer el nombre real. Se resuelve renombrándolo a mano desde la ficha."""
+
+    cuit: str
+    cliente: str | None = None  # nombre efectivo actual (el placeholder "Titular …")
+    contador_email: str | None = None  # dueño del cliente (None si quedó huérfano)
+
+
 class AdminClienteOut(ClienteOut):
     """Cliente visto desde el panel superadmin (vista global read-only): el ClienteOut completo —el
     MISMO dato que ve su contador— más de qué contador es y cuántos comprobantes tiene cacheados.
