@@ -32,12 +32,14 @@ export interface CargaJob {
   jobId: string;
   clientes: CargaCliente[];
   titulo: string;
-  estado: JobProgreso['estado']; // en_proceso | terminado | error
+  estado: JobProgreso['estado']; // en_proceso | terminado | error | cancelado
   progreso: number;
   mensaje: string;
   resultados: JobProgreso['resultados'];
   error: string | null;
   iniciadoEn: number;
+  /** El contador pidió cancelar y esperamos que el backend confirme (y borre el cliente). */
+  cancelando?: boolean;
 }
 
 /** Aviso transitorio (toast) que aparece cuando una carga termina y se va solo a los 5 s. */
@@ -174,10 +176,14 @@ export function CargasProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const cancelar = useCallback((jobId: string) => {
-    // Best-effort al backend (aborta y deshace el alta) y sacamos la carga de la UI al toque.
-    cancelarMonitoreo(jobId).catch(() => {});
-    procesados.current.add(jobId); // que el polling no dispare efectos de finalización
-    setCargas(prev => prev.filter(c => c.jobId !== jobId));
+    // NO la sacamos al toque: el backend tarda en abortar el trabajo en curso y recién ahí borra el
+    // cliente. Dejamos el polling andando y la marcamos "Cancelando…"; cuando el backend confirme
+    // 'cancelado' (el cliente ya borrado), el polling refresca la cartera y saca la carga.
+    setCargas(prev => prev.map(c => (c.jobId === jobId ? { ...c, cancelando: true } : c)));
+    cancelarMonitoreo(jobId).catch(() => {
+      // Si el pedido falló, el alta sigue su curso normal: sacamos el "Cancelando…".
+      setCargas(prev => prev.map(c => (c.jobId === jobId ? { ...c, cancelando: false } : c)));
+    });
   }, []);
 
   const activas = cargas.filter(c => c.estado === 'en_proceso');
@@ -196,8 +202,10 @@ export function CargasProvider({ children }: { children: ReactNode }) {
         if (cancel) return;
         fallos.current[jobId] = 0;
         // El alta se canceló (acá o desde otra sesión): el backend ya deshizo lo que hubiera creado.
+        // Subimos `version` para que la cartera refresque y se vaya el cliente que había quedado.
         if (p.estado === 'cancelado') {
           procesados.current.add(jobId);
+          setVersion(v => v + 1);
           setCargas(prev => prev.filter(c => c.jobId !== jobId));
           return;
         }

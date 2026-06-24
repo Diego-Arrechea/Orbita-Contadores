@@ -113,7 +113,9 @@ function CargaItem({
         <div className="mt-2">
           <Progress value={carga.progreso} className="h-1.5" />
           <div className="mt-1 flex items-center justify-between">
-            {confirmando ? (
+            {carga.cancelando ? (
+              <span className="text-[11px] text-muted-foreground">Cancelando…</span>
+            ) : confirmando ? (
               <div className="flex items-center gap-2 text-[11px]">
                 <span className="text-muted-foreground">¿Cancelar el alta?</span>
                 <button
