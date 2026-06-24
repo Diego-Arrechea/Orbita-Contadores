@@ -12,7 +12,6 @@ import {
   AlertCircle,
   XCircle,
   Users,
-  ArrowRight,
   Plus,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -153,10 +152,10 @@ export function NuevoCliente() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => navigate(-1)}
+          onClick={() => navigate('/')}
           className="-ml-3 mb-3 text-muted-foreground hover:text-foreground"
         >
-          <ChevronLeft className="h-4 w-4" /> Volver
+          <ChevronLeft className="h-4 w-4" /> Volver al dashboard
         </Button>
         <h1 className="text-3xl font-semibold tracking-tight">Nuevo cliente</h1>
         <p className="text-base text-muted-foreground mt-2 max-w-xl">
@@ -336,11 +335,7 @@ export function NuevoCliente() {
       {paso === 'monitoreando' && (
         <Card className="p-4 sm:p-7">
           {progreso?.estado === 'terminado' ? (
-            <ResultadoFinal
-              progreso={progreso}
-              onDashboard={() => navigate('/')}
-              onOtro={cargarOtro}
-            />
+            <ResultadoFinal progreso={progreso} onOtro={cargarOtro} />
           ) : progreso?.estado === 'error' ? (
             <div className="flex items-start gap-3">
               <XCircle className="h-5 w-5 text-danger shrink-0 mt-0.5" />
@@ -398,14 +393,9 @@ export function NuevoCliente() {
                     Cancelar alta
                   </Button>
                 )}
-                <div className="flex flex-wrap gap-2 ml-auto">
-                  <Button variant="outline" onClick={cargarOtro}>
-                    <Plus className="h-4 w-4" /> Cargar otro cliente
-                  </Button>
-                  <Button onClick={() => navigate('/')}>
-                    Volver al dashboard <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </div>
+                <Button variant="outline" className="ml-auto" onClick={cargarOtro}>
+                  <Plus className="h-4 w-4" /> Cargar otro cliente
+                </Button>
               </div>
             </>
           )}
@@ -417,11 +407,9 @@ export function NuevoCliente() {
 
 function ResultadoFinal({
   progreso,
-  onDashboard,
   onOtro,
 }: {
   progreso: JobProgreso;
-  onDashboard: () => void;
   onOtro: () => void;
 }) {
   const ok = progreso.resultados.filter(r => r.ok);
@@ -468,12 +456,9 @@ function ResultadoFinal({
         ))}
       </div>
 
-      <div className="flex flex-wrap justify-end gap-2 mt-6">
+      <div className="flex justify-end mt-6">
         <Button variant="outline" size="lg" onClick={onOtro}>
           <Plus className="h-4 w-4" /> Cargar otro cliente
-        </Button>
-        <Button size="lg" onClick={onDashboard}>
-          Ir al dashboard
         </Button>
       </div>
     </div>
