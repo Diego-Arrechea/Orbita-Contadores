@@ -42,6 +42,23 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-06-24-avance-alta-en-cartera',
+    fecha: '2026-06-24',
+    titulo: 'Seguí el avance del alta desde tu cartera',
+    resumen: 'Cuando sumás un cliente, lo ves en la lista con su avance y aparece completo apenas está listo.',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'El cliente que estás dando de alta se muestra en tu cartera con un recuadro resaltado y una barra que va marcando el avance, así sabés en qué etapa va.',
+      },
+      {
+        tipo: 'mejora',
+        texto: 'Apenas termina de prepararse, el cliente queda en la lista con todos sus datos, sin que tengas que refrescar.',
+      },
+    ],
+  },
+  {
     id: '2026-06-24-cancelar-alta',
     fecha: '2026-06-24',
     titulo: 'Cancelá un alta si te equivocaste',

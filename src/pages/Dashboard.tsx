@@ -301,7 +301,15 @@ export function Dashboard() {
             </TableRow>
           </TableHeader>
           <TableBody>
+            {cargando.map(e => (
+              <TableRow key={e.key} className="hover:bg-transparent">
+                <TableCell colSpan={8} className="p-2">
+                  <CajaCargando cuit={e.cuit} nombre={e.nombre} progreso={e.progreso} mensaje={e.mensaje} />
+                </TableCell>
+              </TableRow>
+            ))}
             {filtrados.map(({ cliente, calc, estado }) => {
+              if (cuitsCargando.has(cliente.cuit.replace(/\D/g, ''))) return null;
               const noMono = !esMonotributista(cliente);
               return (
               <TableRow key={cliente.id} className="group">
@@ -413,7 +421,7 @@ export function Dashboard() {
               </TableRow>
               );
             })}
-            {filtrados.length === 0 && (
+            {filtrados.length === 0 && cargando.length === 0 && (
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
                   No hay clientes que coincidan con los filtros aplicados.
@@ -425,7 +433,11 @@ export function Dashboard() {
         </div>
 
         <div className="space-y-3 p-4 lg:hidden">
+          {cargando.map(e => (
+            <CajaCargando key={e.key} cuit={e.cuit} nombre={e.nombre} progreso={e.progreso} mensaje={e.mensaje} />
+          ))}
           {filtrados.map(({ cliente, calc, estado }) => {
+            if (cuitsCargando.has(cliente.cuit.replace(/\D/g, ''))) return null;
             const noMono = !esMonotributista(cliente);
             const recategoriza = !noMono && calc.categoriaCorresponde.codigo !== cliente.categoria;
             return (
@@ -503,13 +515,57 @@ export function Dashboard() {
               </Link>
             );
           })}
-          {filtrados.length === 0 && (
+          {filtrados.length === 0 && cargando.length === 0 && (
             <div className="text-center py-10 text-muted-foreground">
               No hay clientes que coincidan con los filtros aplicados.
             </div>
           )}
         </div>
       </Card>
+    </div>
+  );
+}
+
+interface CajaCargandoProps {
+  cuit: string;
+  nombre: string;
+  progreso: number;
+  mensaje: string;
+}
+
+// Recuadro de un cliente que se está cargando: borde azul que recorre el perímetro (clase
+// `borde-cargando`, definida en index.css) + barra de progreso y el mensaje del momento. Sirve
+// tanto para la fila de la tabla (envuelto en una celda) como para la tarjeta mobile.
+function CajaCargando({ cuit, nombre, progreso, mensaje }: CajaCargandoProps) {
+  const pct = Math.max(0, Math.min(100, Math.round(progreso)));
+  return (
+    <div className="relative rounded-xl border border-border/50 bg-card">
+      <span className="borde-cargando" aria-hidden="true" />
+      <div className="relative flex items-center gap-3 px-3 py-2.5">
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="truncate font-medium leading-tight">
+                {nombre || `CUIT ${formatCuit(cuit)}`}
+              </div>
+              {nombre && (
+                <div className="text-xs tabular-nums text-muted-foreground">{formatCuit(cuit)}</div>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="hidden text-xs text-muted-foreground sm:inline">{mensaje}</span>
+              <span className="text-sm font-semibold tabular-nums text-primary">{pct}%</span>
+            </div>
+          </div>
+          <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-primary/10">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-500"
+              style={{ width: `${Math.max(4, pct)}%` }}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
