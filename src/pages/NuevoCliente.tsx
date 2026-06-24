@@ -13,6 +13,7 @@ import {
   XCircle,
   Users,
   ArrowRight,
+  Plus,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -129,6 +130,22 @@ export function NuevoCliente() {
   };
 
   const monitorear = () => iniciarCarga(elegidos, 'elegir');
+
+  // Arranca un alta nueva sin salir de la pantalla: la carga anterior sigue su curso en el contexto
+  // global (sobrevive a esto), sólo reseteamos el formulario al estado inicial. Navegar de nuevo a
+  // /clientes/nuevo no remonta este componente (misma ruta), por eso reseteamos a mano.
+  const cargarOtro = () => {
+    setPaso('credenciales');
+    setCuit('');
+    setClave('');
+    setMostrar(false);
+    setRepresentaOtros(false);
+    setError(null);
+    setRepresentados([]);
+    setSeleccionados(new Set());
+    setJobId(null);
+    setCancelandoAlta(false);
+  };
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -319,7 +336,11 @@ export function NuevoCliente() {
       {paso === 'monitoreando' && (
         <Card className="p-4 sm:p-7">
           {progreso?.estado === 'terminado' ? (
-            <ResultadoFinal progreso={progreso} onDashboard={() => navigate('/')} />
+            <ResultadoFinal
+              progreso={progreso}
+              onDashboard={() => navigate('/')}
+              onOtro={cargarOtro}
+            />
           ) : progreso?.estado === 'error' ? (
             <div className="flex items-start gap-3">
               <XCircle className="h-5 w-5 text-danger shrink-0 mt-0.5" />
@@ -345,10 +366,10 @@ export function NuevoCliente() {
                 <span className="text-muted-foreground tabular-nums">{progreso?.progreso ?? 0}%</span>
               </div>
               <div className="mt-5 rounded-lg bg-primary/8 border border-primary/15 px-3.5 py-2.5 text-xs text-muted-foreground">
-                La carga sigue en segundo plano. Podés volver al dashboard y seguir trabajando —
-                vas a ver el avance arriba, al lado de las notificaciones.
+                La carga sigue en segundo plano. Podés sumar otro cliente o volver al dashboard y
+                seguir trabajando — vas a ver el avance arriba, al lado de las notificaciones.
               </div>
-              <div className="flex items-center justify-between gap-2 mt-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 mt-4">
                 {cancelandoAlta ? (
                   <div className="flex items-center gap-1.5 text-sm">
                     <span className="text-muted-foreground">¿Cancelar el alta?</span>
@@ -377,9 +398,14 @@ export function NuevoCliente() {
                     Cancelar alta
                   </Button>
                 )}
-                <Button onClick={() => navigate('/')}>
-                  Volver al dashboard <ArrowRight className="h-4 w-4" />
-                </Button>
+                <div className="flex flex-wrap gap-2 ml-auto">
+                  <Button variant="outline" onClick={cargarOtro}>
+                    <Plus className="h-4 w-4" /> Cargar otro cliente
+                  </Button>
+                  <Button onClick={() => navigate('/')}>
+                    Volver al dashboard <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </>
           )}
@@ -392,9 +418,11 @@ export function NuevoCliente() {
 function ResultadoFinal({
   progreso,
   onDashboard,
+  onOtro,
 }: {
   progreso: JobProgreso;
   onDashboard: () => void;
+  onOtro: () => void;
 }) {
   const ok = progreso.resultados.filter(r => r.ok);
   const fallaron = progreso.resultados.filter(r => !r.ok);
@@ -440,7 +468,10 @@ function ResultadoFinal({
         ))}
       </div>
 
-      <div className="flex justify-end mt-6">
+      <div className="flex flex-wrap justify-end gap-2 mt-6">
+        <Button variant="outline" size="lg" onClick={onOtro}>
+          <Plus className="h-4 w-4" /> Cargar otro cliente
+        </Button>
         <Button size="lg" onClick={onDashboard}>
           Ir al dashboard
         </Button>
