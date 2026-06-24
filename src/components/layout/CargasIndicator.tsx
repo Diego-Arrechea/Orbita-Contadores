@@ -1,3 +1,4 @@
+import { useState, type MouseEvent } from 'react';
 import { Loader2, CheckCircle2, XCircle, X } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -13,7 +14,7 @@ import { useCargas, type CargaJob } from '@/context/CargasContext';
  * terminadas quedan con su resumen hasta que el contador las descarta.
  */
 export function CargasIndicator() {
-  const { cargas, activas, descartar } = useCargas();
+  const { cargas, activas, descartar, cancelar } = useCargas();
   if (cargas.length === 0) return null;
 
   const hayActivas = activas.length > 0;
@@ -42,7 +43,12 @@ export function CargasIndicator() {
         </div>
         <div className="max-h-80 overflow-auto p-2 space-y-2">
           {cargas.map(c => (
-            <CargaItem key={c.jobId} carga={c} onDescartar={() => descartar(c.jobId)} />
+            <CargaItem
+              key={c.jobId}
+              carga={c}
+              onDescartar={() => descartar(c.jobId)}
+              onCancelar={() => cancelar(c.jobId)}
+            />
           ))}
         </div>
       </DropdownMenuContent>
@@ -50,10 +56,25 @@ export function CargasIndicator() {
   );
 }
 
-function CargaItem({ carga, onDescartar }: { carga: CargaJob; onDescartar: () => void }) {
+function CargaItem({
+  carga,
+  onDescartar,
+  onCancelar,
+}: {
+  carga: CargaJob;
+  onDescartar: () => void;
+  onCancelar: () => void;
+}) {
+  const [confirmando, setConfirmando] = useState(false);
   const ok = carga.resultados.filter(r => r.ok).length;
   const fallaron = carga.resultados.filter(r => !r.ok).length;
   const enProceso = carga.estado === 'en_proceso';
+
+  // Evita que el click cierre el menú desplegable.
+  const frenar = (e: MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
 
   const subtitulo = enProceso
     ? carga.mensaje
@@ -78,8 +99,7 @@ function CargaItem({ carga, onDescartar }: { carga: CargaJob; onDescartar: () =>
         {!enProceso && (
           <button
             onClick={e => {
-              e.preventDefault();
-              e.stopPropagation();
+              frenar(e);
               onDescartar();
             }}
             className="text-muted-foreground hover:text-foreground shrink-0"
@@ -92,8 +112,41 @@ function CargaItem({ carga, onDescartar }: { carga: CargaJob; onDescartar: () =>
       {enProceso && (
         <div className="mt-2">
           <Progress value={carga.progreso} className="h-1.5" />
-          <div className="mt-1 text-right text-[11px] text-muted-foreground tabular-nums">
-            {carga.progreso}%
+          <div className="mt-1 flex items-center justify-between">
+            {confirmando ? (
+              <div className="flex items-center gap-2 text-[11px]">
+                <span className="text-muted-foreground">¿Cancelar el alta?</span>
+                <button
+                  onClick={e => {
+                    frenar(e);
+                    onCancelar();
+                  }}
+                  className="font-medium text-danger hover:underline"
+                >
+                  Sí, cancelar
+                </button>
+                <button
+                  onClick={e => {
+                    frenar(e);
+                    setConfirmando(false);
+                  }}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  No
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={e => {
+                  frenar(e);
+                  setConfirmando(true);
+                }}
+                className="text-[11px] text-muted-foreground hover:text-danger"
+              >
+                Cancelar alta
+              </button>
+            )}
+            <span className="text-[11px] text-muted-foreground tabular-nums">{carga.progreso}%</span>
           </div>
         </div>
       )}

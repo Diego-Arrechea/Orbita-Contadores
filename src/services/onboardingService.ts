@@ -6,7 +6,7 @@ export interface Representado {
 }
 
 export interface JobProgreso {
-  estado: 'en_proceso' | 'terminado' | 'error';
+  estado: 'en_proceso' | 'terminado' | 'error' | 'cancelado';
   progreso: number;
   mensaje: string;
   resultados: Array<{
@@ -37,6 +37,11 @@ export function iniciarMonitoreo(
 /** Estado del bootstrap en curso (para mover la barra de progreso). */
 export function getProgresoMonitoreo(jobId: string): Promise<JobProgreso> {
   return apiGet<JobProgreso>(`/onboarding/monitorear/${jobId}`);
+}
+
+/** Cancela un alta en curso: el backend aborta y deshace los clientes que esa alta hubiera creado. */
+export function cancelarMonitoreo(jobId: string): Promise<{ job_id: string; cancelado: boolean }> {
+  return apiPost(`/onboarding/monitorear/${jobId}/cancelar`, {});
 }
 
 export interface SubirCertResultado {

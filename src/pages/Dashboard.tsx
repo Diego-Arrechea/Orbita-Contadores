@@ -14,6 +14,7 @@ import {
   ArrowUp,
   ArrowDown,
   ChevronsUpDown,
+  Loader2,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -42,6 +43,7 @@ import { calcularCliente } from '@/lib/monotributo';
 import { esMonotributista, etiquetaRegimenCorta } from '@/lib/regimen';
 import { derivarAlertas, estadoDesdeAlertas } from '@/lib/alertas';
 import { useClientesReales } from '@/lib/queries';
+import { useCargas } from '@/context/CargasContext';
 import { cuentaActual } from '@/lib/cuenta';
 import { formatCuit, formatPercent, formatDate } from '@/lib/utils';
 import type { EstadoAlerta, TipoActividad } from '@/types';
@@ -144,6 +146,29 @@ export function Dashboard() {
         return factor * (va - vb);
       });
   }, [clientesConCalculo, busqueda, filtroAlerta, filtroActividad, ordenarPor, sentido]);
+
+  // Clientes que se están cargando ahora mismo (alta = trayendo sus comprobantes). Cada uno se
+  // muestra como una fila propia con borde animado + progreso, y se OCULTA su fila normal mientras
+  // tanto (evita el duplicado: alta directa crea el cliente al toque, aún sin datos). Al terminar la
+  // carga, el InvalidadorCache re-trae la cartera y la fila normal —ya con datos— aparece sola.
+  const { activas } = useCargas();
+  const cargando = useMemo(
+    () =>
+      activas.flatMap(c =>
+        c.clientes.map(cl => ({
+          key: `${c.jobId}:${cl.cuit}`,
+          cuit: cl.cuit,
+          nombre: cl.nombre,
+          progreso: c.progreso,
+          mensaje: c.mensaje,
+        })),
+      ),
+    [activas],
+  );
+  const cuitsCargando = useMemo(
+    () => new Set(cargando.map(e => e.cuit.replace(/\D/g, ''))),
+    [cargando],
+  );
 
   const propsOrden = { ordenarPor, sentido, onOrdenar: ordenarColumna };
 
