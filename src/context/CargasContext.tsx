@@ -17,6 +17,7 @@ import {
 } from 'react';
 import { getProgresoMonitoreo, type JobProgreso } from '@/services/onboardingService';
 import { ApiError } from '@/services/apiClient';
+import { formatCuit } from '@/lib/utils';
 
 export interface CargaCliente {
   cuit: string;
@@ -63,7 +64,8 @@ const DIA_MS = 24 * 60 * 60 * 1000;
 const HORA_MS = 60 * 60 * 1000; // un alta tarda minutos; > 1h en_proceso = job muerto
 
 function tituloDe(clientes: CargaCliente[]): string {
-  if (clientes.length === 1) return clientes[0].nombre;
+  // El nombre puede venir vacío (alta directa: se completa recién en la primera sync) → CUIT.
+  if (clientes.length === 1) return clientes[0].nombre || `CUIT ${formatCuit(clientes[0].cuit)}`;
   return `${clientes.length} clientes`;
 }
 

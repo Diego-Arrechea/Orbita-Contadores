@@ -42,6 +42,24 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-06-24-alta-cliente-directa',
+    fecha: '2026-06-24',
+    titulo: 'Alta de clientes más rápida',
+    resumen: 'Sumar un cliente ahora es directo: cargás sus datos y empieza a seguirse, sin pasos de más.',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'Cargás el CUIT y la clave fiscal de tu cliente y queda en seguimiento al instante, sin una pantalla intermedia.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Si el cliente representa a otro CUIT (una sociedad, un familiar, etc.), marcás esa opción y elegís a cuáles seguir.',
+      },
+    ],
+  },
+  {
     id: '2026-06-23-conciliacion-cierre',
     fecha: '2026-06-23',
     titulo: 'Conciliación bancaria más clara',
