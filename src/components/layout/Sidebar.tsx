@@ -71,9 +71,10 @@ function ContenidoSidebar({
     ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
     : nav;
 
-  // El avatar/ficha de la cuenta lleva a Configuración (y cierra el drawer en mobile).
+  // El avatar/ficha de la cuenta lleva directo a la pestaña Cuenta de Configuración
+  // (deep-link ?tab=cuenta) y cierra el drawer en mobile.
   function irAConfiguracion() {
-    navigate('/configuracion');
+    navigate('/configuracion?tab=cuenta');
     onNavegar?.();
   }
 
