@@ -39,6 +39,9 @@ export function NuevoCliente() {
   const [cuit, setCuit] = useState('');
   const [clave, setClave] = useState('');
   const [mostrar, setMostrar] = useState(false);
+  // Marca que el cliente representa a otros CUITs. Por defecto NO: el monotributista titular es su
+  // propio representante, así que se saltea el paso (lento) de listar representados.
+  const [representaOtros, setRepresentaOtros] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [representados, setRepresentados] = useState<Representado[]>([]);
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
@@ -68,11 +71,40 @@ export function NuevoCliente() {
   const puedeConectar = cuit.replace(/\D/g, '').length >= 10 && clave.length >= 4;
   const elegidos = representados.filter(r => seleccionados.has(r.cuit));
 
-  const conectar = async () => {
-    setPaso('listando');
+  const iniciarCarga = async (seleccionados: Representado[], volverA: Paso) => {
+    setPaso('monitoreando');
     setError(null);
     try {
-      const reps = await listarRepresentados(cuit.replace(/\D/g, ''), clave);
+      const { job_id } = await iniciarMonitoreo(cuit.replace(/\D/g, ''), clave, seleccionados);
+      setJobId(job_id);
+      // A partir de acá la carga la sigue el contexto global (sobrevive a la navegación).
+      registrarCarga(job_id, seleccionados);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setPaso(volverA);
+    }
+  };
+
+  const conectar = async () => {
+    const cuitLimpio = cuit.replace(/\D/g, '');
+    setError(null);
+
+    // Caso típico: el cliente es su propio representante → se arranca el monitoreo directo, sin
+    // pasar por la pantalla de elegir CUIT (se evita el paso lento de listar representados).
+    if (!representaOtros) {
+      if (yaEnCartera(cuitLimpio)) {
+        setError('Este cliente ya está en tu cartera.');
+        return;
+      }
+      // El nombre real se completa en la primera sincronización; va vacío a propósito.
+      iniciarCarga([{ cuit: cuitLimpio, nombre: '' }], 'credenciales');
+      return;
+    }
+
+    // El cliente representa a otros CUITs: traemos la lista para que elija a cuáles seguir.
+    setPaso('listando');
+    try {
+      const reps = await listarRepresentados(cuitLimpio, clave);
       setRepresentados(reps);
       // Autoseleccionamos sólo si hay uno solo y todavía no está en la cartera.
       setSeleccionados(
@@ -95,19 +127,7 @@ export function NuevoCliente() {
     });
   };
 
-  const monitorear = async () => {
-    setPaso('monitoreando');
-    setError(null);
-    try {
-      const { job_id } = await iniciarMonitoreo(cuit.replace(/\D/g, ''), clave, elegidos);
-      setJobId(job_id);
-      // A partir de acá la carga la sigue el contexto global (sobrevive a la navegación).
-      registrarCarga(job_id, elegidos);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setPaso('elegir');
-    }
-  };
+  const monitorear = () => iniciarCarga(elegidos, 'elegir');
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -122,7 +142,7 @@ export function NuevoCliente() {
         </Button>
         <h1 className="text-3xl font-semibold tracking-tight">Nuevo cliente</h1>
         <p className="text-base text-muted-foreground mt-2 max-w-xl">
-          Cargá el CUIT y la clave fiscal de tu cliente y elegí a quién querés seguir.
+          Cargá el CUIT y la clave fiscal de tu cliente para empezar a seguirlo.
         </p>
       </div>
 
@@ -186,6 +206,22 @@ export function NuevoCliente() {
                 </button>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setRepresentaOtros(v => !v)}
+              className="flex items-start gap-2.5 text-left w-full pt-1"
+            >
+              {representaOtros ? (
+                <CheckCircle2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+              ) : (
+                <Circle className="h-5 w-5 text-muted-foreground/40 shrink-0 mt-0.5" />
+              )}
+              <span className="text-xs text-muted-foreground leading-relaxed">
+                Este cliente representa a otro CUIT (factura también por una sociedad, un familiar,
+                etc.). Marcalo sólo si es así: vas a poder elegir a cuáles seguir.
+              </span>
+            </button>
           </div>
 
           {error && (
@@ -197,7 +233,7 @@ export function NuevoCliente() {
 
           {paso === 'credenciales' ? (
             <Button onClick={conectar} disabled={!puedeConectar} className="w-full mt-5" size="lg">
-              <KeyRound className="h-4 w-4" /> Conectar
+              <KeyRound className="h-4 w-4" /> {representaOtros ? 'Conectar' : 'Sumar cliente'}
             </Button>
           ) : (
             <Button disabled className="w-full mt-5" size="lg">
