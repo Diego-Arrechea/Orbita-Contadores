@@ -566,6 +566,9 @@ class AdminContadorResumen(BaseModel):
     comprobantes_total: int
     facturado_12m_total: float  # suma del facturado neto 12m de todos sus clientes
     syncs_problemas: int  # clientes cuya ÚLTIMA sincronización falló (sin resolver)
+    # Avisos por WhatsApp efectivamente activos: el contador prendió el canal Y tiene teléfono
+    # cargado (las dos condiciones que exige el motor de alertas para enviarle).
+    whatsapp_activo: bool = False
 
 
 class AdminContadorFichaOut(BaseModel):

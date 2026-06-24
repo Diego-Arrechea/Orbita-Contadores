@@ -158,6 +158,7 @@ export interface AdminContadorResumen {
   comprobantes_total: number;
   facturado_12m_total: number;
   syncs_problemas: number;
+  whatsapp_activo: boolean; // recibe avisos por WhatsApp (canal prendido + teléfono cargado)
 }
 
 /** Ficha completa de un contador: sus datos + resumen agregado + sus clientes. */
