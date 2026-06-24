@@ -161,6 +161,7 @@ export function Dashboard() {
           nombre: cl.nombre,
           progreso: c.progreso,
           mensaje: c.mensaje,
+          cancelando: !!c.cancelando,
         })),
       ),
     [activas],
@@ -304,7 +305,7 @@ export function Dashboard() {
             {cargando.map(e => (
               <TableRow key={e.key} className="hover:bg-transparent">
                 <TableCell colSpan={8} className="p-2">
-                  <CajaCargando cuit={e.cuit} nombre={e.nombre} progreso={e.progreso} mensaje={e.mensaje} />
+                  <CajaCargando cuit={e.cuit} nombre={e.nombre} progreso={e.progreso} mensaje={e.mensaje} cancelando={e.cancelando} />
                 </TableCell>
               </TableRow>
             ))}
@@ -434,7 +435,7 @@ export function Dashboard() {
 
         <div className="space-y-3 p-4 lg:hidden">
           {cargando.map(e => (
-            <CajaCargando key={e.key} cuit={e.cuit} nombre={e.nombre} progreso={e.progreso} mensaje={e.mensaje} />
+            <CajaCargando key={e.key} cuit={e.cuit} nombre={e.nombre} progreso={e.progreso} mensaje={e.mensaje} cancelando={e.cancelando} />
           ))}
           {filtrados.map(({ cliente, calc, estado }) => {
             if (cuitsCargando.has(cliente.cuit.replace(/\D/g, ''))) return null;
@@ -531,12 +532,13 @@ interface CajaCargandoProps {
   nombre: string;
   progreso: number;
   mensaje: string;
+  cancelando?: boolean;
 }
 
 // Recuadro de un cliente que se está cargando: borde azul que recorre el perímetro (clase
 // `borde-cargando`, definida en index.css) + barra de progreso y el mensaje del momento. Sirve
 // tanto para la fila de la tabla (envuelto en una celda) como para la tarjeta mobile.
-function CajaCargando({ cuit, nombre, progreso, mensaje }: CajaCargandoProps) {
+function CajaCargando({ cuit, nombre, progreso, mensaje, cancelando }: CajaCargandoProps) {
   const pct = Math.max(0, Math.min(100, Math.round(progreso)));
   return (
     <div className="relative rounded-xl border border-border/50 bg-card">
@@ -554,8 +556,14 @@ function CajaCargando({ cuit, nombre, progreso, mensaje }: CajaCargandoProps) {
               )}
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <span className="hidden text-xs text-muted-foreground sm:inline">{mensaje}</span>
-              <span className="text-sm font-semibold tabular-nums text-primary">{pct}%</span>
+              {cancelando ? (
+                <span className="text-xs font-medium text-muted-foreground">Cancelando…</span>
+              ) : (
+                <>
+                  <span className="hidden text-xs text-muted-foreground sm:inline">{mensaje}</span>
+                  <span className="text-sm font-semibold tabular-nums text-primary">{pct}%</span>
+                </>
+              )}
             </div>
           </div>
           <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-primary/10">
