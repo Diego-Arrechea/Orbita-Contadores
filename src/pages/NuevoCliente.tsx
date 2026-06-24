@@ -122,8 +122,8 @@ export function NuevoCliente() {
         </Button>
         <h1 className="text-3xl font-semibold tracking-tight">Nuevo cliente</h1>
         <p className="text-base text-muted-foreground mt-2 max-w-xl">
-          Ingresá la clave fiscal una sola vez. Leemos de ARCA los CUITs que representa y elegís a
-          cuáles querés monitorear.
+          Ingresá tu clave fiscal una sola vez: traemos a quienes tenés a cargo y elegís a cuáles
+          querés seguir.
         </p>
       </div>
 
@@ -135,10 +135,11 @@ export function NuevoCliente() {
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div>
-              <div className="font-semibold">Tu clave fiscal</div>
+              <div className="font-semibold">Sumá a tus clientes</div>
               <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-                Se usa para leer tus representados y traer sus comprobantes. Se guarda cifrada
-                para la sincronización diaria automática.
+                Con tu clave fiscal traemos la lista de quienes tenés a cargo para que elijas a
+                cuáles seguir. Queda guardada cifrada para mantener sus datos al día
+                automáticamente, sin que tengas que volver a cargarla.
               </div>
             </div>
           </div>
@@ -198,11 +199,11 @@ export function NuevoCliente() {
 
           {paso === 'credenciales' ? (
             <Button onClick={conectar} disabled={!puedeConectar} className="w-full mt-5" size="lg">
-              <KeyRound className="h-4 w-4" /> Conectar y leer mis representados
+              <KeyRound className="h-4 w-4" /> Conectar y ver a mis clientes
             </Button>
           ) : (
             <Button disabled className="w-full mt-5" size="lg">
-              <Loader2 className="h-4 w-4 animate-spin" /> Conectando con ARCA…
+              <Loader2 className="h-4 w-4 animate-spin" /> Buscando a tus clientes…
             </Button>
           )}
         </Card>
@@ -300,7 +301,7 @@ export function NuevoCliente() {
               <div className="flex items-center gap-2 mb-4">
                 <Loader2 className="h-4 w-4 text-primary animate-spin" />
                 <span className="text-xs uppercase tracking-wider text-primary font-semibold">
-                  Trayendo comprobantes de ARCA
+                  Trayendo sus comprobantes
                 </span>
               </div>
               <Progress value={progreso?.progreso ?? 0} className="h-2" />
@@ -345,7 +346,7 @@ function ResultadoFinal({
             {ok.length} {ok.length === 1 ? 'cliente conectado' : 'clientes conectados'}
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            Ya están en tu cartera con sus comprobantes sincronizados.
+            Ya están en tu cartera con sus comprobantes al día.
           </div>
         </div>
       </div>
