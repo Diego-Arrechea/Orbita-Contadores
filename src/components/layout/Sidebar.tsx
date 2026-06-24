@@ -71,6 +71,12 @@ function ContenidoSidebar({
     ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
     : nav;
 
+  // El avatar/ficha de la cuenta lleva a Configuración (y cierra el drawer en mobile).
+  function irAConfiguracion() {
+    navigate('/configuracion');
+    onNavegar?.();
+  }
+
   function salir() {
     // Registra el cierre para el panel admin (salvo durante una impersonación: el token es el del
     // contador y el que cierra es el admin de soporte, no queremos ensuciarle el "último cierre").
@@ -153,13 +159,19 @@ function ContenidoSidebar({
           <div className="flex flex-col items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-primary text-sm font-semibold">
+                <button
+                  type="button"
+                  onClick={irAConfiguracion}
+                  aria-label="Configurar mi cuenta"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-primary text-sm font-semibold transition-colors hover:bg-primary/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                >
                   {cuenta?.iniciales ?? '—'}
-                </div>
+                </button>
               </TooltipTrigger>
               <TooltipContent side="right">
                 {cuenta?.nombre ?? 'Invitado'}
                 {cuenta?.estudio ? ` · ${cuenta.estudio}` : ''}
+                {' · Configurar cuenta'}
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -177,15 +189,22 @@ function ContenidoSidebar({
           </div>
         ) : (
           <div className="rounded-xl bg-[hsl(var(--sidebar-hover))] p-3 flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary text-sm font-semibold">
-              {cuenta?.iniciales ?? '—'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-white truncate">{cuenta?.nombre ?? 'Invitado'}</div>
-              <div className="text-xs text-[hsl(var(--sidebar-muted))] truncate">
-                {cuenta?.estudio ?? ''}
+            <button
+              type="button"
+              onClick={irAConfiguracion}
+              title="Configurar mi cuenta"
+              className="flex flex-1 min-w-0 items-center gap-3 rounded-lg text-left transition-colors hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary text-sm font-semibold">
+                {cuenta?.iniciales ?? '—'}
               </div>
-            </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-white truncate">{cuenta?.nombre ?? 'Invitado'}</div>
+                <div className="text-xs text-[hsl(var(--sidebar-muted))] truncate">
+                  {cuenta?.estudio ?? ''}
+                </div>
+              </div>
+            </button>
             <button
               onClick={salir}
               className="text-[hsl(var(--sidebar-muted))] hover:text-white transition-colors p-1.5 rounded-md hover:bg-[hsl(var(--sidebar-hover))]"
