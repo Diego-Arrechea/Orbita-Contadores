@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Trash2, AlertTriangle } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -12,6 +13,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { eliminarCliente } from '@/services/clientesService';
+import { qkClientes } from '@/lib/queries';
 import type { Cliente } from '@/types';
 
 /**
@@ -35,6 +37,7 @@ export function EliminarClienteDialog({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
+  const qc = useQueryClient();
   const [openInterno, setOpenInterno] = useState(false);
   const open = openProp ?? openInterno;
   const setOpen = onOpenChange ?? setOpenInterno;
@@ -46,6 +49,16 @@ export function EliminarClienteDialog({
     setError(null);
     try {
       if (cliente.fuente === 'arca') await eliminarCliente(cliente.cuit);
+      // Refrescar la cartera: sin esto el cliente borrado sigue en la lista hasta recargar. Lo
+      // sacamos del cache al instante y reconciliamos con un invalidate.
+      const cuitLimpio = cliente.cuit.replace(/\D/g, '');
+      qc.setQueryData<Cliente[]>(qkClientes, prev =>
+        Array.isArray(prev)
+          ? prev.filter(c => (c.cuit ?? '').replace(/\D/g, '') !== cuitLimpio)
+          : prev,
+      );
+      qc.removeQueries({ queryKey: ['cliente', cliente.cuit] });
+      void qc.invalidateQueries({ queryKey: qkClientes });
       setOpen(false);
       onEliminado();
     } catch (e) {
