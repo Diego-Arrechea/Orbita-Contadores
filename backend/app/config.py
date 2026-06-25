@@ -69,6 +69,16 @@ class Settings(BaseSettings):
     sync_quiet_inicio: int = 0
     sync_quiet_fin: int = 8
 
+    # Motor de obtención de datos de ARCA:
+    #   "http"    = motor nuevo por requests (app/arca/afip.py vía app/arca/motor.py). Default.
+    #   "browser" = scrapers por navegador (app/scraping/*). Fallback INSTANTÁNEO: poné
+    #               MOTOR_SCRAPING=browser en el .env y vuelve atrás sin redeploy de código.
+    # Sólo los flujos MIGRADOS y VALIDADOS respetan el flag: comprobantes (sync e2e validado contra
+    # la DB, incl. consolidación USD→pesos) y representados. El resto va SIEMPRE por browser, aunque
+    # el flag sea "http": padrón/monotributo (la cuota necesita el "Cálculo de Deuda"/P02 oficial, no
+    # la sábana — verificado vs prod), deuda CCMA y bootstrap del cert.
+    motor_scraping: str = "http"
+
     # Navegador del scraping. True = headless (sin ventana; server/VPS y default).
     scraping_headless: bool = True
 

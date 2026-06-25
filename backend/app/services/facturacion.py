@@ -14,10 +14,9 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from .. import models
-from ..arca import wsfev1
+from ..arca import motor, wsfev1
 from ..config import settings
 from ..crypto import cifrar, descifrar
-from ..scraping import bootstrap
 
 ProgressCb = Callable[[int, str], None]
 
@@ -103,7 +102,7 @@ def asegurar_certificado(
         raise ValueError(f"El cliente {cuit} no tiene credencial de acceso guardada")
     clave = descifrar(contador.clave_cifrada).decode()
 
-    cert_pem, key_pem = bootstrap.bootstrap_cliente(
+    cert_pem, key_pem = motor.bootstrap_cliente(
         cuit_cliente=cuit,
         cuit_login=cliente.cuit_contador,
         clave=clave,
@@ -114,6 +113,53 @@ def asegurar_certificado(
     cliente.cert_actualizado_en = dt.datetime.now(dt.timezone.utc)
     db.commit()
     return cert_pem, key_pem
+
+
+# Sistemas de PV habilitados para facturar por Web Service (WSFEv1) en monotributo.
+# MAW = Factura Electrónica Monotributo Web Services (el que crea pventa_crear).
+_PV_SIS_WS = {"MAW"}
+
+
+def asegurar_punto_venta(db: Session, cuit: str, on_progress: ProgressCb | None = None) -> dict | None:
+    """Asegura que el cliente tenga un PV de Web Service para facturar; si no tiene, le
+    crea uno (sistema MAW). Es el último paso del onboarding de facturación que antes era
+    MANUAL. Idempotente: no duplica si ya hay uno.
+
+    Sólo por HTTP: el ABM de Puntos de Venta vive en afip.py (pvel). En homologación o con
+    el motor browser no se auto-crea (queda el alta manual en AFIP, como antes).
+    """
+    if settings.arca_homo or settings.motor_scraping != "http":
+        return None
+    cliente = db.get(models.ClienteARCA, cuit)
+    if cliente is None:
+        raise ValueError(f"Cliente {cuit} no registrado")
+    # 1) ¿Ya tiene un PV de WS? (autoritativo: el WS oficial; requiere el cert ya generado).
+    try:
+        ws = puntos_venta(db, cuit)
+    except Exception:  # noqa: BLE001 — si el WS falla, seguimos al chequeo por ABM
+        ws = None
+    if ws:
+        return ws[0]
+    contador = db.get(models.Contador, cliente.cuit_contador)
+    if contador is None:
+        raise ValueError(f"El cliente {cuit} no tiene credencial de acceso guardada")
+    clave = descifrar(contador.clave_cifrada).decode()
+    # 2) No figura en el WS. ¿Hay un MAW en el ABM (que no se propagó al WS aún)? No duplicar.
+    pvs = motor.puntos_venta_pvel(contador.cuit, clave)
+    existente = next(
+        (p for p in pvs if p.get("sistema") in _PV_SIS_WS and not p.get("baja") and not p.get("bloqueado")),
+        None,
+    )
+    if existente:
+        return existente
+    # 3) Crear el PV (MAW) y devolver el recién creado.
+    if on_progress:
+        on_progress(85, "Creando el punto de venta…")
+    motor.crear_punto_venta(contador.cuit, clave, nombre="Órbita", sistema="MAW")
+    pvs = motor.puntos_venta_pvel(contador.cuit, clave)
+    return next(
+        (p for p in pvs if p.get("sistema") in _PV_SIS_WS and not p.get("baja")), None
+    )
 
 
 def emitir(
@@ -138,10 +184,14 @@ def emitir(
 
     cert_bytes, key_bytes, cuit_emisor = _cert_y_emisor(db, cuit, on_progress)
 
-    # Auto-detectar el punto de venta Web Service si no se forzó uno. Si el cliente no tiene ninguno,
-    # SinPuntoVenta → el front muestra el tutorial para darlo de alta en AFIP.
+    # Auto-detectar el punto de venta Web Service si no se forzó uno.
     if not punto_venta:
         pvs = wsfev1.listar_puntos_venta(cuit_emisor, cert_bytes, key_bytes)
+        if not pvs and not settings.arca_homo:
+            # No tiene PV de WS: lo creamos (MAW) automáticamente y re-detectamos. Si aún
+            # no aparece (propagación), cae en SinPuntoVenta y el front muestra el tutorial.
+            asegurar_punto_venta(db, cuit)
+            pvs = wsfev1.listar_puntos_venta(cuit_emisor, cert_bytes, key_bytes)
         if pvs:
             punto_venta = pvs[0]["nro"]
         elif settings.arca_homo:
