@@ -117,7 +117,8 @@ URL_LOGIN = f"{BASE_AUTH}/contribuyente_/login.xhtml"
 URL_LOGIN_CLAVE = f"{BASE_AUTH}/contribuyente_/loginClave.xhtml"
 URL_PORTAL_LOGIN = "https://portalcf.cloud.afip.gob.ar/portal/login"
 URL_PORTAL_APP = "https://portalcf.cloud.afip.gob.ar/portal/app/"
-URL_PORTAL_API = "https://portalcf.cloud.afip.gob.ar/portal/api/servicios"
+URL_PORTAL_API_BASE = "https://portalcf.cloud.afip.gob.ar/portal/api"
+URL_PORTAL_API = f"{URL_PORTAL_API_BASE}/servicios"
 
 # Mis Comprobantes (mcmp) en fes.afip.gob.ar
 FES_BASE = "https://fes.afip.gob.ar/mcmp/jsp"
@@ -838,12 +839,21 @@ class AFIP:
         deadline = time.time() + 75
         intento = 0
         while time.time() < deadline:
+            resp = None
             try:
                 self.abrir_servicio("admin_mono")
-                html = self.session.get(MONO_SELEC).text  # arma contexto -> dashboard
+                resp = self.session.get(MONO_SELEC)  # arma contexto -> dashboard
+                html = resp.text
             except (AFIPError, requests.RequestException) as e:
                 self.log.debug("Monotributo intento %d: %s", intento, e)
                 html = ""
+            # Redirección al Registro Único Tributario (vRut.aspx): el CUIT tiene el
+            # servicio adherido pero NO hay dashboard de Monotributo activo (típico de
+            # quien pasó a Responsable Inscripto). Es estable, no transitorio -> cortamos
+            # como NO monotributista (el régimen real lo confirman los comprobantes).
+            if resp is not None and ("vRut.aspx" in resp.url or "ARCA | RUT" in html):
+                self.log.info("Monotributo: redirige al RUT (vRut) -> no es monotributista.")
+                return {"categoria": None, "actividad": None, "es_monotributista": False}
             if "spanFacturometroCategoria" in html or re.search(r"Categor[ií]a\s+[A-K]\s", html):
                 cargo = True
                 break
@@ -1367,6 +1377,26 @@ class AFIP:
             reps = [{"cuit": self.cuit, "nombre": f"Titular {self.cuit}"}]
         self.log.info("Representados: %d", len(reps))
         return reps
+
+    def nombre_contribuyente(self, cuit: str | None = None) -> str | None:
+        """Nombre/razón social del contribuyente (el 'Está operando como' que el browser
+        leía del navbar). Lo trae del portal: GET /portal/api/persona/{cuit}.
+        FISICA -> 'APELLIDO NOMBRE' (formato del padrón); JURIDICA -> razón social.
+        Devuelve None si no se pudo (el caller conserva el nombre previo, no lo pisa)."""
+        cuit = cuit or self.cuit
+        try:
+            r = self.session.get(
+                f"{URL_PORTAL_API_BASE}/persona/{cuit}",
+                headers={"Accept": "application/json, text/plain, */*", "Referer": URL_PORTAL_APP},
+            )
+            d = (r.json() or {}).get("data") or {}
+        except Exception:  # noqa: BLE001
+            return None
+        razon = (d.get("razonSocial") or d.get("denominacion") or "").strip()
+        if razon:
+            return razon
+        nombre = f"{(d.get('apellido') or '').strip()} {(d.get('nombre') or '').strip()}".strip()
+        return nombre or None
 
     # --- Administrador de Relaciones: alta de relación (delegar un servicio) -
     # adminrel en serviciosweb (ASP.NET WebForms "clásico", __VIEWSTATE 'dDw...').
