@@ -147,8 +147,8 @@ def descargar(
 ) -> tuple[str | None, dict[str, list[dict]]]:
     """Trae las secciones del `plan` por HTTP. Devuelve (nombre, {direccion: [dicts]}).
 
-    `nombre` es None (afip.py no expone el nombre del contribuyente desde mcmp; el
-    upsert sólo pisa `cliente.nombre` si viene truthy, así que None lo conserva).
+    `nombre` = nombre/razón social del contribuyente (del portal, /api/persona); None si
+    no se pudo leer (el upsert sólo pisa `cliente.nombre` si viene truthy, así lo conserva).
     """
     total = sum(len(p.get("rangos") or []) for p in plan)
     paso = 0
@@ -172,7 +172,8 @@ def descargar(
                     vistos.add(k)
                     comps.append(m)
         out[direccion] = comps
-    return None, out
+    # Nombre real del contribuyente (lo que el browser leía del navbar de Mis Comprobantes).
+    return afip.nombre_contribuyente(cuit_cliente), out
 
 
 def _cuota_desde_deuda(det: dict) -> dict:
