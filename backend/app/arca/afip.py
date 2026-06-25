@@ -802,6 +802,27 @@ class AFIP:
             time.sleep(1.5)
         return d
 
+    def _mono_elegir_representado(self, html: str) -> tuple[str, str]:
+        """Elige el contribuyente propio en la grilla de SelecRepresentado (claves que
+        representan a VARIOS). Replica el JS del panel (`#hID = usr; #btnAcceder.click()`)
+        con un POST ASP.NET. Devuelve (html, url) del resultado (Inicio.aspx o vRut.aspx);
+        si no había grilla o el POST falla, devuelve (html, '')."""
+        if "ContentPlaceHolder1$hID" not in html:
+            return html, ""
+        data: dict = {}
+        for m in re.finditer(r'<input\b[^>]*\btype="hidden"[^>]*>', html, re.I):
+            nm = re.search(r'\bname="([^"]*)"', m.group(0))
+            if nm:
+                vl = re.search(r'\bvalue="([^"]*)"', m.group(0))
+                data[nm.group(1)] = vl.group(1) if vl else ""
+        data["ctl00$ContentPlaceHolder1$hID"] = self.cuit
+        data["ctl00$ContentPlaceHolder1$btnAcceder"] = ""
+        try:
+            r = self.session.post(MONO_SELEC, data=data, headers={"Referer": MONO_SELEC})
+            return r.text, r.url
+        except requests.RequestException:
+            return html, ""
+
     def monotributo(self) -> dict:
         """Abre el servicio Monotributo y devuelve los datos del panel de inicio.
 
@@ -839,19 +860,23 @@ class AFIP:
         deadline = time.time() + 75
         intento = 0
         while time.time() < deadline:
-            resp = None
+            html, url = "", ""
             try:
                 self.abrir_servicio("admin_mono")
                 resp = self.session.get(MONO_SELEC)  # arma contexto -> dashboard
-                html = resp.text
+                html, url = resp.text, resp.url
             except (AFIPError, requests.RequestException) as e:
                 self.log.debug("Monotributo intento %d: %s", intento, e)
-                html = ""
+            # Clave que representa a VARIOS contribuyentes: SelecRepresentado muestra una
+            # grilla de paneles y NO redirige sola al dashboard -> elegimos el propio
+            # (click en su panel = setear hID + btnAcceder), que lleva a Inicio o a vRut.
+            if "ContentPlaceHolder1$hID" in html:
+                html, url = self._mono_elegir_representado(html)
             # Redirección al Registro Único Tributario (vRut.aspx): el CUIT tiene el
             # servicio adherido pero NO hay dashboard de Monotributo activo (típico de
             # quien pasó a Responsable Inscripto). Es estable, no transitorio -> cortamos
             # como NO monotributista (el régimen real lo confirman los comprobantes).
-            if resp is not None and ("vRut.aspx" in resp.url or "ARCA | RUT" in html):
+            if "vRut.aspx" in url or "ARCA | RUT" in html:
                 self.log.info("Monotributo: redirige al RUT (vRut) -> no es monotributista.")
                 return {"categoria": None, "actividad": None, "es_monotributista": False}
             if "spanFacturometroCategoria" in html or re.search(r"Categor[ií]a\s+[A-K]\s", html):
