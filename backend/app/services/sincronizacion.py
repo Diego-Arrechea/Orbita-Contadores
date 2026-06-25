@@ -16,9 +16,10 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..arca import motor
 from ..config import settings
 from ..crypto import descifrar
-from ..scraping import ccma, miscomprobantes, padron
+from ..scraping import miscomprobantes  # sólo helpers motor-agnósticos: ventanas() + PLAN_*
 
 
 def _parse_fecha(yyyymmdd: str) -> dt.date:
@@ -204,7 +205,7 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
     ]
     inicio = time.monotonic()
     try:
-        nombre, datos = miscomprobantes.descargar(
+        nombre, datos = motor.descargar(
             contador.cuit, clave, cuit, plan, headless=headless, on_progress=on_progress
         )
         if nombre:  # nombre real del contribuyente desde el navbar de Mis Comprobantes
@@ -236,7 +237,7 @@ def sincronizar_padron(db: Session, cuit: str, headless: bool | None = None) -> 
     # Trae la categoría/datos del padrón del CUIT objetivo. Si es representado (≠ contador),
     # datos_monotributo fija "actuando en representación" y verifica el CUIT (guard anti-cruce):
     # devuelve {} si la representación no tomó, así nunca se le atribuye la categoría del contador.
-    datos = padron.datos_monotributo(contador.cuit, clave, cuit_objetivo=cuit, headless=headless)
+    datos = motor.datos_monotributo(contador.cuit, clave, cuit_objetivo=cuit, headless=headless)
     # Régimen AUTORITATIVO del padrón (fuente oficial): si el portal de Monotributo abrió, es
     # monotributista; si no abrió, ARCA confirma que NO lo es. Sólo lo pisamos con una señal real
     # (no con None) para no borrar un valor previo si el padrón falló a medias.
@@ -294,7 +295,7 @@ def sincronizar_deuda(db: Session, cuit: str, headless: bool | None = None) -> d
     if contador is None:
         raise ValueError(f"El cliente {cuit} no tiene un contador con clave guardada")
     clave = descifrar(contador.clave_cifrada).decode()
-    res = ccma.consultar_deuda(contador.cuit, clave, cuit_objetivo=cuit, headless=headless)
+    res = motor.consultar_deuda(contador.cuit, clave, cuit_objetivo=cuit, headless=headless)
     if isinstance(res.get("deuda_detalle"), dict):
         cliente.deuda_detalle = json.dumps(res["deuda_detalle"], ensure_ascii=False)
         for campo in ("cuota_estado", "cuota_deuda", "cuota_saldo_favor"):

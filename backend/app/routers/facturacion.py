@@ -206,6 +206,13 @@ def _correr_preparacion(job_id: str, cuit: str) -> None:
             jobs.actualizar(job_id, progreso=min(99, max(0, pct)), mensaje=msg)
 
         facturacion_svc.asegurar_certificado(db, cuit, on_progress=prog)
+        # Tras el cert, el último paso del onboarding: asegurar el punto de venta de WS
+        # (lo crea solo si falta; antes era manual). Best-effort: si falla, el cert ya está
+        # y emitir() lo reintenta / el front muestra el tutorial.
+        try:
+            facturacion_svc.asegurar_punto_venta(db, cuit, on_progress=prog)
+        except Exception:  # noqa: BLE001
+            pass
         jobs.actualizar(job_id, estado="terminado", progreso=100, mensaje="Facturación habilitada")
     except Exception as e:  # noqa: BLE001
         jobs.actualizar(

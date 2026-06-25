@@ -11,8 +11,8 @@ from ..crypto import cifrar
 from ..db import SessionLocal
 from ..schemas import JobOut, MonitorearIn, OnboardingIn, RepresentadoOut
 from ..security import usuario_actual
+from ..arca import motor
 from ..scraping import jobs
-from ..scraping import onboarding as scraping
 from ..services import sincronizacion
 
 router = APIRouter(prefix="/api/onboarding", tags=["onboarding"])
@@ -27,7 +27,7 @@ class _CargaCancelada(Exception):
 def listar_representados(datos: OnboardingIn, _usuario: models.Usuario = Depends(usuario_actual)):
     """Loguea con la clave del contador y devuelve sus CUITs operables (él + representados)."""
     try:
-        return scraping.listar_representados(datos.cuit, datos.clave)
+        return motor.listar_representados(datos.cuit, datos.clave)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(
             status_code=502, detail=f"No se pudieron leer los representados: {e}"
