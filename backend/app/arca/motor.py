@@ -15,7 +15,11 @@ WS de Facturación Electrónica). Ya no queda nada atado SIEMPRE al browser.
 """
 from __future__ import annotations
 
+import logging
+
 from ..config import settings
+
+_log = logging.getLogger("orbita.motor")
 
 
 def _http() -> bool:
@@ -35,7 +39,16 @@ def descargar(
     if _http():
         from . import motor_http
 
-        return motor_http.descargar(cuit_login, clave, cuit_cliente, plan, on_progress=on_progress)
+        try:
+            return motor_http.descargar(cuit_login, clave, cuit_cliente, plan, on_progress=on_progress)
+        except Exception as e:  # noqa: BLE001
+            # 'Error DB (n)': el AJAX generarConsulta de Mis Comprobantes falla en ARCA para
+            # ciertos CUITs puntuales (mismos parámetros que andan en el resto de la cartera; el
+            # browser, que baja el CSV, sí los trae). Fallback puntual al browser SÓLO para ese
+            # cliente; los demás siguen por HTTP. Cualquier otro error se propaga normal.
+            if "Error DB" not in str(e):
+                raise
+            _log.warning("mcmp HTTP 'Error DB' para %s -> fallback al browser", cuit_cliente)
     from ..scraping import miscomprobantes
 
     return miscomprobantes.descargar(
