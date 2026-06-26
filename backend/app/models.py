@@ -214,6 +214,10 @@ class ComprobanteEmitido(Base):
     # devuelve FECAESolicitar); los traídos de Mis Comprobantes quedan en "". Necesario para imprimir
     # la representación del comprobante (el vto del CAE va en el pie, RG 5616).
     cae_vto: Mapped[str] = mapped_column(String(10), default="")
+    # Condición frente al IVA del RECEPTOR (RG 5616): 1 RI · 4 Exento · 5 Consumidor Final · 6 Monotributo.
+    # Sólo en comprobantes emitidos desde la app (es el dato que se eligió al emitir); se imprime en la
+    # representación del comprobante. NULL = no registrada (filas previas a esta columna).
+    condicion_iva_receptor: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sincronizado_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

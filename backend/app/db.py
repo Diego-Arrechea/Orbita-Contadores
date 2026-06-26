@@ -192,6 +192,10 @@ def _migrar_comprobantes_emitidos(conn) -> None:
         conn.execute(
             text("ALTER TABLE comprobantes_emitidos ADD COLUMN cae_vto VARCHAR(10) DEFAULT ''")
         )
+    if "condicion_iva_receptor" not in cols:
+        conn.execute(
+            text("ALTER TABLE comprobantes_emitidos ADD COLUMN condicion_iva_receptor INTEGER")
+        )
 
 
 def asegurar_columnas() -> None:
