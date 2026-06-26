@@ -33,6 +33,7 @@ import {
   type PuntoVenta,
 } from '@/services/facturacionService';
 import { usePreparaciones } from '@/context/PreparacionesContext';
+import { TOPE_PRECIO_UNITARIO } from '@/data/categorias';
 import type { Cliente } from '@/types';
 
 /** Condición frente al IVA del receptor (RG 5616) → código + tipo de documento asociado. */
@@ -164,6 +165,14 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
     importeNum > 0 &&
     (!cond.requiereCuit || cuitDigits.length === 11) &&
     (tipo === 'factura' || Number(ncNumero) > 0);
+
+  // El precio unitario máximo sólo aplica a la venta de productos (concepto 1 o 3), no a servicios,
+  // y no tiene sentido en una nota de crédito. Es un aviso NO bloqueante: como acá se carga un
+  // importe total (sin desglose de unidades), no sabemos si es un único producto o varios; por eso
+  // sólo advertimos y dejamos que el contador decida.
+  const esVentaProductos = concepto === 1 || concepto === 3;
+  const superaPrecioUnitario =
+    tipo === 'factura' && esVentaProductos && importeNum > TOPE_PRECIO_UNITARIO;
 
   const cerrar = (o: boolean) => {
     if (!o && paso === 'emitiendo') return; // una emisión en curso no se interrumpe
@@ -468,6 +477,8 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
                   )}
                 </div>
               </div>
+
+              {superaPrecioUnitario && <AvisoPrecioUnitario />}
             </div>
 
             <DialogFooter>
@@ -512,6 +523,8 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
               {pvSel != null && <Fila k="Punto de venta" v={String(pvSel)} />}
               <Fila k="Importe" v={formatCurrency(importeNum)} destacado />
             </div>
+
+            {superaPrecioUnitario && <AvisoPrecioUnitario />}
 
             {error && (
               <div className="flex items-start gap-2 rounded-lg bg-danger/10 border border-danger/30 px-3 py-2.5 text-sm">
@@ -602,6 +615,20 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Aviso (no bloqueante) cuando el importe de una venta de productos supera el precio unitario máximo. */
+function AvisoPrecioUnitario() {
+  return (
+    <div className="flex items-start gap-2 rounded-lg bg-warning/15 border border-warning/30 px-3 py-2.5 text-sm text-warning-foreground">
+      <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+      <span>
+        El importe supera el precio unitario máximo para la venta de productos del monotributo
+        ({formatCurrency(TOPE_PRECIO_UNITARIO)}). Si es por un solo producto, no deberías facturarlo
+        por encima de ese valor; si son varias unidades, podés continuar.
+      </span>
+    </div>
   );
 }
 

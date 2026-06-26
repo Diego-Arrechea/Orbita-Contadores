@@ -512,6 +512,7 @@ function construirCliente(seed: ClienteSeed): Cliente {
     tipoActividad: seed.tipoActividad,
     fechaInicio: seed.fechaInicio,
     notas: seed.notas,
+    relacionDependencia: false,
     estadoAlerta: seed.estadoAlerta,
     ultimaExtraccion: fechaUltima.toISOString(),
     resultadoUltimaExtraccion: seed.resultadoUltimaExtraccion,

@@ -180,6 +180,10 @@ def _migrar_clientes_arca(conn) -> None:
     # comprobante emitido. JSON serializado. Portable: TEXT anda igual en SQLite y Postgres.
     if "emisor_fiscal_json" not in cols:
         conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN emisor_fiscal_json TEXT"))
+    # ¿Tiene relación de dependencia? (valor auto-detectado; el override manual va en edicion_json).
+    # BOOLEAN anda igual en SQLite y Postgres.
+    if "relacion_dependencia" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN relacion_dependencia BOOLEAN"))
 
 
 def _migrar_comprobantes_emitidos(conn) -> None:

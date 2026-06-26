@@ -5,9 +5,11 @@ export const CONFIGURACION_INICIAL: Configuracion = {
   // Ventanas de recategorización oficiales (vencen 5/8 y 5/2), generadas a partir de la fecha
   // actual para que nunca queden vencidas. Ver src/lib/recategorizacion.ts.
   ventanas: ventanasRecategorizacion(),
-  // Inflación mensual estimada para proyectar la facturación a 12 meses (compuesta). Es el valor que
-  // usa el cálculo (vía CONFIGURACION_INICIAL); editalo según el escenario. 0.02 = 2%/mes; 0 = sin inflación.
+  // Inflación mensual para proyectar la facturación a 12 meses (compuesta). Por defecto la app usa la
+  // inflación esperada del mercado (inflacionAuto = true); este valor MANUAL es el fallback / override
+  // que el contador puede fijar. 0.02 = 2%/mes; 0 = sin inflación.
   inflacionMensualProyeccion: 0.02,
+  inflacionAuto: true,
   // Criterio por tipo de alerta (umbral + re-aviso por subida). Reemplaza los umbrales globales.
   // Defaults equivalentes a los viejos umbrales. reavisarSubidaPct 0.10 = re-avisar al subir +10pp.
   // Estos defaults coinciden con ALERTAS_DEFAULT del backend (services/alertas.py): cambiá los dos.

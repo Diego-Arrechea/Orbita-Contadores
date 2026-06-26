@@ -102,16 +102,16 @@ export function Dashboard() {
   // La cartera de ejemplo (mock) sólo se ve en cuentas "de ejemplo"; una cuenta nueva arranca vacía.
   const mock = cuenta?.datosEjemplo ? CLIENTES : [];
 
-  const { config } = useConfig();
+  const { config, inflacionEfectiva } = useConfig();
   const clientesConCalculo = useMemo(
     () =>
       [...reales, ...mock].map(c0 => {
         const c = c0; // el backend ya devuelve el cliente con las ediciones del contador aplicadas
-        const calc = calcularCliente(c, config.ventanas, config.inflacionMensualProyeccion);
+        const calc = calcularCliente(c, config.ventanas, inflacionEfectiva);
         const alertas = derivarAlertas(c, calc, config);
         return { cliente: c, calc, alertas, estado: estadoDesdeAlertas(alertas, c) };
       }),
-    [reales, cuenta?.datosEjemplo, config],
+    [reales, cuenta?.datosEjemplo, config, inflacionEfectiva],
   );
 
   const filtrados = useMemo(() => {

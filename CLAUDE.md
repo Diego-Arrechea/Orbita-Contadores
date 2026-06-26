@@ -61,8 +61,8 @@ Typecheck front: `npx tsc -b`. Compilar backend: `python -m py_compile app/<arch
   de `src/data/novedades.ts`, redactada en lenguaje de usuario (misma regla de producto: nada de
   scraping/ARCA/etc.). Se publica con el deploy y aparece en `/novedades` y en el indicador del
   header. Si el deploy es sólo interno (refactor, infra), no hace falta. ⚠️ **Sólo describí
-  funciones que el CONTADOR puede usar**: nada admin-only (p. ej. la facturación electrónica hoy
-  está restringida a admin → no va como novedad hasta que se habilite a los contadores).
+  funciones que el CONTADOR puede usar**: nada admin-only. (La facturación electrónica ya está
+  habilitada para todos los contadores desde 2026-06-26, así que sus mejoras SÍ van como novedad.)
 - **Frontend → Vercel**: push a `main` redespliega solo. Dominio
   `contadores.orbitaglobalmarketing.com`. `.vercelignore` excluye `backend/` (no tocar `index.html`).
 - **Backend → VPS** (`185.249.227.86`, Docker, Postgres). Subdominio

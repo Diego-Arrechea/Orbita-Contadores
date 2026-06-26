@@ -52,7 +52,7 @@ import {
 import { CATEGORIAS } from '@/data/categorias';
 import { useConfig } from '@/context/ConfigContext';
 import { CAUSALES_EXCLUSION } from '@/data/causales';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatDate, formatPercent } from '@/lib/utils';
 import {
   cambiarPassword,
   getMe,
@@ -79,7 +79,7 @@ export function Configuracion() {
   // Deep-link opcional ?tab= (ej. el modal de alertas abre directo en la pestaña Alertas).
   const tabParam = searchParams.get('tab');
   const [tab, setTab] = useState(tabParam && TABS_VALIDAS.includes(tabParam) ? tabParam : 'ventanas');
-  const { config, guardarConfig } = useConfig();
+  const { config, guardarConfig, inflacionMercado } = useConfig();
   const [conf, setConf] = useState(config);
   // El provider arranca en defaults y refina con lo guardado de la cuenta: cuando llega, refrescamos
   // el formulario (si el usuario ya estaba editando con el backend frío —caso raro—, se le pisa).
@@ -258,6 +258,7 @@ export function Configuracion() {
       await guardarConfig({
         alertas: conf.alertas,
         inflacionMensualProyeccion: conf.inflacionMensualProyeccion,
+        inflacionAuto: conf.inflacionAuto,
       });
       setGuardado('alertas');
     } catch (e) {
@@ -532,17 +533,34 @@ export function Configuracion() {
             <Separator className="my-5" />
             <TarjetaAlerta
               titulo="Inflación mensual estimada (proyección)"
-              descripcion="Proyecta la facturación a 12 meses (compuesta) para anticipar el cruce de tope."
-              activo={true}
-              onToggle={() => {}}
-              ocultarInterruptor
+              descripcion="Proyecta la facturación a 12 meses (compuesta) para anticipar el cruce de tope. Activada, usa la inflación esperada del mercado; desactivala para fijar un valor propio."
+              activo={conf.inflacionAuto}
+              onToggle={() => setConf({ ...conf, inflacionAuto: !conf.inflacionAuto })}
             >
-              <CampoInline
-                label="Inflación mensual"
-                value={Math.round(conf.inflacionMensualProyeccion * 1000) / 10}
-                sufijo="%"
-                onChange={(v) => setConf({ ...conf, inflacionMensualProyeccion: v / 100 })}
-              />
+              {conf.inflacionAuto ? (
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {inflacionMercado ? (
+                    <>
+                      Usando <span className="font-medium text-foreground">{formatPercent(inflacionMercado.mensual, 1)} mensual</span>{' '}
+                      ({formatPercent(inflacionMercado.interanual, 1)} a 12 meses), según las expectativas
+                      de mercado, actualizado al {formatDate(inflacionMercado.fecha, 'long')}.
+                    </>
+                  ) : (
+                    <>
+                      Por ahora usamos una estimación por defecto de{' '}
+                      <span className="font-medium text-foreground">{formatPercent(conf.inflacionMensualProyeccion, 1)} mensual</span>:
+                      no pudimos traer el valor de mercado en este momento.
+                    </>
+                  )}
+                </p>
+              ) : (
+                <CampoInline
+                  label="Inflación mensual"
+                  value={Math.round(conf.inflacionMensualProyeccion * 1000) / 10}
+                  sufijo="%"
+                  onChange={(v) => setConf({ ...conf, inflacionMensualProyeccion: v / 100 })}
+                />
+              )}
             </TarjetaAlerta>
 
             <div className="flex items-center justify-end gap-3 mt-5">

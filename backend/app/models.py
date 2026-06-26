@@ -141,6 +141,12 @@ class ClienteARCA(Base):
     prox_venc_fecha: Mapped[str | None] = mapped_column(String(20), nullable=True)
     prox_venc_importe: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
     debito_automatico: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # ¿El cliente tiene relación de dependencia (trabajo en blanco)? Dato relevante para el contador:
+    # parte de las compras a "consumidor final" pueden quedar justificadas por el haber percibido.
+    # Esta columna guarda el valor DETECTADO automáticamente (de momento sin completar por la sync;
+    # queda en None hasta validar la señal de ARCA). El contador puede marcarlo a mano: ese override
+    # vive en edicion_json (clave relacionDependencia) y gana sobre esta columna. Ver clientes.py.
+    relacion_dependencia: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # Facturómetro del portal Monotributo: ingresos brutos de los últimos 12 meses según ARCA
     # (facturacion_12m), tope oficial de la categoría actual (tope_categoria) y la fecha de corte que
     # informa ARCA (facturometro_actualizado, dd/mm/aaaa). Numerador y denominador OFICIALES del gauge

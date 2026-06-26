@@ -1,11 +1,13 @@
+import { useState } from 'react';
 import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Building2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ProgresoTope } from '@/components/shared/ProgresoTope';
-import { formatCurrency, formatDate, formatPercent } from '@/lib/utils';
+import { cn, formatCurrency, formatDate, formatPercent } from '@/lib/utils';
 import { getCategoria } from '@/data/categorias';
 import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
 import { esAdminReal } from '@/lib/cuenta';
+import { useConfig } from '@/context/ConfigContext';
 import { VerDetalle } from '@/components/cliente/VerDetalle';
 import { detallesSituacion } from '@/lib/trazabilidad';
 import type { CalculoCliente } from '@/lib/monotributo';
@@ -19,6 +21,10 @@ interface Props {
 }
 
 export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
+  const { config, inflacionMercado } = useConfig();
+  // Toggle del visor del tope: "Hoy" vs "Ajustado por inflación" (declarado antes de cualquier
+  // return para no romper el orden de hooks).
+  const [verInflacion, setVerInflacion] = useState(false);
   if (!esMonotributista(cliente)) {
     const esRI = cliente.regimen === 'responsable_inscripto';
     return (
@@ -62,6 +68,16 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
   const topeMostrado = topeOficialValido ? cliente.topeCategoriaOficial! : categoriaActual.topeAnual;
   const porcentajeMostrado = topeMostrado > 0 ? facturacionMostrada / topeMostrado : 0;
 
+  // Visor del tope en modo "Hoy" (foto actual contra los topes vigentes) vs "Ajustado por inflación"
+  // (proyección de la facturación a 12m contra los topes ya actualizados por la inflación del
+  // semestre). Sirve para ver que, con el ritmo actual, la suba de topes por inflación evita pasarse
+  // de categoría. Todo lo "con inflación" ya viene calculado en el motor (calc.*).
+  const facturacionVista = verInflacion ? calc.facturacionConInflacion : facturacionMostrada;
+  const topeVista = verInflacion ? calc.topeCategoriaConInflacion : topeMostrado;
+  const porcentajeVista = topeVista > 0 ? facturacionVista / topeVista : porcentajeMostrado;
+  const categoriaVista = verInflacion ? calc.categoriaConInflacion.codigo : cliente.categoria;
+  const cambiaCategoriaInflacion = calc.categoriaConInflacion.codigo !== cliente.categoria;
+
   // Trazabilidad: explicación de cada valor calculado de esta vista (ver botones ⓘ).
   const d = detallesSituacion(cliente, calc);
 
@@ -71,9 +87,9 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1 inline-flex items-center gap-1.5">
-              Facturación últimos 12 meses
-              <VerDetalle detalle={d.facturacion12m} />
-              {!tieneOficial && calc.mesesConActividad < 12 && (
+              {verInflacion ? 'Facturación proyectada a 12 meses' : 'Facturación últimos 12 meses'}
+              <VerDetalle detalle={verInflacion ? d.proyeccionInflacion : d.facturacion12m} />
+              {!verInflacion && !tieneOficial && calc.mesesConActividad < 12 && (
                 <span className="ml-1 text-warning-foreground normal-case tracking-normal">
                   (anualizada con {calc.mesesConActividad}m de actividad)
                 </span>
@@ -81,35 +97,83 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
             </div>
             <div className="flex items-baseline gap-3">
               <div className="text-3xl sm:text-4xl font-semibold tabular-nums tracking-tight">
-                {formatCurrency(facturacionMostrada)}
+                {formatCurrency(facturacionVista)}
               </div>
               <div className="text-sm text-muted-foreground">
-                / {formatCurrency(topeMostrado)}
+                / {formatCurrency(topeVista)}
               </div>
             </div>
           </div>
           <Badge variant="outline" className="font-semibold">
-            Cat. {cliente.categoria}
+            Cat. {categoriaVista}
           </Badge>
         </div>
 
-        <ProgresoTope porcentaje={porcentajeMostrado} showLabel={false} />
+        <div className="mb-3 inline-flex rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
+          <button
+            type="button"
+            onClick={() => setVerInflacion(false)}
+            className={cn(
+              'rounded-md px-3 py-1 font-medium transition',
+              !verInflacion
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            Hoy
+          </button>
+          <button
+            type="button"
+            onClick={() => setVerInflacion(true)}
+            className={cn(
+              'rounded-md px-3 py-1 font-medium transition',
+              verInflacion
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            Ajustado por inflación
+          </button>
+        </div>
+
+        <ProgresoTope porcentaje={porcentajeVista} showLabel={false} />
 
         <div className="flex items-center justify-between text-xs mt-2">
           <span className="text-muted-foreground inline-flex items-center gap-1.5">
-            {formatPercent(porcentajeMostrado, 1)} consumido
-            <VerDetalle detalle={d.porcentajeTope} />
+            {formatPercent(porcentajeVista, 1)} consumido
+            <VerDetalle detalle={verInflacion ? d.proyeccionInflacion : d.porcentajeTope} />
           </span>
-          {calc.fechaProyectadaCruceTope && (
-            <span className="text-muted-foreground inline-flex items-center gap-1">
-              <CalendarClock className="h-3 w-3" />
-              Proyección cruce: {formatDate(calc.fechaProyectadaCruceTope, 'long')}
-              <VerDetalle detalle={d.proyeccionCruce} align="end" />
+          {verInflacion ? (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 font-medium',
+                cambiaCategoriaInflacion ? 'text-warning-foreground' : 'text-success',
+              )}
+            >
+              {cambiaCategoriaInflacion ? 'Cambio de categoría probable' : 'Te mantenés en tu categoría'}
             </span>
+          ) : (
+            calc.fechaProyectadaCruceTope && (
+              <span className="text-muted-foreground inline-flex items-center gap-1">
+                <CalendarClock className="h-3 w-3" />
+                Proyección cruce: {formatDate(calc.fechaProyectadaCruceTope, 'long')}
+                <VerDetalle detalle={d.proyeccionCruce} align="end" />
+              </span>
+            )
           )}
         </div>
 
-        {onVerComprobantes && (
+        {verInflacion && (
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            Estimado con {formatPercent(calc.inflacionMensualUsada, 1)} mensual de inflación
+            {config.inflacionAuto && inflacionMercado
+              ? ', según las expectativas de mercado'
+              : ' (valor definido por vos)'}
+            .
+          </div>
+        )}
+
+        {!verInflacion && onVerComprobantes && (
           <button
             type="button"
             onClick={onVerComprobantes}
@@ -120,7 +184,7 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
           </button>
         )}
 
-        {tieneOficial && (
+        {!verInflacion && tieneOficial && (
           <div className="mt-1 text-[11px] text-muted-foreground">
             Según ARCA
             {cliente.facturometroActualizado ? ` · al ${cliente.facturometroActualizado}` : ''}
@@ -133,7 +197,7 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
           </div>
         )}
 
-        {debeRecategorizar && (
+        {!verInflacion && debeRecategorizar && (
           <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-warning/15 border border-warning/30 px-3 py-2.5 text-sm">
             <TrendingUp className="h-4 w-4 text-warning-foreground" />
             <span className="inline-flex items-center gap-1.5">
@@ -193,30 +257,12 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
           <br />
           Compras / ventas propias: {formatPercent(calc.ratioGastosVentas, 0)}
         </div>
-      </Card>
-
-      <Card className="p-5 sm:p-7">
-        <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1 inline-flex items-center gap-1.5">
-          Proyección con inflación
-          <VerDetalle detalle={d.proyeccionInflacion} />
-        </div>
-        <div className="flex items-baseline gap-2">
-          <div className="text-3xl sm:text-4xl font-semibold tabular-nums tracking-tight">
-            Cat. {calc.categoriaConInflacion.codigo}
+        {cliente.relacionDependencia && (
+          <div className="mt-3 rounded-md bg-muted/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+            Tiene relación de dependencia: parte de estas compras pueden estar justificadas por el
+            haber percibido, aunque figuren a consumidor final y no estén vinculadas a la actividad.
           </div>
-        </div>
-        <div className="text-xs text-muted-foreground mt-2 leading-relaxed">
-          A 12 meses, con los topes ya actualizados por la inflación del semestre.
-          {calc.categoriaConInflacion.codigo !== cliente.categoria ? (
-            <span className="block mt-1 text-warning-foreground font-medium">
-              Cambio de categoría probable
-            </span>
-          ) : (
-            <span className="block mt-1 text-success font-medium">
-              Te mantenés en tu categoría
-            </span>
-          )}
-        </div>
+        )}
       </Card>
 
       <Card className="p-5 sm:p-7">
