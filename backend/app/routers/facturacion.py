@@ -11,6 +11,7 @@ Ver memoria `credenciales-arca`: el certificado es por CLIENTE, con la clave del
 """
 from __future__ import annotations
 
+import logging
 import threading
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from ..services import facturacion as facturacion_svc
 from .clientes import _cliente_propio
 
 router = APIRouter(prefix="/api", tags=["facturacion"])
+log = logging.getLogger("orbita.facturacion")
 
 
 def _exigir_habilitado(usuario: models.Usuario) -> None:
@@ -215,12 +217,11 @@ def _correr_preparacion(job_id: str, cuit: str) -> None:
             pass
         jobs.actualizar(job_id, estado="terminado", progreso=100, mensaje="Facturación habilitada")
     except Exception as e:  # noqa: BLE001
-        jobs.actualizar(
-            job_id,
-            estado="error",
-            error=str(e),
-            mensaje="No se pudo habilitar la facturación de este cliente.",
-        )
+        # El detalle técnico va a los logs (para devs), NUNCA al usuario: la copy visible se
+        # mantiene en lenguaje de dominio (regla de producto). El front muestra `error`.
+        log.warning("preparar facturación %s falló: %s", cuit, e)
+        msg = "No se pudo habilitar la facturación electrónica de este cliente. Volvé a intentar en un rato."
+        jobs.actualizar(job_id, estado="error", error=msg, mensaje=msg)
     finally:
         db.close()
 
