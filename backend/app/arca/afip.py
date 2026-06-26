@@ -366,14 +366,29 @@ class AFIP:
 
     # --- API pública ---------------------------------------------------------
     def login(self) -> requests.Session:
-        """Ejecuta el flujo completo de login. Devuelve la Session autenticada."""
-        viewstate, action = self._paso1_get_login()
-        html_clave = self._paso2_post_cuit(viewstate, action)
-        jwt = self._paso3_post_clave(html_clave)  # inmediatamente despues:
-        self._paso4_post_jwt(jwt)                 # el JWT dura ~10 segundos
-        self.logged_in = True
-        self.log.info("Login OK para CUIT %s", self.cuit)
-        return self.session
+        """Ejecuta el flujo completo de login. Devuelve la Session autenticada.
+
+        Reintenta el flujo ENTERO ante transitorios de red/ARCA (503, timeout, conexión
+        cortada) con backoff. Rehace los 4 pasos desde cero (el JWT del paso 3->4 dura
+        ~10s, no se puede reintentar suelto). Los errores de credenciales (clave/CUIT)
+        son AFIPError, NO RequestException, así que NO se reintentan (fallan al toque)."""
+        ultimo: Exception | None = None
+        for intento in range(3):
+            try:
+                viewstate, action = self._paso1_get_login()
+                html_clave = self._paso2_post_cuit(viewstate, action)
+                jwt = self._paso3_post_clave(html_clave)  # inmediatamente despues:
+                self._paso4_post_jwt(jwt)                 # el JWT dura ~10 segundos
+                self.logged_in = True
+                self.log.info("Login OK para CUIT %s", self.cuit)
+                return self.session
+            except requests.RequestException as e:
+                ultimo = e
+                if intento < 2:
+                    espera = 5 * (intento + 1)
+                    self.log.warning("Login transitorio (%s). Reintento en %ss", str(e)[:80], espera)
+                    time.sleep(espera)
+        raise ultimo  # type: ignore[misc]
 
     def abrir_servicio(self, service_name: str, *, entry_url: str | None = None) -> None:
         """Abre un servicio de Clave Fiscal (SSO) y deja la sesión lista para usarlo.
@@ -519,12 +534,16 @@ class AFIP:
             return f.strftime("%d/%m/%Y")
         return str(f)
 
-    def _ajax_json(self, params: dict, referer: str, retries: int = 3) -> dict:
-        """GET a ajax.do devolviendo JSON, con recuperación ante el anti-bot de fes.
+    def _ajax_json(self, params: dict, referer: str, retries: int = 4) -> dict:
+        """GET a ajax.do devolviendo JSON, con recuperación ante fallos transitorios de fes.
 
-        Si las llamadas van muy seguidas, fes responde 'BL<digits> <fecha>' y a
-        partir de ahí invalida la sesión (HTML 'su sesión expiró'). Recuperar
-        requiere reabrir el servicio (nuevo token+sign), no solo setearContribuyente.
+        Dos casos se recuperan reabriendo el servicio (nuevo token+sign) y reintentando:
+          - Anti-bot: fes responde 'BL<digits>' (no-JSON) y a partir de ahí invalida la sesión.
+          - Sesión vencida server-side: la grilla dura ~15 min y ARCA a veces la corta antes de
+            lo que cree `fes_vigente`; devuelve {estado:'error', mensajeError:'...sesión ha
+            expirado' / 'no está logueado' / 'Error DB'}. Sin esto, una consulta a mitad de un
+            sync largo (entre ventanas) fallaba sin recuperarse (era el fallo #1 del motor HTTP).
+        Un error JSON que NO sea de sesión se devuelve tal cual (lo interpreta el caller).
         """
         hdr = {
             "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -535,18 +554,24 @@ class AFIP:
         for intento in range(retries):
             r = self._fes_get(f"{FES_BASE}/ajax.do", headers=hdr, params=params)
             try:
-                return r.json()
+                data = r.json()
             except ValueError:
-                last = r.text[:80]
-                espera = 3 * (intento + 1)
-                self.log.warning(
-                    "ajax.do %s bloqueado (%r). Reabro sesión mcmp y reintento en %ss",
-                    params.get("f"), last, espera,
-                )
-                time.sleep(espera)
-                self._mcmp_preparar(forzar=True)
-                self._fes_get(referer)
-        raise AFIPError(f"ajax.do {params.get('f')} bloqueado/sin JSON: {last!r}")
+                last = r.text[:80]  # no-JSON (bloqueo BL)
+            else:
+                msg = str(data.get("mensajeError", "")) if isinstance(data, dict) else ""
+                if not (isinstance(data, dict) and data.get("estado") == "error"
+                        and re.search(r"sesi[oó]n|logueado|expir|Error DB", msg, re.I)):
+                    return data  # OK, o un error que NO es de sesión (lo maneja el caller)
+                last = msg  # sesión vencida / transitorio de ARCA
+            espera = 3 * (intento + 1)
+            self.log.warning(
+                "ajax.do %s transitorio (%r). Reabro sesión mcmp y reintento en %ss",
+                params.get("f"), last, espera,
+            )
+            time.sleep(espera)
+            self._mcmp_preparar(forzar=True)
+            self._fes_get(referer)
+        raise AFIPError(f"ajax.do {params.get('f')} sin recuperar tras {retries}: {last!r}")
 
     @staticmethod
     def _parse_fila(row: list, tipo: str = "E") -> dict:
