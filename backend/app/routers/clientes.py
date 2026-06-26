@@ -147,6 +147,7 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
         fecha_inicio=edic.get("fechaInicio"),
         historial_mensual=historial,
         tiene_comprobantes=tiene_comps,
+        tiene_facturacion=bool(c.cert_cifrado and c.key_cifrado),
     )
 
 

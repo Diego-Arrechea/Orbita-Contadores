@@ -38,6 +38,7 @@ interface ClienteBackend {
   // tener que bajar todos los comprobantes; la ficha del cliente sigue bajando el detalle aparte.
   historial_mensual?: HistorialMes[] | null;
   tiene_comprobantes?: boolean | null;
+  tiene_facturacion?: boolean | null;
 }
 
 const CODIGOS: CategoriaCodigo[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
@@ -115,6 +116,7 @@ function construirCliente(
     // Flag para que el semáforo distinga "sin datos" de "no se bajaron los comprobantes (dashboard)".
     // En la ficha del cliente, comprobantes viene completo y este flag pasa a sobrarle.
     tieneComprobantes: bk.tiene_comprobantes ?? comprobantes.length > 0,
+    tieneFacturacion: bk.tiene_facturacion ?? false,
     causales: [],
     extracciones,
     fuente: 'arca',

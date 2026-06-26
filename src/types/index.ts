@@ -136,6 +136,9 @@ export interface Cliente {
   /** El cliente tiene AL MENOS un comprobante en el cache. Lo usa el semáforo del dashboard, donde
    *  `comprobantes` viene vacío (el dashboard no baja el detalle); en la ficha del cliente sobra. */
   tieneComprobantes?: boolean;
+  /** Facturación electrónica habilitada (certificado ya generado). Define si el botón de la ficha
+   *  dice "Habilitar facturación" (false) o "Emitir comprobante" (true). */
+  tieneFacturacion?: boolean;
   causales: EstadoCausalCliente[];
   extracciones: Extraccion[];
   /** 'arca' = los comprobantes se traen reales del backend (WSFEv1); 'mock'/undefined = datos de prueba. */

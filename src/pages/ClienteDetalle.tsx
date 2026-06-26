@@ -185,6 +185,16 @@ export function ClienteDetalle() {
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
+                {facturarHabilitado && (
+                  <Button
+                    size="sm"
+                    onClick={() => setFacturarOpen(true)}
+                    className="shrink-0"
+                  >
+                    <FilePlus2 className="h-4 w-4" />
+                    {cliente.tieneFacturacion ? 'Emitir comprobante' : 'Habilitar facturación'}
+                  </Button>
+                )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -198,12 +208,6 @@ export function ClienteDetalle() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    {facturarHabilitado && (
-                      <DropdownMenuItem onSelect={() => setTimeout(() => setFacturarOpen(true), 0)}>
-                        <FilePlus2 /> Emitir comprobante
-                      </DropdownMenuItem>
-                    )}
-                    {facturarHabilitado && <DropdownMenuSeparator />}
                     <DropdownMenuItem asChild>
                       <Link to={`/clientes/${cliente.id}/reporte`}>
                         <FileText /> Reporte (PDF)
@@ -254,7 +258,10 @@ export function ClienteDetalle() {
                   <EmitirComprobanteDialog
                     cliente={cliente}
                     open={facturarOpen}
-                    onOpenChange={setFacturarOpen}
+                    onOpenChange={o => {
+                      setFacturarOpen(o);
+                      if (!o) void refetchCliente(); // refresca tieneFacturacion: el botón pasa de Habilitar→Emitir
+                    }}
                     onEmitido={() => void refetchCliente()}
                   />
                 )}

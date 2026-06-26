@@ -127,6 +127,7 @@ class ClienteOut(BaseModel):
     # los comprobantes en el dashboard: alcanza para % tope, ratio de gastos y proyección.
     historial_mensual: list[HistorialMesOut] = []
     tiene_comprobantes: bool = False  # para el semáforo 'sin datos' sin necesidad de bajarlos
+    tiene_facturacion: bool = False  # facturación electrónica habilitada (certificado ya generado)
 
 
 class NotificacionesIn(BaseModel):
