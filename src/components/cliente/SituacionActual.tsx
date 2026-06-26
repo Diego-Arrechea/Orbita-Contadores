@@ -76,7 +76,6 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
   const topeVista = verInflacion ? calc.topeCategoriaConInflacion : topeMostrado;
   const porcentajeVista = topeVista > 0 ? facturacionVista / topeVista : porcentajeMostrado;
   const categoriaVista = verInflacion ? calc.categoriaConInflacion.codigo : cliente.categoria;
-  const cambiaCategoriaInflacion = calc.categoriaConInflacion.codigo !== cliente.categoria;
 
   // Trazabilidad: explicación de cada valor calculado de esta vista (ver botones ⓘ).
   const d = detallesSituacion(cliente, calc);
@@ -144,14 +143,15 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
             <VerDetalle detalle={verInflacion ? d.proyeccionInflacion : d.porcentajeTope} />
           </span>
           {verInflacion ? (
-            <span
-              className={cn(
-                'inline-flex items-center gap-1 font-medium',
-                cambiaCategoriaInflacion ? 'text-warning-foreground' : 'text-success',
-              )}
-            >
-              {cambiaCategoriaInflacion ? 'Cambio de categoría probable' : 'Te mantenés en tu categoría'}
-            </span>
+            calc.inflacionEvitaSubirCategoria ? (
+              <span className="inline-flex items-center gap-1 font-medium text-success">
+                La inflación te evita subir a Cat. {calc.categoriaProyectadaSinInflacion.codigo}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                La inflación no cambia tu categoría proyectada
+              </span>
+            )
           ) : (
             calc.fechaProyectadaCruceTope && (
               <span className="text-muted-foreground inline-flex items-center gap-1">
