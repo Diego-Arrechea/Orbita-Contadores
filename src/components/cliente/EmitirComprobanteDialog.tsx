@@ -31,6 +31,7 @@ import {
   type ComprobanteEmitidoResp,
   type PuntoVenta,
 } from '@/services/facturacionService';
+import { usePreparaciones } from '@/context/PreparacionesContext';
 import type { Cliente } from '@/types';
 
 /** Condición frente al IVA del receptor (RG 5616) → código + tipo de documento asociado. */
@@ -80,6 +81,8 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
   const [ncNumero, setNcNumero] = useState('');
   const [error, setError] = useState('');
   const [resultado, setResultado] = useState<ComprobanteEmitidoResp | null>(null);
+  const [prepJobId, setPrepJobId] = useState<string | null>(null);
+  const { registrar } = usePreparaciones();
 
   const pollRef = useRef<number | null>(null);
   const pvAutoRef = useRef(false); // ya intentamos auto-crear el PV (evita loop con el tutorial)
@@ -145,6 +148,7 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
     setError('');
     setResultado(null);
     setProgreso(0);
+    setPrepJobId(null);
     pvAutoRef.current = false; // reintentar la auto-creación del PV en cada apertura
     void cargarContexto();
     return detenerPoll;
@@ -160,7 +164,14 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
     (tipo === 'factura' || Number(ncNumero) > 0);
 
   const cerrar = (o: boolean) => {
-    if (paso !== 'emitiendo' && paso !== 'preparando') onOpenChange(o);
+    if (!o && paso === 'emitiendo') return; // una emisión en curso no se interrumpe
+    if (!o && paso === 'preparando' && prepJobId) {
+      // El job sigue corriendo en el backend: lo pasamos al indicador del header para seguirlo en
+      // segundo plano. El contador cierra y sigue trabajando; al terminar, el botón pasa a "Emitir".
+      detenerPoll();
+      registrar(prepJobId, cliente.cuit, cliente.nombre, progreso, mensajePrep);
+    }
+    onOpenChange(o);
   };
 
   // ── Generar el certificado (job en segundo plano) ──
@@ -171,6 +182,7 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
     setMensajePrep('Habilitando la facturación de este cliente…');
     try {
       const { job_id } = await prepararFacturacion(cliente.cuit);
+      setPrepJobId(job_id);
       const poll = async () => {
         try {
           const j = await progresoPreparacion(cliente.cuit, job_id);
@@ -279,6 +291,9 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
               <Progress value={progreso} className="h-1.5" />
               <div className="mt-1 text-xs text-muted-foreground tabular-nums">{progreso}%</div>
             </div>
+            <p className="mt-4 text-xs text-muted-foreground max-w-xs">
+              Podés cerrar esta ventana: sigue en segundo plano y te avisamos cuando esté lista.
+            </p>
           </div>
         )}
 

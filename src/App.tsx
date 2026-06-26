@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, type ReactNode } from 'react';
 import { CargasProvider } from '@/context/CargasContext';
+import { PreparacionesProvider } from '@/context/PreparacionesContext';
 import { ConfigProvider } from '@/context/ConfigContext';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Login } from '@/pages/Login';
@@ -62,6 +63,7 @@ export default function App() {
 
   return (
     <CargasProvider>
+      <PreparacionesProvider>
       <InvalidadorCache />
       <CargasToasts />
       <Routes>
@@ -104,6 +106,7 @@ export default function App() {
       />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </PreparacionesProvider>
     </CargasProvider>
   );
 }
