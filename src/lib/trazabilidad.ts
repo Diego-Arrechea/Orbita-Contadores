@@ -210,15 +210,16 @@ export function detallesSituacion(cliente: Cliente, calc: CalculoCliente): Detal
   const proyeccionInflacion: DetalleCalculo = {
     titulo: 'Proyección con inflación',
     resumen:
-      'En qué categoría caerías si tu ritmo reciente se mantiene 12 meses, ajustado por la inflación mensual estimada.',
-    formula: 'Promedio de los últimos 3 meses proyectado 12 meses con inflación mensual compuesta.',
+      'En qué categoría quedarías cuando se actualicen los topes por la inflación del semestre (el ajuste que se hace cada 6 meses), si tu ritmo reciente se mantiene.',
+    formula:
+      'Facturación proyectada a 12 meses (promedio de los últimos 3 meses con inflación compuesta) comparada contra los topes YA actualizados por la inflación acumulada de los últimos 6 meses.',
     insumos: [
       { etiqueta: 'Promedio últimos 3 meses', valor: formatCurrency(calc.promedioMensualUlt3) },
       { etiqueta: 'Inflación mensual estimada', valor: formatPercent(calc.inflacionMensualUsada, 1) },
       { etiqueta: 'Facturación proyectada (12m)', valor: formatCurrency(calc.facturacionConInflacion) },
       {
-        etiqueta: 'Categoría proyectada',
-        valor: `${calc.categoriaConInflacion.codigo} (hasta ${formatCurrency(calc.categoriaConInflacion.topeAnual)})`,
+        etiqueta: 'Categoría proyectada (topes actualizados)',
+        valor: `${calc.categoriaConInflacion.codigo} (hasta ${formatCurrency(calc.topeCategoriaConInflacion)})`,
       },
     ],
     nota: 'La inflación mensual estimada se configura en los ajustes del estudio.',
