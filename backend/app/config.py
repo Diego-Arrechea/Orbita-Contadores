@@ -54,8 +54,12 @@ class Settings(BaseSettings):
     # pero el límite real es ARCA: mantenelo moderado. NUNCA corren dos clientes del mismo contador
     # a la vez (misma clave fiscal) — esto cuenta contadores distintos en paralelo.
     sync_worker_concurrencia: int = 6
-    # Cada cliente se re-sincroniza cuando su última extracción (cualquier resultado) supera esto.
+    # Cada cliente se re-sincroniza cuando su última extracción EXITOSA supera esto.
     sync_intervalo_horas: int = 12
+    # Fallback de reintento: si la última extracción FALLÓ, se re-despacha mucho antes (en vez de
+    # esperar el intervalo completo). Cubre los fallos transitorios de ARCA (sesión vencida, 503,
+    # "Error DB") que se recuperan en una corrida posterior. En minutos.
+    sync_reintento_fallidos_min: int = 30
     # Cada cuánto el despachador revisa qué clientes están vencidos y los encola (segundos).
     sync_poll_segundos: int = 60
     # Envío automático de alertas por WhatsApp desde el motor continuo. Default APAGADO: el motor

@@ -45,22 +45,35 @@ _lock = threading.Lock()
 _stop = threading.Event()
 
 
-def _clientes_vencidos(db, limite: dt.datetime):
-    """Clientes cuya última extracción (de cualquier resultado) es más vieja que `limite`, o que
-    nunca se sincronizaron. Más vencidos primero (los que nunca corrieron, primero de todo)."""
-    ultima = (
-        select(Extraccion.cuit, func.max(Extraccion.fecha).label("ultima"))
+def _clientes_vencidos(db, limite: dt.datetime, limite_fallidos: dt.datetime):
+    """Clientes a re-sincronizar: nunca corridos, o cuya última extracción superó `limite`, o cuya
+    última extracción FALLÓ y superó `limite_fallidos` (reintento más rápido para fallos transitorios).
+    Más vencidos primero (los que nunca corrieron, primero de todo)."""
+    # Última extracción por cliente vía max(id): id es monótono → la fila más reciente, sin
+    # ambigüedad por fecha duplicada. Portable SQLite + Postgres.
+    ult_id = (
+        select(Extraccion.cuit, func.max(Extraccion.id).label("mid"))
         .group_by(Extraccion.cuit)
+        .subquery()
+    )
+    ult = (
+        select(Extraccion.cuit, Extraccion.fecha.label("fecha"), Extraccion.resultado.label("resultado"))
+        .join(ult_id, Extraccion.id == ult_id.c.mid)
         .subquery()
     )
     # coalesce a una fecha muy vieja: NULL (nunca sincronizado) ordena primero, de forma portable.
     epoch = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
-    orden = func.coalesce(ultima.c.ultima, epoch)
     q = (
         select(ClienteARCA.cuit, ClienteARCA.cuit_contador)
-        .outerjoin(ultima, ultima.c.cuit == ClienteARCA.cuit)
-        .where(or_(ultima.c.ultima.is_(None), ultima.c.ultima < limite))
-        .order_by(orden.asc())
+        .outerjoin(ult, ult.c.cuit == ClienteARCA.cuit)
+        .where(
+            or_(
+                ult.c.fecha.is_(None),                                            # nunca sincronizado
+                ult.c.fecha < limite,                                             # vencido normal
+                (ult.c.resultado == "fallida") & (ult.c.fecha < limite_fallidos),  # reintento de fallido
+            )
+        )
+        .order_by(func.coalesce(ult.c.fecha, epoch).asc())
     )
     return db.execute(q).all()
 
@@ -68,10 +81,12 @@ def _clientes_vencidos(db, limite: dt.datetime):
 def _despachar() -> int:
     """Encola los clientes vencidos que no estén en vuelo y cuyo contador esté libre. Devuelve
     cuántos encoló en esta pasada."""
-    limite = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=settings.sync_intervalo_horas)
+    ahora = dt.datetime.now(dt.timezone.utc)
+    limite = ahora - dt.timedelta(hours=settings.sync_intervalo_horas)
+    limite_fallidos = ahora - dt.timedelta(minutes=settings.sync_reintento_fallidos_min)
     db = SessionLocal()
     try:
-        vencidos = _clientes_vencidos(db, limite)
+        vencidos = _clientes_vencidos(db, limite, limite_fallidos)
     finally:
         db.close()
 
