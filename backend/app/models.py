@@ -156,6 +156,10 @@ class ClienteARCA(Base):
     # categoría/etc., pero el override del contador vive acá y se re-aplica al devolver el cliente
     # (gana sobre el dato de ARCA). Ver routers/clientes.py. Nullable = sin ediciones.
     edicion_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Snapshot de los datos fiscales del cliente como EMISOR (domicilio comercial/fiscal, localidad,
+    # provincia, CP) traído del padrón durante la sync. JSON serializado. Se usa para imprimir la
+    # representación del comprobante emitido (RG 5616). Nullable = todavía no se snapshoteó.
+    emisor_fiscal_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Línea de base de alertas: cuándo el motor "fotografió" por primera vez el estado de alertas de
     # este cliente. NULL = todavía no se baselineó → la próxima pasada registra sus alertas vigentes
     # como ya conocidas SIN avisar (anti-spam al alta). Ver services/alertas.py::evaluar_y_notificar.
@@ -206,6 +210,10 @@ class ComprobanteEmitido(Base):
     doc_nro: Mapped[str] = mapped_column(String(20), default="")
     contraparte_nombre: Mapped[str] = mapped_column(String(200), default="")
     cae: Mapped[str] = mapped_column(String(20), default="")
+    # Vencimiento del CAE (yyyymmdd). Sólo lo tienen los comprobantes EMITIDOS desde la app (lo
+    # devuelve FECAESolicitar); los traídos de Mis Comprobantes quedan en "". Necesario para imprimir
+    # la representación del comprobante (el vto del CAE va en el pie, RG 5616).
+    cae_vto: Mapped[str] = mapped_column(String(10), default="")
     sincronizado_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

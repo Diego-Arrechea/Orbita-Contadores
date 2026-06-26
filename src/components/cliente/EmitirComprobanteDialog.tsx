@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Loader2, CheckCircle2, AlertTriangle, ArrowRight, FileKey2, Store } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertTriangle, ArrowRight, FileKey2, Store, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,6 +27,7 @@ import {
   progresoPreparacion,
   mensajeErrorFacturacion,
   esErrorSinPuntoVenta,
+  descargarComprobantePdf,
   type FacturarPayload,
   type ComprobanteEmitidoResp,
   type PuntoVenta,
@@ -81,6 +82,7 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
   const [ncNumero, setNcNumero] = useState('');
   const [error, setError] = useState('');
   const [resultado, setResultado] = useState<ComprobanteEmitidoResp | null>(null);
+  const [descargando, setDescargando] = useState(false);
   const [prepJobId, setPrepJobId] = useState<string | null>(null);
   const { registrar } = usePreparaciones();
 
@@ -559,8 +561,42 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
               <Fila k="Fecha" v={formatDate(resultado.fecha, 'long')} />
             </div>
 
+            {error && (
+              <div className="flex items-start gap-2 rounded-lg bg-danger/10 border border-danger/30 px-3 py-2.5 text-sm">
+                <AlertTriangle className="h-4 w-4 text-danger shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            )}
+
             <DialogFooter>
-              <Button onClick={() => onOpenChange(false)}>Cerrar</Button>
+              <Button variant="ghost" onClick={() => onOpenChange(false)}>
+                Cerrar
+              </Button>
+              <Button
+                disabled={descargando}
+                onClick={async () => {
+                  setError('');
+                  setDescargando(true);
+                  try {
+                    await descargarComprobantePdf(cliente.cuit, {
+                      cbte_tipo: resultado.cbte_tipo,
+                      punto_venta: resultado.punto_venta,
+                      numero: resultado.numero,
+                    });
+                  } catch (e) {
+                    setError(mensajeErrorFacturacion(e));
+                  } finally {
+                    setDescargando(false);
+                  }
+                }}
+              >
+                {descargando ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                Descargar comprobante
+              </Button>
             </DialogFooter>
           </>
         )}

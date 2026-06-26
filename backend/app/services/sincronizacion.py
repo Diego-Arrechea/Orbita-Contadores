@@ -266,6 +266,10 @@ def sincronizar_padron(db: Session, cuit: str, headless: bool | None = None) -> 
     # Detalle de deuda de la CCMA (lo trae estado_cuota dentro de datos_monotributo): JSON serializado.
     if isinstance(datos.get("deuda_detalle"), dict):
         cliente.deuda_detalle = json.dumps(datos["deuda_detalle"], ensure_ascii=False)
+    # Snapshot del domicilio fiscal del emisor (para imprimir comprobantes). Sólo se pisa si vino
+    # con domicilio: motor_http omite la clave si el portal no lo trae, así no borramos uno bueno.
+    if isinstance(datos.get("emisor_fiscal"), dict):
+        cliente.emisor_fiscal_json = json.dumps(datos["emisor_fiscal"], ensure_ascii=False)
     if datos:
         db.commit()
     return datos

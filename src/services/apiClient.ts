@@ -45,6 +45,21 @@ export function apiGet<T>(path: string): Promise<T> {
   return fetch(`${BASE_URL}${path}`, { headers: conAuth() }).then(handle<T>);
 }
 
+/** GET que devuelve binario (PDF, etc.). Mismo manejo de 401/errores que `apiGet`, pero Blob. */
+export async function apiGetBlob(path: string): Promise<Blob> {
+  const res = await fetch(`${BASE_URL}${path}`, { headers: conAuth() });
+  if (res.status === 401) {
+    logoutCuenta();
+    if (!window.location.pathname.startsWith('/login')) window.location.href = '/login';
+    throw new Error('Tu sesión expiró. Iniciá sesión de nuevo.');
+  }
+  if (!res.ok) {
+    const detalle = await res.text().catch(() => '');
+    throw new ApiError(res.status, `API ${res.status} ${res.statusText}: ${detalle}`);
+  }
+  return res.blob();
+}
+
 export function apiPost<T>(path: string, body?: unknown, opts?: { publico?: boolean }): Promise<T> {
   return fetch(`${BASE_URL}${path}`, {
     method: 'POST',

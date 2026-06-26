@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from './apiClient';
+import { apiGet, apiGetBlob, apiPost } from './apiClient';
 
 export interface PuntoVenta {
   nro: number;
@@ -62,6 +62,30 @@ export function getContextoFacturacion(cuit: string): Promise<ContextoFacturacio
 /** Emite una Factura C / Nota de Crédito C a nombre del cliente. Devuelve el CAE. */
 export function facturar(cuit: string, payload: FacturarPayload): Promise<ComprobanteEmitidoResp> {
   return apiPost<ComprobanteEmitidoResp>(`/clientes/${soloDigitos(cuit)}/facturar`, payload);
+}
+
+/**
+ * Descarga el PDF (representación impresa) de un comprobante emitido y dispara la descarga/apertura
+ * en el navegador. Devuelve la URL del blob por si el caller la quiere revocar.
+ */
+export async function descargarComprobantePdf(
+  cuit: string,
+  comp: { cbte_tipo: number; punto_venta: number; numero: number },
+): Promise<void> {
+  const blob = await apiGetBlob(
+    `/clientes/${soloDigitos(cuit)}/comprobantes/${comp.cbte_tipo}/${comp.punto_venta}/${comp.numero}/pdf`,
+  );
+  const url = URL.createObjectURL(blob);
+  const nombre = `${comp.cbte_tipo === 13 ? 'NotaCredito_C' : 'Factura_C'}_${String(
+    comp.punto_venta,
+  ).padStart(5, '0')}-${String(comp.numero).padStart(8, '0')}.pdf`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nombre;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 /** Arranca (en segundo plano) la generación del certificado del cliente. Devuelve el job_id. */

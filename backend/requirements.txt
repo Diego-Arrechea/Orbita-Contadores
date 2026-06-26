@@ -10,6 +10,8 @@ pyjwt>=2.8  # tokens de sesión (JWT)
 email-validator>=2.1  # validación de emails (pydantic EmailStr)
 requests>=2.31
 apscheduler>=3.10
+reportlab>=4.1  # generación del PDF del comprobante emitido (representación impresa)
+segno>=1.6  # código QR de ARCA en el comprobante (RG 4291); wheel puro, sin PIL
 psycopg2-binary>=2.9  # driver Postgres (producción; en local se usa SQLite por defecto)
 patchright  # Playwright stealth + headless real (listar representados)
 cloakbrowser  # Chromium stealth con humanize (bootstrap del cert: maneja el árbol JS animado de ARCA)

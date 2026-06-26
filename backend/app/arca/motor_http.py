@@ -245,6 +245,14 @@ def datos_monotributo(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: st
         out.update(_cuota_desde_deuda(afip.calcular_deuda()))
     except Exception:  # noqa: BLE001
         pass
+    # Snapshot del domicilio fiscal del EMISOR (para imprimir el comprobante emitido). best-effort:
+    # si no hay domicilio, se omite y el snapshot previo no se pisa (ver sincronizar_padron).
+    try:
+        fiscal = afip.datos_fiscales(cuit_objetivo or cuit_login)
+        if fiscal.get("domicilio"):
+            out["emisor_fiscal"] = fiscal
+    except Exception:  # noqa: BLE001
+        pass
     return out
 
 
