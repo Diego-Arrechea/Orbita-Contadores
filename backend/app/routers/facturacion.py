@@ -16,6 +16,7 @@ import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -26,6 +27,7 @@ from ..db import SessionLocal, get_db
 from ..schemas import JobOut
 from ..scraping import jobs
 from ..security import admin_actual, usuario_actual, usuario_puede_facturar
+from ..services import comprobante_pdf
 from ..services import facturacion as facturacion_svc
 from .clientes import _cliente_propio
 
@@ -192,6 +194,47 @@ def facturar(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:  # noqa: BLE001 — bootstrap del cert o WS de ARCA
         raise HTTPException(status_code=502, detail=f"No se pudo emitir el comprobante: {e}")
+
+
+# ── PDF (representación impresa) de un comprobante emitido ────────────────────
+_NOMBRE_CBTE = {11: "Factura_C", 13: "Nota_Credito_C"}
+
+
+@router.get("/clientes/{cuit}/comprobantes/{cbte_tipo}/{punto_venta}/{numero}/pdf")
+def comprobante_pdf_endpoint(
+    cuit: str,
+    cbte_tipo: int,
+    punto_venta: int,
+    numero: int,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_actual),
+):
+    """Devuelve el PDF (representación impresa) de un comprobante emitido desde la app."""
+    _exigir_habilitado(usuario)
+    _cliente_propio(db, cuit, usuario)
+    comp = (
+        db.query(models.ComprobanteEmitido)
+        .filter_by(
+            cuit=cuit,
+            direccion="emitido",
+            cbte_tipo=cbte_tipo,
+            punto_venta=punto_venta,
+            numero=numero,
+        )
+        .one_or_none()
+    )
+    # Sólo los emitidos DESDE la app (tienen cae_vto) tienen representación impresa propia. Para los
+    # traídos de Mis Comprobantes el PDF oficial vive en ARCA: no lo reconstruimos.
+    if comp is None or not comp.cae or not comp.cae_vto:
+        raise HTTPException(status_code=404, detail="No se encontró el comprobante.")
+    cliente = db.get(models.ClienteARCA, cuit)
+    pdf = comprobante_pdf.generar(comp, cliente)
+    nombre = f"{_NOMBRE_CBTE.get(cbte_tipo, 'Comprobante')}_{punto_venta:05d}-{numero:08d}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{nombre}"'},
+    )
 
 
 # ── Preparar facturación (generar el cert) como JOB en segundo plano ──────────

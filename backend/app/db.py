@@ -176,6 +176,22 @@ def _migrar_clientes_arca(conn) -> None:
         conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN key_cifrado {blob}"))
     if "cert_actualizado_en" not in cols:
         conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN cert_actualizado_en {ts}"))
+    # Snapshot de datos fiscales del emisor (domicilio/localidad/provincia/CP) para imprimir el
+    # comprobante emitido. JSON serializado. Portable: TEXT anda igual en SQLite y Postgres.
+    if "emisor_fiscal_json" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN emisor_fiscal_json TEXT"))
+
+
+def _migrar_comprobantes_emitidos(conn) -> None:
+    """Agrega `cae_vto` a `comprobantes_emitidos` (vto del CAE de los comprobantes emitidos desde la
+    app, para imprimirlos). Portable SQLite + Postgres."""
+    cols = _columnas(conn, "comprobantes_emitidos")
+    if not cols:
+        return
+    if "cae_vto" not in cols:
+        conn.execute(
+            text("ALTER TABLE comprobantes_emitidos ADD COLUMN cae_vto VARCHAR(10) DEFAULT ''")
+        )
 
 
 def asegurar_columnas() -> None:
@@ -186,6 +202,7 @@ def asegurar_columnas() -> None:
         _migrar_usuarios(conn)
         _migrar_alertas_enviadas(conn)
         _migrar_clientes_arca(conn)
+        _migrar_comprobantes_emitidos(conn)
 
     # El resto son migraciones de tablas que sólo existen viejas en el SQLite de desarrollo.
     if not settings.database_url.startswith("sqlite"):

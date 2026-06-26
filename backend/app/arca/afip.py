@@ -1413,12 +1413,16 @@ class AFIP:
         self.log.info("Representados: %d", len(reps))
         return reps
 
-    def nombre_contribuyente(self, cuit: str | None = None) -> str | None:
-        """Nombre/razón social del contribuyente (el 'Está operando como' que el browser
-        leía del navbar). Lo trae del portal: GET /portal/api/persona/{cuit}.
-        FISICA -> 'APELLIDO NOMBRE' (formato del padrón); JURIDICA -> razón social.
-        Devuelve None si no se pudo (el caller conserva el nombre previo, no lo pisa)."""
-        cuit = cuit or self.cuit
+    def _persona(self, cuit: str | None = None) -> dict:
+        """Datos crudos del contribuyente: GET /portal/api/persona/{cuit} -> objeto `data`.
+        Cachea por CUIT en la instancia (la misma sync pide nombre y domicilio: un solo HTTP).
+        Devuelve {} si no se pudo leer."""
+        cuit = str(cuit or self.cuit)
+        cache = getattr(self, "_persona_cache", None)
+        if cache is None:
+            cache = self._persona_cache = {}
+        if cuit in cache:
+            return cache[cuit]
         try:
             r = self.session.get(
                 f"{URL_PORTAL_API_BASE}/persona/{cuit}",
@@ -1426,12 +1430,44 @@ class AFIP:
             )
             d = (r.json() or {}).get("data") or {}
         except Exception:  # noqa: BLE001
-            return None
+            d = {}
+        cache[cuit] = d
+        return d
+
+    def nombre_contribuyente(self, cuit: str | None = None) -> str | None:
+        """Nombre/razón social del contribuyente (el 'Está operando como' que el browser
+        leía del navbar). Lo trae del portal: GET /portal/api/persona/{cuit}.
+        FISICA -> 'APELLIDO NOMBRE' (formato del padrón); JURIDICA -> razón social.
+        Devuelve None si no se pudo (el caller conserva el nombre previo, no lo pisa)."""
+        d = self._persona(cuit)
         razon = (d.get("razonSocial") or d.get("denominacion") or "").strip()
         if razon:
             return razon
         nombre = f"{(d.get('apellido') or '').strip()} {(d.get('nombre') or '').strip()}".strip()
         return nombre or None
+
+    def datos_fiscales(self, cuit: str | None = None) -> dict:
+        """Domicilio fiscal/comercial del contribuyente (para imprimir el comprobante emitido).
+        Lee el `domicilioFiscal` del padrón (mismo /persona que el nombre). Parseo defensivo:
+        el portal a veces no trae domicilio → devuelve lo que haya (puede ser {}). Nunca lanza."""
+        d = self._persona(cuit)
+        dom = d.get("domicilioFiscal") or d.get("domicilio") or {}
+        if not isinstance(dom, dict):
+            dom = {}
+
+        def _campo(*claves: str) -> str | None:
+            for k in claves:
+                v = dom.get(k)
+                if v not in (None, ""):
+                    return str(v).strip()
+            return None
+
+        return {
+            "domicilio": _campo("direccion", "domicilio", "calle"),
+            "localidad": _campo("localidad", "descripcionLocalidad"),
+            "provincia": _campo("descripcionProvincia", "provincia"),
+            "cod_postal": _campo("codPostal", "codigoPostal", "cp"),
+        }
 
     # --- Administrador de Relaciones: alta de relación (delegar un servicio) -
     # adminrel en serviciosweb (ASP.NET WebForms "clásico", __VIEWSTATE 'dDw...').

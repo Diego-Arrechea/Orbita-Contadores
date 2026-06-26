@@ -61,6 +61,7 @@ export interface Comprobante {
   id: string;
   direccion: 'emitido' | 'recibido';
   tipo: TipoComprobante;
+  cbteTipo?: number;       // código numérico ARCA (11 Factura C, 13 NC C…); sólo en comprobantes del backend
   fechaEmision: string;
   periodoDevengado?: string;
   puntoVenta: number;
@@ -72,6 +73,7 @@ export interface Comprobante {
   contraparteNombre: string;
   contraparteCuit: string;
   esBienPatrimonial?: boolean;
+  tienePdf?: boolean;      // emitido desde la app → se puede descargar su representación impresa (PDF)
   pdfUrl?: string;
 }
 

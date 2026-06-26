@@ -230,6 +230,7 @@ def emitir(
             imp_total_origen=resultado["importe_total"],
             doc_nro=str(doc_nro or ""),
             cae=resultado["cae"],
+            cae_vto=resultado.get("cae_vto", ""),
         )
     )
     db.commit()

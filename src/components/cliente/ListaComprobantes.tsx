@@ -1,5 +1,15 @@
 import { useState, useMemo, useEffect } from 'react';
-import { FileText, Search, Package, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  FileText,
+  Search,
+  Package,
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Loader2,
+} from 'lucide-react';
+import { descargarComprobantePdf, mensajeErrorFacturacion } from '@/services/facturacionService';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -94,21 +104,66 @@ function MontoComprobante({ c }: { c: Cliente['comprobantes'][number] }) {
   );
 }
 
-/** "Ver PDF": pendiente. ARCA no expone una URL al PDF del comprobante (todo va detrás de la clave
- *  fiscal) y no cacheamos PDFs. Lo dejamos deshabilitado hasta implementar la descarga on-demand. El
- *  <span> recibe el hover: el Button disabled tiene pointer-events-none y, sin él, el tooltip no
- *  aparecería. */
-function BotonVerPdf() {
+/**
+ * Botón de PDF del comprobante.
+ *  • Emitido desde la app (`c.tienePdf`): descarga la representación impresa (PDF con CAE + QR).
+ *  • Resto (traído de Mis Comprobantes): su PDF oficial vive en ARCA, no lo reconstruimos → deshabilitado.
+ * El <span> recibe el hover cuando el Button está disabled (pointer-events-none se lo comería).
+ */
+function BotonPdf({ c, cuit }: { c: Cliente['comprobantes'][number]; cuit: string }) {
+  const [descargando, setDescargando] = useState(false);
+  const [error, setError] = useState('');
+
+  if (!c.tienePdf || !c.cbteTipo) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <Button size="icon" variant="ghost" disabled aria-label="Comprobante sin PDF en la app">
+              <ExternalLink className="h-3.5 w-3.5" />
+            </Button>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>El PDF de este comprobante no está disponible acá</TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  const descargar = async () => {
+    setError('');
+    setDescargando(true);
+    try {
+      await descargarComprobantePdf(cuit, {
+        cbte_tipo: c.cbteTipo!,
+        punto_venta: c.puntoVenta,
+        numero: Number(c.numero),
+      });
+    } catch (e) {
+      setError(mensajeErrorFacturacion(e));
+    } finally {
+      setDescargando(false);
+    }
+  };
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex">
-          <Button size="icon" variant="ghost" disabled aria-label="Ver PDF (próximamente)">
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Button>
-        </span>
+        <Button
+          size="icon"
+          variant="ghost"
+          disabled={descargando}
+          onClick={descargar}
+          aria-label="Descargar comprobante (PDF)"
+          className={error ? 'text-danger' : undefined}
+        >
+          {descargando ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Download className="h-3.5 w-3.5" />
+          )}
+        </Button>
       </TooltipTrigger>
-      <TooltipContent>Ver PDF — próximamente</TooltipContent>
+      <TooltipContent>{error || 'Descargar comprobante (PDF)'}</TooltipContent>
     </Tooltip>
   );
 }
@@ -290,7 +345,7 @@ export function ListaComprobantes({ cliente }: Props) {
                     <MontoComprobante c={c} />
                   </TableCell>
                   <TableCell>
-                    <BotonVerPdf />
+                    <BotonPdf c={c} cuit={cliente.cuit} />
                   </TableCell>
                 </TableRow>
               );
@@ -346,6 +401,11 @@ export function ListaComprobantes({ cliente }: Props) {
                   <Badge variant="warning" className="text-[10px]">
                     Dev. {c.periodoDevengado}
                   </Badge>
+                )}
+                {c.tienePdf && c.cbteTipo && (
+                  <div className="ml-auto">
+                    <BotonPdf c={c} cuit={cliente.cuit} />
+                  </div>
                 )}
               </div>
             </Card>

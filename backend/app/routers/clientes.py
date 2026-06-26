@@ -346,6 +346,7 @@ def comprobantes_cliente(
             id=f"{c.cuit}-{c.direccion}-{c.punto_venta}-{c.cbte_tipo}-{c.numero}",
             direccion=c.direccion,
             tipo=nombre_tipo(c.cbte_tipo),
+            cbteTipo=c.cbte_tipo,
             fechaEmision=c.fecha.isoformat(),
             puntoVenta=c.punto_venta,
             numero=str(c.numero).zfill(8),
@@ -356,6 +357,7 @@ def comprobantes_cliente(
             montoOrigen=float(c.imp_total_origen) if c.imp_total_origen is not None else float(c.imp_total),
             contraparteNombre=c.contraparte_nombre or "—",
             contraparteCuit=c.doc_nro,
+            tienePdf=bool(c.cae_vto),  # emitido desde la app → tiene representación impresa
         )
         for c in comps
     ]

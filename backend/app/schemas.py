@@ -76,6 +76,7 @@ class ComprobanteOut(BaseModel):
     id: str
     direccion: str = "emitido"
     tipo: str
+    cbteTipo: int  # noqa: N815 — código numérico ARCA (11 Factura C, 13 NC C…), para descargar el PDF
     fechaEmision: str  # noqa: N815 — matchea el front
     puntoVenta: int  # noqa: N815
     numero: str
@@ -85,6 +86,9 @@ class ComprobanteOut(BaseModel):
     montoOrigen: float  # noqa: N815 — monto en la moneda original (para mostrar en la lista)
     contraparteNombre: str = "—"  # noqa: N815
     contraparteCuit: str  # noqa: N815
+    # True sólo para los comprobantes EMITIDOS desde la app (tienen cae_vto): se les puede generar la
+    # representación impresa (PDF). Los traídos de Mis Comprobantes no — su PDF oficial vive en ARCA.
+    tienePdf: bool = False  # noqa: N815
 
 
 class HistorialMesOut(BaseModel):
