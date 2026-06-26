@@ -42,6 +42,25 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-06-26-facturacion-electronica',
+    fecha: '2026-06-26',
+    titulo: 'Emití comprobantes de tus clientes desde Órbita',
+    resumen:
+      'Ya podés emitir Facturas C y Notas de Crédito C de tus clientes monotributistas y descargar el comprobante en PDF.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Desde la ficha del cliente podés emitir una Factura C o una Nota de Crédito C a su nombre. El comprobante queda autorizado con su CAE y se suma automáticamente al resto de sus comprobantes.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Cada comprobante emitido se descarga en PDF —con el CAE, su vencimiento y el código QR—, listo para entregarle al cliente. Lo bajás al emitirlo o cuando quieras desde la pestaña Comprobantes.',
+      },
+    ],
+  },
+  {
     id: '2026-06-26-proyeccion-topes-actualizados',
     fecha: '2026-06-26',
     titulo: 'La proyección de categoría tiene en cuenta la actualización de los topes',
