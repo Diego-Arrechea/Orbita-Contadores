@@ -34,6 +34,7 @@ interface ClienteBackend {
   motivo_ultima_extraccion?: string | null;
   notas?: string | null; // edición del contador (override en la cuenta)
   fecha_inicio?: string | null; // edición del contador (override en la cuenta)
+  relacion_dependencia?: boolean | null; // tiene relación de dependencia (override manual o auto)
   // Historial mensual ya agregado por el backend (últimos 12 meses). El dashboard lo consume sin
   // tener que bajar todos los comprobantes; la ficha del cliente sigue bajando el detalle aparte.
   historial_mensual?: HistorialMes[] | null;
@@ -96,6 +97,7 @@ function construirCliente(
     // Override del contador (guardado en la cuenta) o el derivado: la fecha del primer comprobante.
     fechaInicio: bk.fecha_inicio ?? (primerMes ? `${primerMes}-01` : '2020-01-01'),
     notas: bk.notas ?? '',
+    relacionDependencia: bk.relacion_dependencia ?? false,
     estadoAlerta: 'verde',
     ultimaExtraccion: bk.ultima_extraccion ?? undefined,
     resultadoUltimaExtraccion:
@@ -156,7 +158,16 @@ export async function eliminarCliente(
 }
 
 export type CamposEdicion = Partial<
-  Pick<Cliente, 'nombre' | 'categoria' | 'tipoActividad' | 'fechaInicio' | 'estadoCuotaMesActual' | 'notas'>
+  Pick<
+    Cliente,
+    | 'nombre'
+    | 'categoria'
+    | 'tipoActividad'
+    | 'fechaInicio'
+    | 'estadoCuotaMesActual'
+    | 'notas'
+    | 'relacionDependencia'
+  >
 >;
 
 /** Guarda en la cuenta las ediciones manuales del contador sobre un cliente. Merge parcial: mandá

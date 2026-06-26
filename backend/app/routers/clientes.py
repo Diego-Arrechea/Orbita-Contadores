@@ -145,6 +145,13 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
         motivo_ultima_extraccion=ult.motivo if ult else None,
         notas=edic.get("notas"),
         fecha_inicio=edic.get("fechaInicio"),
+        # Relación de dependencia: el override manual del contador (True/False) gana; si no lo marcó
+        # (None), cae al valor auto-detectado de la columna. None final = no se sabe.
+        relacion_dependencia=(
+            edic["relacionDependencia"]
+            if edic.get("relacionDependencia") is not None
+            else c.relacion_dependencia
+        ),
         historial_mensual=historial,
         tiene_comprobantes=tiene_comps,
         tiene_facturacion=bool(c.cert_cifrado and c.key_cifrado),

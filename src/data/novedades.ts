@@ -42,6 +42,53 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-06-26-aviso-precio-unitario',
+    fecha: '2026-06-26',
+    titulo: 'Aviso al superar el precio unitario máximo',
+    resumen:
+      'Al emitir una factura de productos, te avisamos si el importe supera el precio unitario máximo permitido en el monotributo.',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'Cuando emitís una factura por venta de productos y el importe supera el precio unitario máximo de venta del monotributo ($613.492), el sistema te lo avisa antes de confirmar. Si es por un solo producto conviene revisarlo; si son varias unidades, podés continuar.',
+      },
+    ],
+  },
+  {
+    id: '2026-06-26-tope-ajustado-inflacion',
+    fecha: '2026-06-26',
+    titulo: 'Mirá tu tope ajustado por inflación',
+    resumen:
+      'En la situación del cliente sumamos un botón para ver cómo quedaría su categoría si los topes se actualizan por inflación.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En el visor del tope ahora podés cambiar entre "Hoy" y "Ajustado por inflación". En el segundo modo ves la facturación proyectada a 12 meses contra los topes ya actualizados, así sabés si con el ritmo actual te mantenés en tu categoría o conviene anticiparte.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'La proyección ahora usa por defecto la inflación esperada por el mercado, que se actualiza sola. Igual podés fijar tu propio valor desde Configuración → Alertas si preferís otro escenario.',
+      },
+    ],
+  },
+  {
+    id: '2026-06-26-relacion-dependencia',
+    fecha: '2026-06-26',
+    titulo: 'Marcá si tu cliente tiene relación de dependencia',
+    resumen:
+      'Dejá registrado cuándo un cliente además trabaja en relación de dependencia, para tenerlo en cuenta al revisar sus gastos.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En Editar cliente ahora podés indicar si el cliente tiene relación de dependencia. Cuando lo marcás, en la situación del cliente aparece un recordatorio de que parte de sus compras pueden quedar justificadas por el haber percibido, aunque figuren a consumidor final.',
+      },
+    ],
+  },
+  {
     id: '2026-06-26-facturacion-electronica',
     fecha: '2026-06-26',
     titulo: 'Emití comprobantes de tus clientes desde Órbita',

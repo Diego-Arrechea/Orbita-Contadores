@@ -115,6 +115,9 @@ export interface Cliente {
   tipoActividad: TipoActividad;
   fechaInicio: string;
   notas: string;
+  /** ¿Tiene relación de dependencia (trabajo en blanco)? Lo marca el contador (o se auto-detecta).
+   *  Sirve para justificar parte de las compras a consumidor final con el haber percibido. */
+  relacionDependencia: boolean;
   estadoAlerta: EstadoAlerta;
   ultimaExtraccion?: string;
   resultadoUltimaExtraccion: 'exitosa' | 'fallida' | 'pendiente';
@@ -195,10 +198,20 @@ export interface ConfigAlertas {
   sync: { activo: boolean };
 }
 
+/** Inflación mensual esperada según el mercado (mediana del REM), que el panel trae como base de las proyecciones. */
+export interface InflacionMercado {
+  mensual: number; // tasa mensual equivalente (0.0176 = 1,76%)
+  interanual: number; // variación i.a. esperada (0.233 = 23,3%)
+  fecha: string; // fecha del dato (ISO)
+  fuente: string; // "REM"
+}
+
 export interface Configuracion {
   ventanas: VentanaRecategorizacion[];
-  /** Inflación mensual estimada para proyectar la facturación a 12 meses (0.02 = 2%/mes; 0 = sin inflación). */
+  /** Inflación mensual MANUAL para proyectar la facturación a 12 meses (0.02 = 2%/mes; 0 = sin inflación). Se usa sólo si inflacionAuto = false. */
   inflacionMensualProyeccion: number;
+  /** Si true (default), la proyección usa la inflación esperada del mercado; si false, usa inflacionMensualProyeccion. */
+  inflacionAuto: boolean;
   /** Criterio por tipo de alerta (umbral + re-aviso). Reemplaza los umbrales globales. */
   alertas: ConfigAlertas;
   /** Canal de entrega por WhatsApp (interruptor maestro + horario). */

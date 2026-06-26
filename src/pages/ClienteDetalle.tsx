@@ -67,7 +67,7 @@ export function ClienteDetalle() {
   const [tab, setTab] = useState('situacion');
   const [generandoExcel, setGenerandoExcel] = useState(false);
   const [facturarOpen, setFacturarOpen] = useState(false);
-  const { config } = useConfig();
+  const { config, inflacionEfectiva } = useConfig();
 
   // El backend ya aplica las ediciones del contador sobre el dato de ARCA; el front sólo elige mock o
   // real. Al guardar una edición se re-trae el cliente con cargarClienteReal (ver onGuardado).
@@ -94,7 +94,7 @@ export function ClienteDetalle() {
     );
   }
 
-  const calc = calcularCliente(cliente, config.ventanas, config.inflacionMensualProyeccion);
+  const calc = calcularCliente(cliente, config.ventanas, inflacionEfectiva);
 
   // Descarga el papel de trabajo del cliente en Excel. Para clientes reales trae los movimientos del
   // backend (para el bloque "pendientes de respaldo"); para los mock usa los embebidos.

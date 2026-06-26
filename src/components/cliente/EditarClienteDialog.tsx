@@ -54,6 +54,7 @@ export function EditarClienteDialog({
     cliente.estadoCuotaMesActual,
   );
   const [notas, setNotas] = useState(cliente.notas ?? '');
+  const [relacionDependencia, setRelacionDependencia] = useState(cliente.relacionDependencia);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
 
@@ -68,6 +69,7 @@ export function EditarClienteDialog({
       fechaInicio,
       estadoCuotaMesActual: estadoCuota,
       notas,
+      relacionDependencia,
     };
     // Los clientes de ejemplo no se persisten en la cuenta (no existen en el backend).
     if (!esReal) {
@@ -180,6 +182,26 @@ export function EditarClienteDialog({
                 <SelectItem value="con-deuda">Con deuda</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Relación de dependencia</Label>
+            <Select
+              value={relacionDependencia ? 'si' : 'no'}
+              onValueChange={v => setRelacionDependencia(v === 'si')}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="no">No tiene</SelectItem>
+                <SelectItem value="si">Sí, tiene trabajo en relación de dependencia</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Si además trabaja en relación de dependencia, parte de sus compras pueden quedar
+              justificadas por el sueldo percibido.
+            </p>
           </div>
 
           <div className="space-y-1.5">

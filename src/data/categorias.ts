@@ -26,6 +26,13 @@ export const CATEGORIAS: Categoria[] = [
 
 export const TOPE_CATEGORIA_K = 108_357_084;
 
+// Precio unitario máximo para la venta de cosas muebles (productos). A diferencia de los topes de
+// ingresos, este límite es ÚNICO y aplica a TODAS las categorías (A→K), no sólo a las altas: un
+// monotributista no puede vender un producto a un precio unitario mayor a este valor. No alcanza a
+// servicios. ARCA no rechaza el comprobante que lo supera, pero queda registrado → lo avisamos al
+// emitir. (El campo `topePrecioUnitario` por categoría queda como referencia del dato oficial.)
+export const TOPE_PRECIO_UNITARIO = 613_492;
+
 export function getCategoria(codigo: string | null | undefined): Categoria {
   return CATEGORIAS.find(c => c.codigo === codigo) || CATEGORIAS[0];
 }

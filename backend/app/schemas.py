@@ -127,6 +127,9 @@ class ClienteOut(BaseModel):
     # Editables por el contador (override manual guardado en la cuenta; ver edicion_json):
     notas: str | None = None
     fecha_inicio: str | None = None
+    # ¿Tiene relación de dependencia (trabajo en blanco)? Efectivo = override manual del contador si
+    # lo marcó, si no el auto-detectado. None = no se sabe. Relevante para justificar gastos.
+    relacion_dependencia: bool | None = None
     # Historial mensual agregado (últimos 12 meses calendario, cronológico). Reemplaza el bajar todos
     # los comprobantes en el dashboard: alcanza para % tope, ratio de gastos y proyección.
     historial_mensual: list[HistorialMesOut] = []
@@ -149,6 +152,7 @@ class ConfiguracionIn(BaseModel):
     front (ver src/types/index.ts: VentanaRecategorizacion y ConfigAlertas)."""
 
     inflacionMensualProyeccion: float | None = None  # noqa: N815
+    inflacionAuto: bool | None = None  # noqa: N815 — true: usar inflación esperada del mercado (REM)
     # Criterio por tipo de alerta (umbral + re-aviso). Dict tolerante (forma = ConfigAlertas del front).
     alertas: dict | None = None
     ventanas: list[dict] | None = None
@@ -175,6 +179,7 @@ class EdicionClienteIn(BaseModel):
     fechaInicio: str | None = None  # noqa: N815 — aaaa-mm-dd
     estadoCuotaMesActual: str | None = None  # noqa: N815 — al-dia | con-deuda
     notas: str | None = None
+    relacionDependencia: bool | None = None  # noqa: N815 — el contador marca si tiene trabajo en blanco
 
 
 class ExtraccionOut(BaseModel):
@@ -631,3 +636,11 @@ class MotorEstadoOut(BaseModel):
     # Listas
     proximos: list[MotorClienteOut] = []    # próximos a sincronizar (más vencidos primero)
     actividad: list[MotorClienteOut] = []   # últimas extracciones (feed)
+
+
+class InflacionEsperadaOut(BaseModel):
+    """Inflación esperada del REM (BCRA) para que el front la use como base de las proyecciones."""
+    mensual: float       # tasa mensual equivalente (ej 0.0176)
+    interanual: float    # variación i.a. esperada (ej 0.233)
+    fecha: str           # fecha del dato (ISO)
+    fuente: str          # "REM"

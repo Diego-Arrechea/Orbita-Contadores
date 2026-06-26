@@ -18,12 +18,19 @@ import {
 import { apiGet, apiPut } from '@/services/apiClient';
 import { CONFIGURACION_INICIAL } from '@/data/configuracion';
 import { ventanasRecategorizacion } from '@/lib/recategorizacion';
-import type { Configuracion, ConfigAlertas } from '@/types';
+import type { Configuracion, ConfigAlertas, InflacionMercado } from '@/types';
 
 interface ConfigContextValue {
   config: Configuracion; // SIEMPRE presente (arranca en defaults)
   cargando: boolean; // true hasta resolver el primer GET
   guardarConfig: (parcial: Partial<Configuracion>) => Promise<void>;
+  /** Inflación esperada del mercado (REM), o null si la fuente no respondió. Para mostrar/configurar. */
+  inflacionMercado: InflacionMercado | null;
+  /**
+   * Inflación mensual que DEBEN usar las proyecciones: la de mercado si inflacionAuto y está
+   * disponible; si no, la manual del contador. Es la única que hay que pasarle a calcularCliente().
+   */
+  inflacionEfectiva: number;
 }
 
 const ConfigContext = createContext<ConfigContextValue | null>(null);
@@ -68,6 +75,7 @@ function combinar(guardado: Partial<Configuracion> | null | undefined): Configur
   return {
     ...CONFIGURACION_INICIAL,
     inflacionMensualProyeccion: num(viejo.inflacionMensualProyeccion, CONFIGURACION_INICIAL.inflacionMensualProyeccion),
+    inflacionAuto: nb((limpio as Record<string, unknown>).inflacionAuto, CONFIGURACION_INICIAL.inflacionAuto),
     ventanas: (limpio.ventanas as Configuracion['ventanas']) ?? ventanasRecategorizacion(),
     alertas,
     notificaciones: {
@@ -81,6 +89,7 @@ function combinar(guardado: Partial<Configuracion> | null | undefined): Configur
 export function ConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<Configuracion>(() => combinar(null));
   const [cargando, setCargando] = useState(true);
+  const [inflacionMercado, setInflacionMercado] = useState<InflacionMercado | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -92,6 +101,12 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
       .finally(() => {
         if (vivo) setCargando(false);
       });
+    // Inflación esperada del mercado (REM): si la fuente no responde queda null y se usa la manual.
+    apiGet<InflacionMercado | null>('/indicadores/inflacion')
+      .then(dato => {
+        if (vivo && dato && typeof dato.mensual === 'number') setInflacionMercado(dato);
+      })
+      .catch(() => {});
     return () => {
       vivo = false;
     };
@@ -102,8 +117,13 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     await apiPut('/configuracion', parcial); // si falla, propaga el error al caller (lo muestra)
   }, []);
 
+  const inflacionEfectiva =
+    config.inflacionAuto && inflacionMercado ? inflacionMercado.mensual : config.inflacionMensualProyeccion;
+
   return (
-    <ConfigContext.Provider value={{ config, cargando, guardarConfig }}>
+    <ConfigContext.Provider
+      value={{ config, cargando, guardarConfig, inflacionMercado, inflacionEfectiva }}
+    >
       {children}
     </ConfigContext.Provider>
   );

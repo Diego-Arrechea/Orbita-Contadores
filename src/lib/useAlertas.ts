@@ -24,7 +24,7 @@ export function useAlertas(): AlertasResult {
   // al terminar una sincronización (antes esto observaba useSync().version a mano).
   const { data: reales = [], isLoading: cargando } = useClientesReales();
   const cuenta = cuentaActual();
-  const { config } = useConfig();
+  const { config, inflacionEfectiva } = useConfig();
 
   const mock = cuenta?.datosEjemplo ? CLIENTES : [];
 
@@ -32,12 +32,12 @@ export function useAlertas(): AlertasResult {
     const todas: Alerta[] = [];
     for (const c of [...reales, ...mock]) {
       // el backend ya aplica las ediciones del contador
-      const calc = calcularCliente(c, config.ventanas, config.inflacionMensualProyeccion);
+      const calc = calcularCliente(c, config.ventanas, inflacionEfectiva);
       todas.push(...derivarAlertas(c, calc, config));
     }
     return ordenarPorSeveridad(todas);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reales, cuenta?.datosEjemplo, config]);
+  }, [reales, cuenta?.datosEjemplo, config, inflacionEfectiva]);
 
   const conteo = useMemo(() => {
     const c = { urgente: 0, aviso: 0, datos: 0 };

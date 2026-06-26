@@ -33,7 +33,7 @@ export function ReporteCliente() {
   // Cliente cacheado: comparte cache con la ficha (misma query key), así abrir el reporte tras ver
   // la ficha es instantáneo. enabled evita pedir cuando se usa el mock.
   const { data: clienteReal, isLoading: cargando } = useClienteReal(id, !clienteMock);
-  const { config } = useConfig();
+  const { config, inflacionEfectiva } = useConfig();
   const [movimientos, setMovimientos] = useState<MovimientoBancario[]>([]);
 
   const cliente = clienteMock ?? clienteReal ?? undefined;
@@ -64,7 +64,7 @@ export function ReporteCliente() {
     );
   }
 
-  const calc = calcularCliente(cliente, config.ventanas, config.inflacionMensualProyeccion);
+  const calc = calcularCliente(cliente, config.ventanas, inflacionEfectiva);
   const noMono = !esMonotributista(cliente);
   const cat = getCategoria(cliente.categoria);
   const debeRecategorizar = !noMono && calc.categoriaCorresponde.codigo !== cliente.categoria;
