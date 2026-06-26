@@ -206,10 +206,14 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
           </div>
         </div>
         <div className="text-xs text-muted-foreground mt-2 leading-relaxed">
-          Proyección a 12 meses: tu ritmo reciente llevado con la inflación mensual estimada.
-          {calc.categoriaConInflacion.codigo !== cliente.categoria && (
+          A 12 meses, con los topes ya actualizados por la inflación del semestre.
+          {calc.categoriaConInflacion.codigo !== cliente.categoria ? (
             <span className="block mt-1 text-warning-foreground font-medium">
               Cambio de categoría probable
+            </span>
+          ) : (
+            <span className="block mt-1 text-success font-medium">
+              Te mantenés en tu categoría
             </span>
           )}
         </div>

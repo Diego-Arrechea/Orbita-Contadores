@@ -56,6 +56,7 @@ export interface CalculoCliente {
   promedioMensualUlt3: number; // promedio de los últimos 3 meses (base de las proyecciones)
   facturacionConInflacion: number; // proyección a 12m con inflación compuesta
   inflacionMensualUsada: number; // tasa mensual aplicada en esa proyección
+  topeCategoriaConInflacion: number; // tope de la categoría proyectada, YA actualizado por inflación (6m)
 }
 
 export function calcularCliente(
@@ -125,9 +126,14 @@ export function calcularCliente(
   const r = inflacionMensual;
   const facturacionConInflacion =
     r === 0 ? promUlt3 * 12 : (promUlt3 * ((1 + r) ** 12 - 1)) / r;
+  // Los topes de la escala se actualizan cada SEMESTRE por la inflación acumulada de esos 6 meses.
+  // Proyectamos ese ajuste y comparamos la facturación proyectada contra los topes YA actualizados:
+  // así no marcamos un "cambio de categoría" que la propia suba de topes por inflación va a evitar.
+  const factorTopesProx = (1 + r) ** 6;
   const categoriaConInflacion =
-    CATEGORIAS.find(c => facturacionConInflacion <= c.topeAnual) ||
+    CATEGORIAS.find(c => facturacionConInflacion <= c.topeAnual * factorTopesProx) ||
     CATEGORIAS[CATEGORIAS.length - 1];
+  const topeCategoriaConInflacion = categoriaConInflacion.topeAnual * factorTopesProx;
 
   const ventanasFuturas = ventanas
     .map(v => ({ ...v, dias: differenceInCalendarDays(parseISO(v.fechaLimite), HOY) }))
@@ -156,6 +162,7 @@ export function calcularCliente(
     promedioMensualUlt3: promUlt3,
     facturacionConInflacion,
     inflacionMensualUsada: r,
+    topeCategoriaConInflacion,
   };
 }
 

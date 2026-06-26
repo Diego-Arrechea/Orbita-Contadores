@@ -42,6 +42,20 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-06-26-proyeccion-topes-actualizados',
+    fecha: '2026-06-26',
+    titulo: 'La proyección de categoría tiene en cuenta la actualización de los topes',
+    resumen:
+      'La tarjeta "Proyección con inflación" ya no avisa un cambio de categoría que la suba de topes por inflación termina evitando.',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'Los topes del monotributo se actualizan por inflación cada semestre. La proyección ahora compara tu facturación proyectada contra los topes YA actualizados (por la inflación acumulada de los últimos 6 meses): si tu ritmo se mantiene, te muestra que te quedás en tu categoría en vez de un "cambio probable" que no iba a pasar.',
+      },
+    ],
+  },
+  {
     id: '2026-06-24-avance-alta-en-cartera',
     fecha: '2026-06-24',
     titulo: 'Seguí el avance del alta desde tu cartera',
