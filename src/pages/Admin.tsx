@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ShieldCheck,
+  ShieldOff,
   Users,
   Activity,
   Loader2,
@@ -369,15 +370,18 @@ function AccionesCuenta({
   trabajando,
   onEntrarComo,
   onToggleActivo,
+  onToggleRol,
 }: {
   u: AdminUsuario;
   miId?: number;
   trabajando: boolean;
   onEntrarComo: (u: AdminUsuario) => void;
   onToggleActivo: (u: AdminUsuario) => void;
+  onToggleRol: (u: AdminUsuario) => void;
 }) {
   const [pwdOpen, setPwdOpen] = useState(false);
   const esYo = u.id === miId;
+  const esAdmin = u.rol === 'admin';
 
   return (
     <>
@@ -402,6 +406,12 @@ function AccionesCuenta({
             <KeyRound /> Restablecer contraseña
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          {/* Otorgar/quitar el rol de administrador. No te podés quitar el rol a vos mismo (el
+              backend lo bloquea para no dejar el sistema sin admins / sin acceso al panel). */}
+          <DropdownMenuItem disabled={esYo && esAdmin} onSelect={() => onToggleRol(u)}>
+            {esAdmin ? <ShieldOff /> : <ShieldCheck />}{' '}
+            {esAdmin ? 'Quitar admin' : 'Hacer admin'}
+          </DropdownMenuItem>
           <DropdownMenuItem
             disabled={esYo}
             onSelect={() => onToggleActivo(u)}
@@ -575,6 +585,28 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
     }
   }
 
+  async function toggleRol(u: AdminUsuario) {
+    const nuevoRol = u.rol === 'admin' ? 'contador' : 'admin';
+    const accion = nuevoRol === 'admin' ? 'darle acceso de administrador a' : 'quitarle el acceso de administrador a';
+    if (!window.confirm(`¿Seguro que querés ${accion} ${u.nombre} ${u.apellido} (${u.email})?`)) {
+      return;
+    }
+    setAccionando(u.id);
+    setAccionError('');
+    try {
+      const actualizado = await editarUsuario(u.id, { rol: nuevoRol });
+      qc.setQueryData<AdminUsuario[]>(['admin', 'usuarios'], prev =>
+        prev ? prev.map(x => (x.id === u.id ? actualizado : x)) : prev
+      );
+      // Cambió el conteo de administradores del dashboard.
+      void qc.invalidateQueries({ queryKey: ['admin', 'metricas'] });
+    } catch (e) {
+      setAccionError(mensajeDeError(e));
+    } finally {
+      setAccionando(null);
+    }
+  }
+
   async function entrarComo(u: AdminUsuario) {
     setAccionando(u.id);
     setAccionError('');
@@ -709,6 +741,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                       trabajando={accionando === u.id}
                       onEntrarComo={u => void entrarComo(u)}
                       onToggleActivo={u => void toggleActivo(u)}
+                      onToggleRol={u => void toggleRol(u)}
                     />
                   </div>
                 </TableCell>
@@ -783,6 +816,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                 trabajando={accionando === u.id}
                 onEntrarComo={u => void entrarComo(u)}
                 onToggleActivo={u => void toggleActivo(u)}
+                onToggleRol={u => void toggleRol(u)}
               />
             </div>
           </Card>
