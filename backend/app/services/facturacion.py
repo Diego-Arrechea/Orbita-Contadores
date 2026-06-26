@@ -231,6 +231,7 @@ def emitir(
             doc_nro=str(doc_nro or ""),
             cae=resultado["cae"],
             cae_vto=resultado.get("cae_vto", ""),
+            condicion_iva_receptor=condicion_iva_receptor,
         )
     )
     db.commit()
