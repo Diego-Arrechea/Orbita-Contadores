@@ -82,6 +82,7 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
   const [resultado, setResultado] = useState<ComprobanteEmitidoResp | null>(null);
 
   const pollRef = useRef<number | null>(null);
+  const pvAutoRef = useRef(false); // ya intentamos auto-crear el PV (evita loop con el tutorial)
   const detenerPoll = () => {
     if (pollRef.current) {
       clearTimeout(pollRef.current);
@@ -102,6 +103,14 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
       }
       if (Array.isArray(c.puntos_venta)) {
         if (c.puntos_venta.length === 0) {
+          // El PV se crea SOLO (el job de preparación corre asegurar_punto_venta). Lo
+          // disparamos una vez automáticamente; el tutorial manual queda de fallback por
+          // si la creación no prosperó (así el contador no tiene que hacerlo a mano).
+          if (!pvAutoRef.current) {
+            pvAutoRef.current = true;
+            void prepararCert();
+            return;
+          }
           setPaso('sin-pv');
           return;
         }
@@ -136,6 +145,7 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
     setError('');
     setResultado(null);
     setProgreso(0);
+    pvAutoRef.current = false; // reintentar la auto-creación del PV en cada apertura
     void cargarContexto();
     return detenerPoll;
     // eslint-disable-next-line react-hooks/exhaustive-deps
