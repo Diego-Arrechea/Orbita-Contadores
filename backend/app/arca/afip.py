@@ -1326,7 +1326,17 @@ class AFIP:
 
         # Aliases ya creados en ARCA: NO los tocamos (subir un CSR a un alias ajeno
         # arriesga pisar/confundir su cert) → creamos en el primero LIBRE de la serie.
-        existentes = {c.get("alias") for c in self.certificados_listar()}
+        try:
+            existentes = {c.get("alias") for c in self.certificados_listar()}
+        except AFIPError as e:
+            # El CUIT no tiene adherido 'Administración de Certificados Digitales' (sin él no
+            # se puede crear el cert). Lo adherimos solos y reintentamos → facturación llave en
+            # mano también para esas cuentas. Otros AFIPError (red, etc.) se propagan normal.
+            if "arfe_certificado" not in str(e) or "no está disponible" not in str(e):
+                raise
+            prog(30, "Habilitando la administración de certificados…")
+            self.adminrel_adherir_servicio("web://arfe_certificado")
+            existentes = {c.get("alias") for c in self.certificados_listar()}
         ultimo = ""
         for i in range(max_aliases):
             alias = alias_base if i == 0 else f"{alias_base}{i + 1}"
@@ -1608,6 +1618,71 @@ class AFIP:
             )
         self.log.info("Relación %s <- %s OK", servicename, alias)
         return {"alias": alias, "ws": servicename, "representado": rep, "representante": valor}
+
+    def adminrel_adherir_servicio(self, servicename: str, *, representado=None) -> bool:
+        """Adhiere un servicio INTERACTIVO (web://…) a un representado (default: uno mismo)
+        en el Administrador de Relaciones. Necesario para servicios que el CUIT no tiene en
+        su menú —p. ej. 'web://arfe_certificado' (Administración de Certificados Digitales),
+        sin el cual NO se puede crear el certificado de facturación—.
+
+        Mismo wizard que asociar_computador pero designando una PERSONA (no un computador):
+        Nueva relación → Buscar servicio → atajo relationAdd?servicename=web://… → Buscar
+        usuario → tipear el CUIT en txtRepresentante (postback onchange que lo designa) →
+        Seleccionar servicio → Generar relación. Devuelve True si quedó (aceptada=True).
+
+        ⚠️ Modifica la cuenta del cliente en ARCA (le agrega el servicio; reversible).
+        """
+        if not self.logged_in:
+            self.login()
+        self._adminrel_preparar()
+        rep = str(representado or self.cuit).replace("-", "").strip()
+        MAIN = f"{CERT_BASE}/main.aspx"
+        RELADD = f"{CERT_BASE}/relationAdd.aspx"
+        self.log.info("Adhiriendo servicio %s a %s", servicename, rep)
+
+        r = self._adminrel_get(MAIN, f"{CERT_BASE}/")
+        if "cmdNuevaRelacion" not in r.text:
+            raise AFIPError("Administrador de Relaciones: no apareció 'Nueva relación'.")
+        r = self._adminrel_post(
+            MAIN, self._aspnet_viewstate(r.text),
+            fields={"cmdNuevaRelacion.x": "1", "cmdNuevaRelacion.y": "1"}, referer=MAIN,
+        )
+        r = self._adminrel_post(
+            RELADD, self._aspnet_viewstate(r.text),
+            fields={"cmdBuscarServicio.x": "1", "cmdBuscarServicio.y": "1"}, referer=RELADD,
+        )
+        # Atajo al servicio (sin navegar el árbol). El representante se designa después.
+        r = self._adminrel_get(f"{RELADD}?representado={rep}&servicename={servicename}", r.url)
+        r = self._adminrel_post(
+            r.url, self._aspnet_viewstate(r.text),
+            fields={"cmdBuscarUsuario.x": "1", "cmdBuscarUsuario.y": "1"}, referer=r.url,
+        )
+        # Tipear el CUIT del representante (uno mismo): el onchange dispara el postback que lo busca.
+        r = self._adminrel_post(
+            r.url, self._aspnet_viewstate(r.text),
+            event_target="txtRepresentante", fields={"txtRepresentante": rep}, referer=r.url,
+        )
+        # Seleccionar servicio -> pantalla de confirmación con 'Generar relación'.
+        r = self._adminrel_post(
+            r.url, self._aspnet_viewstate(r.text),
+            fields={
+                "txtRepresentante": rep,
+                "cmdSeleccionarServicio.x": "1", "cmdSeleccionarServicio.y": "1",
+            },
+            referer=r.url,
+        )
+        if "cmdGenerarRelacion" not in r.text:
+            cuerpo = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", r.text)).strip()
+            raise AFIPError(f"No se pudo preparar la adhesión de {servicename}: {cuerpo[:160]}")
+        r = self._adminrel_post(
+            r.url, self._aspnet_viewstate(r.text),
+            fields={"cmdGenerarRelacion.x": "1", "cmdGenerarRelacion.y": "1"}, referer=r.url,
+        )
+        if "aceptada=true" not in r.url.lower():
+            cuerpo = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", r.text)).strip()
+            raise AFIPError(f"No se confirmó la adhesión de {servicename}: {cuerpo[:160]}")
+        self.log.info("Servicio %s adherido a %s OK", servicename, rep)
+        return True
 
     # --- Administración de Puntos de Venta (pvel) ---------------------------
     # Servicio pvel en fes.afip.gob.ar (acciones Struts .do, respuestas JSON).
