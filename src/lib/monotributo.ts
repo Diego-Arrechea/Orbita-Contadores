@@ -46,6 +46,10 @@ export interface CalculoCliente {
   fechaProyectadaCruceTope?: string;
   variacionMensualPromedio: number;
   categoriaConInflacion: Categoria;
+  /** Categoría que tocaría con la facturación PROYECTADA pero contra los topes de HOY (sin inflar). */
+  categoriaProyectadaSinInflacion: Categoria;
+  /** true si actualizar los topes por inflación te deja en una categoría MÁS BAJA que sin inflar (el caso útil). */
+  inflacionEvitaSubirCategoria: boolean;
   diasParaProximaVentana: number;
   proximaVentana?: VentanaRecategorizacion;
   // Valores intermedios expuestos para la trazabilidad ("ver detalle"): son los mismos insumos que
@@ -134,6 +138,15 @@ export function calcularCliente(
     CATEGORIAS.find(c => facturacionConInflacion <= c.topeAnual * factorTopesProx) ||
     CATEGORIAS[CATEGORIAS.length - 1];
   const topeCategoriaConInflacion = categoriaConInflacion.topeAnual * factorTopesProx;
+  // Misma facturación proyectada, pero medida contra los topes SIN inflar (los de hoy). Comparar esta
+  // categoría con la de arriba aísla EL EFECTO DE LA INFLACIÓN: si la suba de topes te deja en una
+  // categoría más baja, ese es el dato útil ("la inflación te evita subir"). Si dan igual, la
+  // inflación no cambia nada (aunque difieran de la categoría ACTUAL del cliente por otra razón).
+  const categoriaProyectadaSinInflacion =
+    CATEGORIAS.find(c => facturacionConInflacion <= c.topeAnual) ||
+    CATEGORIAS[CATEGORIAS.length - 1];
+  const inflacionEvitaSubirCategoria =
+    CATEGORIAS.indexOf(categoriaConInflacion) < CATEGORIAS.indexOf(categoriaProyectadaSinInflacion);
 
   const ventanasFuturas = ventanas
     .map(v => ({ ...v, dias: differenceInCalendarDays(parseISO(v.fechaLimite), HOY) }))
@@ -155,6 +168,8 @@ export function calcularCliente(
     fechaProyectadaCruceTope: fechaProyectada?.toISOString(),
     variacionMensualPromedio: variacion,
     categoriaConInflacion,
+    categoriaProyectadaSinInflacion,
+    inflacionEvitaSubirCategoria,
     diasParaProximaVentana: proxima?.dias ?? Infinity,
     proximaVentana: proxima,
     nivelTope,
