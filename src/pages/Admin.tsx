@@ -840,6 +840,15 @@ function haceTexto(h?: number | null): string {
   return `hace ${Math.round(h / 24)} d`;
 }
 
+/** Cuánto tardó una sincronización, en segundos → "12s" / "1m 30s" / "2m". */
+function duracionTexto(seg?: number | null): string {
+  if (seg == null) return '—';
+  if (seg < 60) return `${seg}s`;
+  const m = Math.floor(seg / 60);
+  const s = seg % 60;
+  return s ? `${m}m ${s}s` : `${m}m`;
+}
+
 function ClientesTabla({
   filas,
   modo,
@@ -854,7 +863,7 @@ function ClientesTabla({
   // Clamp: si los datos se achican (auto-refresh) y la página quedó fuera de rango, la traemos al tope.
   const pag = Math.min(pagina, totalPaginas - 1);
   const visibles = pageSize ? filas.slice(pag * pageSize, (pag + 1) * pageSize) : filas;
-  const cols = modo === 'actividad' ? 5 : 3;
+  const cols = modo === 'actividad' ? 6 : 3;
 
   const paginacion = pageSize && totalPaginas > 1 && (
     <div className="flex items-center justify-between border-t border-border/60 px-4 py-2.5 text-sm">
@@ -895,6 +904,7 @@ function ClientesTabla({
                 <>
                   <TableHead className="text-center">Resultado</TableHead>
                   <TableHead className="text-right">Nuevos</TableHead>
+                  <TableHead className="text-right">Duración</TableHead>
                   <TableHead className="text-right">Cuándo</TableHead>
                 </>
               ) : (
@@ -921,6 +931,9 @@ function ClientesTabla({
                     </TableCell>
                     <TableCell className="text-right text-sm tabular-nums">
                       {f.comprobantes ?? '—'}
+                    </TableCell>
+                    <TableCell className="text-right text-sm text-muted-foreground tabular-nums whitespace-nowrap">
+                      {duracionTexto(f.duracion_seg)}
                     </TableCell>
                     <TableCell className="text-right text-sm text-muted-foreground whitespace-nowrap">
                       {haceTexto(f.horas_desde)}
@@ -968,6 +981,7 @@ function ClientesTabla({
                 {modo === 'actividad' ? (
                   <>
                     <span className="tabular-nums">{f.comprobantes ?? '—'} nuevos</span>
+                    <span className="tabular-nums whitespace-nowrap">{duracionTexto(f.duracion_seg)}</span>
                     <span className="whitespace-nowrap">{haceTexto(f.horas_desde)}</span>
                   </>
                 ) : (
