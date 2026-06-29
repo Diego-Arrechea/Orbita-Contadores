@@ -68,11 +68,11 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
   const topeMostrado = topeOficialValido ? cliente.topeCategoriaOficial! : categoriaActual.topeAnual;
   const porcentajeMostrado = topeMostrado > 0 ? facturacionMostrada / topeMostrado : 0;
 
-  // Visor del tope en modo "Hoy" (foto actual contra los topes vigentes) vs "Ajustado por inflación"
-  // (proyección de la facturación a 12m contra los topes ya actualizados por la inflación del
-  // semestre). Sirve para ver que, con el ritmo actual, la suba de topes por inflación evita pasarse
-  // de categoría. Todo lo "con inflación" ya viene calculado en el motor (calc.*).
-  const facturacionVista = verInflacion ? calc.facturacionConInflacion : facturacionMostrada;
+  // Visor del tope: "Hoy" (facturado contra los topes vigentes) vs "Ajustado por inflación". En el
+  // segundo modo el FACTURADO no cambia (es el mismo de los últimos 12 meses); sólo sube el TOPE,
+  // actualizado por la inflación del semestre. Así se ve si la suba de topes te evita pasarte de
+  // categoría. El tope inflado y la categoría resultante ya vienen calculados en el motor (calc.*).
+  const facturacionVista = facturacionMostrada;
   const topeVista = verInflacion ? calc.topeCategoriaConInflacion : topeMostrado;
   const porcentajeVista = topeVista > 0 ? facturacionVista / topeVista : porcentajeMostrado;
   const categoriaVista = verInflacion ? calc.categoriaConInflacion.codigo : cliente.categoria;
@@ -86,9 +86,9 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1 inline-flex items-center gap-1.5">
-              {verInflacion ? 'Facturación proyectada a 12 meses' : 'Facturación últimos 12 meses'}
-              <VerDetalle detalle={verInflacion ? d.proyeccionInflacion : d.facturacion12m} />
-              {!verInflacion && !tieneOficial && calc.mesesConActividad < 12 && (
+              Facturación últimos 12 meses
+              <VerDetalle detalle={d.facturacion12m} />
+              {!tieneOficial && calc.mesesConActividad < 12 && (
                 <span className="ml-1 text-warning-foreground normal-case tracking-normal">
                   (anualizada con {calc.mesesConActividad}m de actividad)
                 </span>
@@ -145,11 +145,11 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
           {verInflacion ? (
             calc.inflacionEvitaSubirCategoria ? (
               <span className="inline-flex items-center gap-1 font-medium text-success">
-                La inflación te evita subir a Cat. {calc.categoriaProyectadaSinInflacion.codigo}
+                La inflación te evita subir a Cat. {calc.categoriaCorresponde.codigo}
               </span>
             ) : (
               <span className="text-muted-foreground">
-                La inflación no cambia tu categoría proyectada
+                La inflación no cambia tu categoría
               </span>
             )
           ) : (
@@ -165,7 +165,8 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
 
         {verInflacion && (
           <div className="mt-1 text-[11px] text-muted-foreground">
-            Estimado con {formatPercent(calc.inflacionMensualUsada, 1)} mensual de inflación
+            Mismo facturado; tope actualizado con {formatPercent(calc.inflacionMensualUsada, 1)} mensual
+            de inflación
             {config.inflacionAuto && inflacionMercado
               ? ', según las expectativas de mercado'
               : ' (valor definido por vos)'}

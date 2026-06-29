@@ -208,21 +208,20 @@ export function detallesSituacion(cliente: Cliente, calc: CalculoCliente): Detal
   };
 
   const proyeccionInflacion: DetalleCalculo = {
-    titulo: 'Proyección con inflación',
+    titulo: 'Ajustado por inflación',
     resumen:
-      'En qué categoría quedarías cuando se actualicen los topes por la inflación del semestre (el ajuste que se hace cada 6 meses), si tu ritmo reciente se mantiene.',
+      'En qué categoría quedás con tu facturación actual cuando se actualicen los topes por la inflación del semestre (el ajuste que se hace cada 6 meses). El facturado no cambia; sólo suben los topes.',
     formula:
-      'Facturación proyectada a 12 meses (promedio de los últimos 3 meses con inflación compuesta) comparada contra los topes YA actualizados por la inflación acumulada de los últimos 6 meses.',
+      'Tu facturación de los últimos 12 meses comparada contra los topes YA actualizados por la inflación acumulada de los últimos 6 meses.',
     insumos: [
-      { etiqueta: 'Promedio últimos 3 meses', valor: formatCurrency(calc.promedioMensualUlt3) },
+      { etiqueta: 'Facturación últimos 12 meses', valor: formatCurrency(calc.nivelTope) },
       { etiqueta: 'Inflación mensual estimada', valor: formatPercent(calc.inflacionMensualUsada, 1) },
-      { etiqueta: 'Facturación proyectada (12m)', valor: formatCurrency(calc.facturacionConInflacion) },
       {
-        etiqueta: 'Categoría proyectada (topes actualizados)',
+        etiqueta: 'Categoría con topes actualizados',
         valor: `${calc.categoriaConInflacion.codigo} (hasta ${formatCurrency(calc.topeCategoriaConInflacion)})`,
       },
     ],
-    nota: 'La inflación mensual estimada se configura en los ajustes del estudio.',
+    nota: 'La inflación mensual se toma de las expectativas de mercado (o del valor que fijes en los ajustes del estudio).',
   };
 
   const usaImporteReal = cliente.proxVencImporte != null;
