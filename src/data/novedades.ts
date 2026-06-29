@@ -42,6 +42,20 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-06-29-inflacion-solo-tope',
+    fecha: '2026-06-29',
+    titulo: 'Ajustado por inflación: ahora cambia solo el tope',
+    resumen:
+      'En el visor del tope, el modo "Ajustado por inflación" mantiene tu facturación y solo actualiza el tope por inflación.',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'Antes, al pasar a "Ajustado por inflación", también cambiaba el monto facturado y se prestaba a confusión. Ahora el facturado queda igual al de los últimos 12 meses y solo se actualiza el tope por la inflación del semestre, así ves de forma directa si te mantenés en tu categoría o la inflación te evita subir.',
+      },
+    ],
+  },
+  {
     id: '2026-06-26-aviso-precio-unitario',
     fecha: '2026-06-26',
     titulo: 'Aviso al superar el precio unitario máximo',

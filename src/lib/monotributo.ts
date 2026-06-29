@@ -45,10 +45,9 @@ export interface CalculoCliente {
   ratioSuperadoLegal: boolean;
   fechaProyectadaCruceTope?: string;
   variacionMensualPromedio: number;
+  /** Categoría que tocaría con el MISMO facturado actual pero contra los topes YA actualizados por inflación. */
   categoriaConInflacion: Categoria;
-  /** Categoría que tocaría con la facturación PROYECTADA pero contra los topes de HOY (sin inflar). */
-  categoriaProyectadaSinInflacion: Categoria;
-  /** true si actualizar los topes por inflación te deja en una categoría MÁS BAJA que sin inflar (el caso útil). */
+  /** true si actualizar los topes por inflación te deja en una categoría MÁS BAJA que con los topes de hoy (el caso útil). */
   inflacionEvitaSubirCategoria: boolean;
   diasParaProximaVentana: number;
   proximaVentana?: VentanaRecategorizacion;
@@ -57,10 +56,9 @@ export interface CalculoCliente {
   // recalcular (y sin riesgo de que el detalle diverja de lo que se muestra).
   nivelTope: number; // facturación autoritativa usada para tope/categoría (oficial o anualizada propia)
   topeReferencia: number; // tope contra el que se mide (oficial de ARCA o de la tabla)
-  promedioMensualUlt3: number; // promedio de los últimos 3 meses (base de las proyecciones)
-  facturacionConInflacion: number; // proyección a 12m con inflación compuesta
-  inflacionMensualUsada: number; // tasa mensual aplicada en esa proyección
-  topeCategoriaConInflacion: number; // tope de la categoría proyectada, YA actualizado por inflación (6m)
+  promedioMensualUlt3: number; // promedio de los últimos 3 meses (base de la proyección de cruce)
+  inflacionMensualUsada: number; // tasa mensual de inflación aplicada a los topes
+  topeCategoriaConInflacion: number; // tope de la categoría resultante, YA actualizado por inflación (6m)
 }
 
 export function calcularCliente(
@@ -124,29 +122,20 @@ export function calcularCliente(
     topeRef,
   );
 
-  // Proyección a 12 meses: parte del ritmo mensual reciente (promedio de los últimos 3 meses) y lo
-  // lleva hacia adelante con inflación mensual COMPUESTA, sumando los 12 meses proyectados. Suma
-  // geométrica Σ promUlt3·(1+r)^i (i=0..11) = promUlt3·((1+r)^12 − 1)/r; con r=0 es el run-rate ×12.
+  // "Ajustado por inflación": el FACTURADO no cambia (es el de los últimos 12 meses); lo que sube son
+  // los topes de la escala, que se actualizan cada SEMESTRE por la inflación acumulada de esos 6
+  // meses. Medimos el MISMO facturado actual (nivelTope) contra esos topes ya inflados para ver en
+  // qué categoría quedás. Compararlo con la categoría que te toca hoy aísla el efecto de la inflación.
   const r = inflacionMensual;
-  const facturacionConInflacion =
-    r === 0 ? promUlt3 * 12 : (promUlt3 * ((1 + r) ** 12 - 1)) / r;
-  // Los topes de la escala se actualizan cada SEMESTRE por la inflación acumulada de esos 6 meses.
-  // Proyectamos ese ajuste y comparamos la facturación proyectada contra los topes YA actualizados:
-  // así no marcamos un "cambio de categoría" que la propia suba de topes por inflación va a evitar.
   const factorTopesProx = (1 + r) ** 6;
   const categoriaConInflacion =
-    CATEGORIAS.find(c => facturacionConInflacion <= c.topeAnual * factorTopesProx) ||
+    CATEGORIAS.find(c => nivelTope <= c.topeAnual * factorTopesProx) ||
     CATEGORIAS[CATEGORIAS.length - 1];
   const topeCategoriaConInflacion = categoriaConInflacion.topeAnual * factorTopesProx;
-  // Misma facturación proyectada, pero medida contra los topes SIN inflar (los de hoy). Comparar esta
-  // categoría con la de arriba aísla EL EFECTO DE LA INFLACIÓN: si la suba de topes te deja en una
-  // categoría más baja, ese es el dato útil ("la inflación te evita subir"). Si dan igual, la
-  // inflación no cambia nada (aunque difieran de la categoría ACTUAL del cliente por otra razón).
-  const categoriaProyectadaSinInflacion =
-    CATEGORIAS.find(c => facturacionConInflacion <= c.topeAnual) ||
-    CATEGORIAS[CATEGORIAS.length - 1];
+  // Si con los topes inflados quedás en una categoría más baja que la que te tocaría hoy (mismo
+  // facturado, topes sin inflar = categoriaCorresponde), la inflación te evita subir: ese es el dato útil.
   const inflacionEvitaSubirCategoria =
-    CATEGORIAS.indexOf(categoriaConInflacion) < CATEGORIAS.indexOf(categoriaProyectadaSinInflacion);
+    CATEGORIAS.indexOf(categoriaConInflacion) < CATEGORIAS.indexOf(categoriaCorresponde);
 
   const ventanasFuturas = ventanas
     .map(v => ({ ...v, dias: differenceInCalendarDays(parseISO(v.fechaLimite), HOY) }))
@@ -168,14 +157,12 @@ export function calcularCliente(
     fechaProyectadaCruceTope: fechaProyectada?.toISOString(),
     variacionMensualPromedio: variacion,
     categoriaConInflacion,
-    categoriaProyectadaSinInflacion,
     inflacionEvitaSubirCategoria,
     diasParaProximaVentana: proxima?.dias ?? Infinity,
     proximaVentana: proxima,
     nivelTope,
     topeReferencia: topeRef,
     promedioMensualUlt3: promUlt3,
-    facturacionConInflacion,
     inflacionMensualUsada: r,
     topeCategoriaConInflacion,
   };
