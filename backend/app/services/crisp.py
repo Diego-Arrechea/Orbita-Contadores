@@ -29,7 +29,8 @@ TIMEOUT = 10  # segundos
 
 def _configurado() -> bool:
     return bool(
-        settings.crisp_website_id
+        settings.crisp_enabled
+        and settings.crisp_website_id
         and settings.crisp_token_identifier
         and settings.crisp_token_key
     )

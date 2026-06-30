@@ -21,7 +21,12 @@ import { usuarioActual } from '@/lib/cuenta';
  * Sin ese ID el componente no hace nada, así que el prototipo sigue corriendo igual.
  */
 
-const WEBSITE_ID = import.meta.env.VITE_CRISP_WEBSITE_ID;
+// El chat se carga sólo si hay Website ID Y no está apagado por flag. Poner VITE_CRISP_ENABLED=false
+// deshabilita el widget (y el SDK) sin tocar el ID — sirve para apagarlo en producción desde Vercel.
+const WEBSITE_ID =
+  import.meta.env.VITE_CRISP_ENABLED === 'false'
+    ? undefined
+    : import.meta.env.VITE_CRISP_WEBSITE_ID;
 
 // Crisp.configure() inicializa el SDK: corre una sola vez por carga de página (también evita el
 // doble montaje de React.StrictMode en dev). La identidad sí se re-aplica si cambia el usuario.
