@@ -543,8 +543,9 @@ class AFIP:
         """Abre el servicio mcmp (si hace falta) y fija el contribuyente.
 
         setearContribuyente.do enlaza el CUIT a la sesión del servidor de fes;
-        sin esto los ajax.do devuelven 'sesión expirada'. idContribuyente=0 = uno
-        mismo (otro id sería operar como representado/delegado).
+        sin esto los ajax.do devuelven 'sesión expirada'. El id es el ÍNDICE de la
+        persona a operar (ver _idcontribuyente_objetivo): 0 = uno mismo en cuentas
+        sin representados; el índice del titular si la cuenta representa a otros.
         `forzar=True` reabre el servicio (nuevo token+sign), necesario para
         recuperarse de un bloqueo 'BL' que invalida la sesión de fes.
 
@@ -554,8 +555,42 @@ class AFIP:
         if forzar or not self.fes_vigente or self._fes_servicio != "mcmp":
             self._abrir_o_relogin()  # resetea _contribuyente_set y fes_exp
         if not self._contribuyente_set:
-            self._fes_get(f"{FES_BASE}/setearContribuyente.do?idContribuyente=0")
+            idc = self._idcontribuyente_objetivo()
+            self._fes_get(f"{FES_BASE}/setearContribuyente.do?idContribuyente={idc}")
             self._contribuyente_set = True
+
+    def _idcontribuyente_objetivo(self) -> str:
+        """Índice de contribuyente para setearContribuyente.do.
+
+        Cuando la clave representa a varias personas, Mis Comprobantes intercala la
+        pantalla 'Elegí una persona' y setearContribuyente espera el ÍNDICE de la
+        elegida (0,1,…), NO su CUIT. Fijar siempre 0 caía en el PRIMER representado
+        (no el titular); al consultar luego los comprobantes del titular, ARCA
+        devolvía 'Error DB'. Acá leemos la pantalla y devolvemos el índice de la
+        tarjeta cuyo CUIT es el titular (self.cuit).
+
+        Sin pantalla de selección (representación única, el caso normal) no hay
+        tarjetas y devolvemos '0' (= uno mismo). Si hay selección pero no ubicamos
+        la tarjeta del titular (formatos atípicos, p. ej. sucesiones) también '0':
+        la consulta fallará y el motor caerá al navegador, que sí resuelve esos casos.
+        """
+        try:
+            html = self._fes_get(f"{FES_BASE}/seleccionIngreso.do").text
+        except (requests.RequestException, AFIPError):
+            return "0"
+        primary = None
+        for m in re.finditer(
+            r'<a class="(panel[^"]*)"[^>]*onclick="([^"]+)"[^>]*>(.*?)</a>', html, re.S | re.I
+        ):
+            clase, onclick, inner = m.group(1), m.group(2), m.group(3)
+            val = re.search(r"value='(\d+)'", onclick)
+            if not val:
+                continue
+            if self.cuit in re.sub(r"\D", "", inner):  # la tarjeta del titular
+                return val.group(1)
+            if primary is None and "border-primary" in clase:  # respaldo: la destacada
+                primary = val.group(1)
+        return primary or "0"
 
     @staticmethod
     def _fmt_fecha(f) -> str:
