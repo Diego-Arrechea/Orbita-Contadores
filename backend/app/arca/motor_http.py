@@ -5,8 +5,10 @@ Cada función replica la firma/salida del scraper de browser equivalente, pero p
 HTTP. El dispatch http/browser lo decide `motor.py` según `settings.motor_scraping`.
 
 NOTA multi-tenant: en producción cada cliente es TITULAR de su propia clave
-(`cuit_login == cuit_cliente`, verificado: 0 representados). afip.py opera como
-titular (idContribuyente=0), así que con `AFIP(cuit_login, clave)` alcanza.
+(`cuit_login == cuit_cliente`), así que con `AFIP(cuit_login, clave)` alcanza.
+OJO: algunos titulares ADEMÁS representan a otra persona/empresa; ahí Mis
+Comprobantes exige elegir contribuyente y afip.py fija el índice del titular
+(ver _idcontribuyente_objetivo) — no se asume idContribuyente=0.
 """
 from __future__ import annotations
 
