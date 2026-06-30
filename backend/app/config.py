@@ -107,6 +107,9 @@ class Settings(BaseSettings):
     # Lo más simple es un "Website Token" (Crisp app → Settings → Workspace Settings → Advanced
     # Configuration → API Token; tier "website", 10k req/día). Si quedan vacíos, la sync con Crisp
     # es un no-op (no rompe el registro). Para un plugin token del Marketplace, poné CRISP_TIER=plugin.
+    # Interruptor general: CRISP_ENABLED=false apaga la sync de contactos con el CRM sin borrar las
+    # credenciales (todo pasa a ser no-op). Para deshabilitar Crisp por completo en producción.
+    crisp_enabled: bool = True
     crisp_website_id: str = ""
     crisp_token_identifier: str = ""
     crisp_token_key: str = ""
