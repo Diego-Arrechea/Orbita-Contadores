@@ -162,6 +162,19 @@ SERVICIOS_ENTRY = {
     "e-ventanilla": f"{VE_BASE}/login",
 }
 
+# Servicios interactivos que, si el CUIT NO los tiene adheridos en su Clave Fiscal,
+# adherimos solos (Administrador de Relaciones) y reintentamos abrirlos. Mapea el
+# nombre SSO -> el servicename del árbol de relaciones (web://<name>). Así el alta /
+# motor se autocura en vez de fallar con "El servicio no está disponible":
+#   - mcmp: Mis Comprobantes (sin él no se traen comprobantes; rompía altas).
+#   - arfe_certificado: Administración de Certificados Digitales (sin él no se crea
+#     el cert para facturar). bootstrap_certificado ya lo maneja aparte; acá queda
+#     como red de seguridad para cualquier otro camino que abra el servicio.
+AUTO_ADHERIR = {
+    "mcmp": "web://mcmp",
+    "arfe_certificado": "web://arfe_certificado",
+}
+
 # Mapeo de las columnas del listaResultados (índice -> nombre). La grilla trae ~50
 # columnas; acá van las útiles (los índices 18..47 son los desgloses de IVA, casi
 # todos 0). Índices verificados con datos reales (ver muestra_afip).
@@ -246,6 +259,7 @@ class AFIP:
         # pero cada SSO fija un "modo" distinto en el server -> recordamos cuál es el
         # último abierto para reabrir si cambia (cert <-> relaciones).
         self._serviciosweb_servicio = None
+        self._adhiriendo = False  # guard de re-entrada del auto-adherir (ver abrir_servicio)
 
         # Logger por CUIT: en multi-tenant los logs distinguen de qué cliente son.
         self.log = logging.getLogger(f"afip.{self.cuit}")
@@ -426,8 +440,23 @@ class AFIP:
             raise AFIPError("Sesión del portal expirada (autorizacion sin JSON).")
         if not isinstance(aut, dict) or "token" not in aut or "sign" not in aut:
             # La autorización no trajo token+sign: el CUIT no tiene habilitado este
-            # servicio (p. ej. CCMA para quien no es monotributista ni autónomo). Lo
-            # marcamos limpio en vez de reventar con KeyError aguas abajo.
+            # servicio. Para los servicios auto-adheribles (Mis Comprobantes, etc.) lo
+            # adherimos solos en el Administrador de Relaciones y reintentamos UNA vez
+            # (el flag _adhiriendo corta la recursión si la adhesión no alcanzó). El
+            # resto se marca limpio en vez de reventar con KeyError aguas abajo (p. ej.
+            # CCMA para quien no es monotributista ni autónomo).
+            serv_rel = AUTO_ADHERIR.get(service_name)
+            if serv_rel and not self._adhiriendo:
+                self.log.info(
+                    "Servicio %s no adherido; lo adhiero (%s) y reintento", service_name, serv_rel
+                )
+                self._adhiriendo = True
+                try:
+                    self.adminrel_adherir_servicio(serv_rel)
+                finally:
+                    self._adhiriendo = False
+                self.abrir_servicio(service_name, entry_url=entry_url)
+                return
             raise AFIPError(
                 f"El servicio '{service_name}' no está disponible para este CUIT "
                 f"(autorizacion sin token)."
