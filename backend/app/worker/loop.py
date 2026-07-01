@@ -61,16 +61,38 @@ def _clientes_vencidos(db, limite: dt.datetime, limite_fallidos: dt.datetime):
         .join(ult_id, Extraccion.id == ult_id.c.mid)
         .subquery()
     )
+    # Circuit breaker: fallos CONSECUTIVOS desde la última exitosa (id de la última exitosa por
+    # cliente; los fallidos con id mayor son la racha actual). Si la racha llega al tope, el cliente
+    # sale del reintento rápido y espera la cadencia normal — deja de martillar un fallo persistente.
+    ult_exito = (
+        select(Extraccion.cuit, func.max(Extraccion.id).label("eid"))
+        .where(Extraccion.resultado == "exitosa")
+        .group_by(Extraccion.cuit)
+        .subquery()
+    )
+    fallos = (
+        select(Extraccion.cuit, func.count().label("n"))
+        .outerjoin(ult_exito, ult_exito.c.cuit == Extraccion.cuit)
+        .where(
+            Extraccion.resultado == "fallida",
+            or_(ult_exito.c.eid.is_(None), Extraccion.id > ult_exito.c.eid),
+        )
+        .group_by(Extraccion.cuit)
+        .subquery()
+    )
     # coalesce a una fecha muy vieja: NULL (nunca sincronizado) ordena primero, de forma portable.
     epoch = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
     q = (
         select(ClienteARCA.cuit, ClienteARCA.cuit_contador)
         .outerjoin(ult, ult.c.cuit == ClienteARCA.cuit)
+        .outerjoin(fallos, fallos.c.cuit == ClienteARCA.cuit)
         .where(
             or_(
                 ult.c.fecha.is_(None),                                            # nunca sincronizado
                 ult.c.fecha < limite,                                             # vencido normal
-                (ult.c.resultado == "fallida") & (ult.c.fecha < limite_fallidos),  # reintento de fallido
+                (ult.c.resultado == "fallida")                                    # reintento de fallido…
+                & (ult.c.fecha < limite_fallidos)
+                & (func.coalesce(fallos.c.n, 0) < settings.sync_max_reintentos_rapidos),  # …hasta el tope
             )
         )
         .order_by(func.coalesce(ult.c.fecha, epoch).asc())
