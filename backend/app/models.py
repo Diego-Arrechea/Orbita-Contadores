@@ -191,6 +191,14 @@ class ClienteARCA(Base):
     clave_requiere_cambio: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False
     )
+    # Línea de base del Domicilio Fiscal Electrónico: cuándo el motor "fotografió" por primera vez las
+    # comunicaciones de este cliente. NULL = todavía no se baselineó → la primera pasada guarda las
+    # comunicaciones vigentes como YA VISTAS (sin punto rojo ni alerta); sólo las que aparezcan después
+    # cuentan como novedad para el contador. Espeja el criterio de alertas_baseline_en. Ver
+    # services/comunicaciones.py.
+    dfe_baseline_en: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class ComprobanteEmitido(Base):
@@ -328,6 +336,46 @@ class AuditoriaAdmin(Base):
     detalle: Mapped[str | None] = mapped_column(String(300), nullable=True)
     fecha: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
+class ComunicacionDFE(Base):
+    """Una comunicación del Domicilio Fiscal Electrónico (DFE / e-ventanilla) de un cliente, cacheada
+    localmente. La trae el motor (afip.notificaciones_listar) en la pasada de sync y se upsertea por
+    (cuit, id_comunicacion). El estado 'leída' vive en dos planos a propósito:
+
+    - `leida_arca`: cómo figura en ARCA (la marca ARCA sola al pedir el detalle de la comunicación).
+    - `vista_por_contador`: si el contador la abrió DESDE Órbita. Es lo que dispara el punto rojo de
+      "comunicaciones sin ver". Al abrirla en Órbita pedimos el detalle (→ ARCA la marca leída) y la
+      marcamos vista acá. En el primer sync del cliente todas las vigentes nacen `vista=True`
+      (baseline anti-spam, ver ClienteARCA.dfe_baseline_en): sólo las nuevas aparecen como novedad."""
+
+    __tablename__ = "comunicaciones_dfe"
+    __table_args__ = (
+        UniqueConstraint("cuit", "id_comunicacion", name="uq_comunicacion_dfe"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cuit: Mapped[str] = mapped_column(String(11), ForeignKey("clientes_arca.cuit"), index=True)
+    # idComunicacion de ARCA (clave del lado de ellos). String por las dudas (a veces viene numérico).
+    id_comunicacion: Mapped[str] = mapped_column(String(40))
+    fecha_publicacion: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fecha_vencimiento: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sistema: Mapped[str | None] = mapped_column(String(200), nullable=True)  # sistema/organismo publicador
+    organismo: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Resumen que trae la lista (el mensaje completo se baja on-demand al abrirla → `detalle`).
+    asunto: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    prioridad: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    tiene_adjunto: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # Mensaje completo, cacheado la primera vez que el contador abre la comunicación (NULL = no bajado).
+    detalle: Mapped[str | None] = mapped_column(Text, nullable=True)
+    leida_arca: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    vista_por_contador: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    sincronizado_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    creado_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )
 
 

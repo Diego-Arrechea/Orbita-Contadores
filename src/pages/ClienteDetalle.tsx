@@ -33,16 +33,17 @@ import { ListaComprobantes } from '@/components/cliente/ListaComprobantes';
 // import { CausalesList } from '@/components/cliente/CausalesList'; // oculto por ahora (ver tab "causales")
 import { NotasContador } from '@/components/cliente/NotasContador';
 import { HistorialExtracciones } from '@/components/cliente/HistorialExtracciones';
+import { DomicilioElectronico } from '@/components/cliente/DomicilioElectronico';
 import { getCliente } from '@/data/clientes';
 import { useConfig } from '@/context/ConfigContext';
 import { calcularCliente } from '@/lib/monotributo';
 import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
-import { formatCuit, formatDate } from '@/lib/utils';
+import { formatCuit, formatDate, cn } from '@/lib/utils';
 import { derivarAlertas } from '@/lib/alertas';
 import { descargarReporteExcel } from '@/lib/reporteExcel';
 import { puedeFacturar } from '@/lib/cuenta';
 import { getMovimientos } from '@/services/movimientosService';
-import { useClienteReal } from '@/lib/queries';
+import { useClienteReal, useComunicaciones } from '@/lib/queries';
 import { EditarClienteDialog } from '@/components/cliente/EditarClienteDialog';
 import { EliminarClienteDialog } from '@/components/cliente/EliminarClienteDialog';
 import { EmitirComprobanteDialog } from '@/components/cliente/EmitirComprobanteDialog';
@@ -62,6 +63,10 @@ export function ClienteDetalle() {
   // pedir cuando se usa el mock. El InvalidadorCache global lo re-trae al terminar su sincronización.
   const { data: clienteReal = null, isLoading: buscandoReal, refetch: refetchCliente } =
     useClienteReal(id, !clienteMock);
+  // Comunicaciones del Domicilio Fiscal Electrónico (para el punto rojo del tab). Comparte cache con
+  // el tab; sólo se pide para clientes reales.
+  const { data: comunicaciones = [] } = useComunicaciones(id, !clienteMock);
+  const comunicacionesSinVer = comunicaciones.filter(c => !c.vista).length;
   const [editarOpen, setEditarOpen] = useState(false);
   const [eliminarOpen, setEliminarOpen] = useState(false);
   const [tab, setTab] = useState('situacion');
@@ -289,6 +294,15 @@ export function ClienteDetalle() {
               <TabsTrigger value="facturacion" className={tabTriggerClass}>Facturación 12m</TabsTrigger>
               <TabsTrigger value="reconciliacion" className={tabTriggerClass}>Reconciliación bancaria</TabsTrigger>
               <TabsTrigger value="comprobantes" className={tabTriggerClass}>Comprobantes</TabsTrigger>
+              <TabsTrigger value="dfe" className={cn(tabTriggerClass, 'inline-flex items-center gap-1.5')}>
+                Domicilio Fiscal Electrónico
+                {comunicacionesSinVer > 0 && (
+                  <span
+                    className="h-2 w-2 rounded-full bg-danger"
+                    title={`${comunicacionesSinVer} comunicación(es) sin ver`}
+                  />
+                )}
+              </TabsTrigger>
               {/* Causales de exclusión: oculta por ahora (vacía para clientes reales). Reactivar cuando un contador la pida. */}
               {/* <TabsTrigger value="causales" className={tabTriggerClass}>Causales de exclusión</TabsTrigger> */}
               <TabsTrigger value="notas" className={tabTriggerClass}>Notas y extracciones</TabsTrigger>
@@ -317,6 +331,9 @@ export function ClienteDetalle() {
         </TabsContent>
         <TabsContent value="comprobantes" className="mt-0">
           <ListaComprobantes cliente={cliente} />
+        </TabsContent>
+        <TabsContent value="dfe" className="mt-0">
+          <DomicilioElectronico cliente={cliente} />
         </TabsContent>
         {/* <TabsContent value="causales" className="mt-0">
           <CausalesList cliente={cliente} />

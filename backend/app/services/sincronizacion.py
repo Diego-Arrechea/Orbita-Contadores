@@ -299,6 +299,14 @@ def sincronizar_todo(db: Session, cuit: str, headless: bool | None = None) -> in
         sincronizar_padron(db, cuit, headless=headless)
     except Exception:  # noqa: BLE001 — el padrón no aplica o falló; los comprobantes ya se trajeron
         pass
+    # Comunicaciones del Domicilio Fiscal Electrónico (best-effort): reusa la sesión ya logueada del
+    # cliente. No frena la sync si falla (ídem padrón).
+    try:
+        from . import comunicaciones
+
+        comunicaciones.sincronizar_comunicaciones(db, cuit)
+    except Exception:  # noqa: BLE001
+        pass
     return n
 
 

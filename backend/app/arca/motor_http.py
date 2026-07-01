@@ -282,6 +282,30 @@ def crear_punto_venta(
     return afip.pventa_crear(nombre, sistema)
 
 
+# --- Domicilio Fiscal Electrónico / e-ventanilla (comunicaciones) --------------
+@_con_sesion
+def comunicaciones(
+    afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: str | None = None, desde=None, hasta=None
+) -> list[dict]:
+    """Comunicaciones del DFE (dicts normalizados de afip.notificaciones_listar: id,
+    fecha_publicacion/vencimiento como datetime, sistema, organismo, leida, prioridad,
+    tiene_adjunto, mensaje resumido).
+
+    `cuit_objetivo`: a quién le consultamos. Titular → == cuit_login (default). REPRESENTADO →
+    el CUIT del representado; ARCA lo autoriza si el logueado tiene el DFE delegado por ese CUIT."""
+    return afip.notificaciones_listar(desde, hasta, cuit=cuit_objetivo or cuit_login)
+
+
+@_con_sesion
+def comunicacion_detalle(
+    afip: AFIP, cuit_login: str, clave: str, id_com, cuit_objetivo: str | None = None
+) -> dict:
+    """Detalle completo de una comunicación (mensaje entero). El GET del detalle es lo que hace que
+    ARCA la marque como leída (no hay endpoint de 'marcar leído' explícito). `cuit_objetivo` = dueño
+    de la comunicación (el representado si aplica; default = logueado)."""
+    return afip.notificacion_detalle(id_com, cuit=cuit_objetivo or cuit_login)
+
+
 # --- Certificado (reemplaza scraping.bootstrap.bootstrap_cliente) --------------
 def bootstrap_cliente(
     cuit_cliente: str, cuit_login: str, clave: str, alias: str | None = None, on_progress=None

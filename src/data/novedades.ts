@@ -42,6 +42,20 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-01-domicilio-fiscal-electronico',
+    fecha: '2026-07-01',
+    titulo: 'Domicilio Fiscal Electrónico: las comunicaciones de cada cliente, adentro de Órbita',
+    resumen:
+      'Mirá las comunicaciones oficiales de tus clientes sin salir de la ficha, con un aviso cuando hay alguna sin leer.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Cada cliente tiene ahora una solapa "Domicilio Fiscal Electrónico" donde ves las comunicaciones oficiales que recibe. Un punto rojo te marca cuáles todavía no abriste, así no se te pasa ninguna. Al abrir una, se muestra el mensaje completo y queda marcada como leída. Funciona tanto para el titular como para los clientes que representa.',
+      },
+    ],
+  },
+  {
     id: '2026-07-01-aviso-cambio-clave-fiscal',
     fecha: '2026-07-01',
     titulo: 'Te avisamos cuando un cliente tiene que cambiar su Clave Fiscal',
