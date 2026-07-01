@@ -200,6 +200,7 @@ def sincronizaciones_fallidas(db: Session = Depends(get_db), limite: int = 50):
             models.Extraccion,
             models.ClienteARCA.nombre,
             models.Usuario.email,
+            models.ClienteARCA.clave_requiere_cambio,
         )
         .outerjoin(models.ClienteARCA, models.ClienteARCA.cuit == models.Extraccion.cuit)
         .outerjoin(models.Usuario, models.Usuario.id == models.ClienteARCA.usuario_id)
@@ -209,7 +210,7 @@ def sincronizaciones_fallidas(db: Session = Depends(get_db), limite: int = 50):
     ).all()
 
     # Para resolver "¿se sincronizó bien después?": última extracción EXITOSA por cuit (una query).
-    cuits = {e.cuit for e, _, _ in filas}
+    cuits = {e.cuit for e, _, _, _ in filas}
     ultima_ok: dict[str, dt.datetime] = {}
     if cuits:
         ultima_ok = dict(
@@ -224,7 +225,7 @@ def sincronizaciones_fallidas(db: Session = Depends(get_db), limite: int = 50):
         )
 
     out = []
-    for e, nombre, email in filas:
+    for e, nombre, email, clave_requiere_cambio in filas:
         ok_fecha = ultima_ok.get(e.cuit)
         out.append(
             AdminSyncFallidaOut(
@@ -234,8 +235,10 @@ def sincronizaciones_fallidas(db: Session = Depends(get_db), limite: int = 50):
                 contador_email=email,
                 motivo=e.motivo,
                 duracion_ms=e.duracion_ms,
-                # Resuelto si hay una sync exitosa POSTERIOR a esta falla puntual.
-                resuelto=ok_fecha is not None and ok_fecha > e.fecha,
+                # Resuelto si hubo una sync exitosa POSTERIOR, o si el cliente está en un estado
+                # CONOCIDO y ya avisado (ARCA le pide cambiar la Clave Fiscal): no es un incidente
+                # abierto de ops, la pelota está en el contador/cliente. Ver clave_requiere_cambio.
+                resuelto=(ok_fecha is not None and ok_fecha > e.fecha) or bool(clave_requiere_cambio),
                 ultima_sync_ok=_iso(ok_fecha),
             )
         )
