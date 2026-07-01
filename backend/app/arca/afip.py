@@ -2247,10 +2247,14 @@ class AFIP:
             "_raw": c,
         }
 
-    def notificaciones_listar(self, desde=None, hasta=None) -> list[dict]:
+    def notificaciones_listar(self, desde=None, hasta=None, cuit=None) -> list[dict]:
         """Lista las comunicaciones del Domicilio Fiscal Electrónico.
 
         desde/hasta: fecha (date o 'dd/mm/yyyy'); default = último año.
+        cuit: CUIT objetivo de la consulta. Por defecto el logueado (titular). Para un
+            REPRESENTADO se pasa su CUIT: ARCA lo autoriza según las delegaciones de la
+            sesión (el logueado tiene que tener el DFE delegado por ese CUIT). Si no está
+            delegado, ARCA devuelve la lista vacía (no rompe).
         Devuelve dicts normalizados (id, fecha_publicacion/vencimiento como
         datetime, sistema, estado, leida, prioridad, tiene_adjunto, mensaje, _raw).
         El `mensaje` acá viene resumido; el completo está en notificacion_detalle.
@@ -2261,27 +2265,30 @@ class AFIP:
         j = self._ve_get(
             "/api/v1/communications",
             {
-                "cuit": self.cuit,
+                "cuit": str(cuit or self.cuit),
                 "fechaPublicacionSince": d.strftime("%Y-%m-%d"),
                 "fechaPublicacionTo": h.strftime("%Y-%m-%d"),
             },
         )
         coms = j.get("comunicaciones", [])
-        self.log.info("Notificaciones: %d", len(coms))
+        self.log.info("Notificaciones (%s): %d", cuit or self.cuit, len(coms))
         return [self._notif_norm(c) for c in coms]
 
-    def notificacion_detalle(self, id_com) -> dict:
-        """Detalle completo de una comunicación (mensaje entero, adjuntos, fechas)."""
+    def notificacion_detalle(self, id_com, cuit=None) -> dict:
+        """Detalle completo de una comunicación (mensaje entero, adjuntos, fechas).
+        `cuit`: el CUIT dueño de la comunicación (el representado si aplica; default = logueado)."""
         j = self._ve_get(
-            f"/api/v1/communications/{id_com}", {"id": str(id_com), "cuit": self.cuit}
+            f"/api/v1/communications/{id_com}",
+            {"id": str(id_com), "cuit": str(cuit or self.cuit)},
         )
         return self._notif_norm(j.get("comunicacion", j))
 
-    def notificacion_eventos(self, id_com) -> list[dict]:
-        """Eventos de una comunicación. Dicts: evento, fecha (datetime), cuit, _raw."""
+    def notificacion_eventos(self, id_com, cuit=None) -> list[dict]:
+        """Eventos de una comunicación. Dicts: evento, fecha (datetime), cuit, _raw.
+        `cuit`: el CUIT dueño de la comunicación (el representado si aplica; default = logueado)."""
         j = self._ve_get(
             f"/api/v1/communications/{id_com}/eventos",
-            {"id": str(id_com), "cuit": self.cuit},
+            {"id": str(id_com), "cuit": str(cuit or self.cuit)},
         )
         return [
             {

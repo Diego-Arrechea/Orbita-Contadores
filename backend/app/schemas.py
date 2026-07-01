@@ -471,6 +471,25 @@ class ClasificarIn(BaseModel):
     comprobanteId: str | None = None  # noqa: N815
 
 
+# --- Domicilio Fiscal Electrónico (comunicaciones; ver routers/clientes.py) ---
+
+
+class ComunicacionOut(BaseModel):
+    """Una comunicación del Domicilio Fiscal Electrónico como la consume el front (camelCase)."""
+
+    id: str  # id_comunicacion (clave de ARCA)
+    fechaPublicacion: str | None = None  # noqa: N815 — ISO
+    fechaVencimiento: str | None = None  # noqa: N815 — ISO
+    sistema: str | None = None
+    organismo: str | None = None
+    asunto: str | None = None  # resumen de la lista
+    detalle: str | None = None  # mensaje completo (sólo tras abrirla)
+    prioridad: str | None = None
+    tieneAdjunto: bool = False  # noqa: N815
+    leidaArca: bool = False  # noqa: N815 — cómo figura en ARCA
+    vista: bool = False  # el contador la abrió en Órbita (drive del punto rojo)
+
+
 # --- Panel superadmin (sólo rol=admin; ver routers/admin.py) ---
 
 

@@ -15,6 +15,7 @@ from ..schemas import (
     TIPOS_NOTA_CREDITO,
     ClienteOut,
     ComprobanteOut,
+    ComunicacionOut,
     EdicionClienteIn,
     ExtraccionOut,
     HistorialMesOut,
@@ -25,6 +26,7 @@ from ..schemas import (
 )
 from ..scraping import jobs
 from ..security import usuario_actual
+from ..services import comunicaciones as comunicaciones_svc
 from ..services import sincronizacion
 from ..services.scheduler import estado_scheduler
 
@@ -421,3 +423,62 @@ def extracciones_cliente(
         )
         for e in exts
     ]
+
+
+# --- Domicilio Fiscal Electrónico (comunicaciones) ---------------------------
+
+
+def _com_out(c: models.ComunicacionDFE) -> ComunicacionOut:
+    return ComunicacionOut(
+        id=c.id_comunicacion,
+        fechaPublicacion=_iso_utc(c.fecha_publicacion) if c.fecha_publicacion else None,
+        fechaVencimiento=_iso_utc(c.fecha_vencimiento) if c.fecha_vencimiento else None,
+        sistema=c.sistema,
+        organismo=c.organismo,
+        asunto=c.asunto,
+        detalle=c.detalle,
+        prioridad=c.prioridad,
+        tieneAdjunto=c.tiene_adjunto,
+        leidaArca=c.leida_arca,
+        vista=c.vista_por_contador,
+    )
+
+
+@router.get("/clientes/{cuit}/comunicaciones", response_model=list[ComunicacionOut])
+def comunicaciones_cliente(
+    cuit: str, db: Session = Depends(get_db), usuario: models.Usuario = Depends(usuario_actual)
+):
+    """Comunicaciones del Domicilio Fiscal Electrónico cacheadas del cliente (más reciente primero).
+    Lee de la DB (lo trae la sincronización), no consulta en vivo."""
+    _cliente_propio(db, cuit, usuario)
+    return [_com_out(c) for c in comunicaciones_svc.listar(db, cuit)]
+
+
+@router.post("/clientes/{cuit}/comunicaciones/sincronizar", response_model=list[ComunicacionOut])
+def sincronizar_comunicaciones_cliente(
+    cuit: str, db: Session = Depends(get_db), usuario: models.Usuario = Depends(usuario_actual)
+):
+    """Trae en vivo las comunicaciones del DFE y las cachea. Pensado para el motor de sync; expuesto
+    también acá para poder refrescar a demanda (y para probar en desarrollo sin esperar al worker)."""
+    _cliente_propio(db, cuit, usuario)
+    try:
+        comunicaciones_svc.sincronizar_comunicaciones(db, cuit)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return [_com_out(c) for c in comunicaciones_svc.listar(db, cuit)]
+
+
+@router.post("/clientes/{cuit}/comunicaciones/{id_com}/marcar-vista", response_model=ComunicacionOut)
+def marcar_comunicacion_vista(
+    cuit: str,
+    id_com: str,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_actual),
+):
+    """El contador abrió la comunicación: baja el detalle completo (ARCA la marca leída al pedirlo) y
+    la marca vista en Órbita (apaga el punto rojo). Devuelve la comunicación ya con el detalle."""
+    _cliente_propio(db, cuit, usuario)
+    com = comunicaciones_svc.marcar_vista(db, cuit, id_com)
+    if com is None:
+        raise HTTPException(status_code=404, detail="Comunicación no encontrada")
+    return _com_out(com)

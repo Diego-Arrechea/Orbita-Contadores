@@ -167,6 +167,10 @@ def _migrar_clientes_arca(conn) -> None:
     if "alertas_baseline_en" not in cols:
         tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
         conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN alertas_baseline_en {tipo}"))
+    # Línea de base del Domicilio Fiscal Electrónico (comunicaciones): mismo criterio que arriba.
+    if "dfe_baseline_en" not in cols:
+        tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
+        conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN dfe_baseline_en {tipo}"))
     # Certificado de facturación electrónica del cliente (cifrado). BLOB en SQLite, BYTEA en Postgres.
     blob = "BLOB" if es_sqlite else "BYTEA"
     ts = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"

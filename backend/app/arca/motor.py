@@ -109,6 +109,29 @@ def crear_punto_venta(
     return motor_http.crear_punto_venta(cuit_login, clave, nombre=nombre, sistema=sistema)
 
 
+# --- Domicilio Fiscal Electrónico / e-ventanilla — SÓLO HTTP (afip.py) --------
+def comunicaciones(
+    cuit_login: str, clave: str, cuit_objetivo: str | None = None, desde=None, hasta=None
+) -> list[dict]:
+    """Comunicaciones del Domicilio Fiscal Electrónico. `cuit_objetivo` = a quién le consultamos
+    (titular → el logueado; representado → su CUIT). Sólo HTTP: el motor browser nunca hizo el DFE."""
+    from . import motor_http
+
+    return motor_http.comunicaciones(
+        cuit_login, clave, cuit_objetivo=cuit_objetivo, desde=desde, hasta=hasta
+    )
+
+
+def comunicacion_detalle(
+    cuit_login: str, clave: str, id_com, cuit_objetivo: str | None = None
+) -> dict:
+    """Detalle completo de una comunicación (mensaje entero). Pedirlo hace que ARCA la marque leída.
+    `cuit_objetivo` = dueño de la comunicación (el representado si aplica; default = logueado)."""
+    from . import motor_http
+
+    return motor_http.comunicacion_detalle(cuit_login, clave, id_com, cuit_objetivo=cuit_objetivo)
+
+
 # --- Certificado de facturación (cert + Fase B) -------------------------------
 def bootstrap_cliente(
     cuit_cliente: str, cuit_login: str, clave: str, alias: str | None = None, on_progress=None
