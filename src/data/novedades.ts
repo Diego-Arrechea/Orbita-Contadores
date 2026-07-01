@@ -42,6 +42,20 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-01-aviso-cambio-clave-fiscal',
+    fecha: '2026-07-01',
+    titulo: 'Te avisamos cuando un cliente tiene que cambiar su Clave Fiscal',
+    resumen:
+      'Si a un cliente le piden cambiar su Clave Fiscal, ahora lo ves marcado en la lista de clientes.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Cada tanto, AFIP obliga a renovar la Clave Fiscal por seguridad. Mientras eso no se hace, la información de ese cliente no se puede mantener actualizada. Ahora, cuando pasa, lo marcamos con un aviso en la lista de clientes ("Debe cambiar su Clave Fiscal") para que le avises al cliente. En cuanto la renueva, el aviso desaparece solo y la información vuelve a actualizarse.',
+      },
+    ],
+  },
+  {
     id: '2026-06-29-inflacion-solo-tope',
     fecha: '2026-06-29',
     titulo: 'Ajustado por inflación: ahora cambia solo el tope',

@@ -184,6 +184,13 @@ class ClienteARCA(Base):
     creado_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # ARCA forzó al cliente a cambiar su Clave Fiscal (campaña de seguridad de AFIP): hasta que el
+    # titular la cambie en el sitio de ARCA, ninguna sincronización puede entrar. La sync lo detecta y
+    # lo prende (ver services/sincronizacion.py); una sync exitosa lo apaga solo. Se muestra en la
+    # lista de clientes para que el contador le avise al cliente. No lo arreglamos nosotros.
+    clave_requiere_cambio: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
 
 
 class ComprobanteEmitido(Base):

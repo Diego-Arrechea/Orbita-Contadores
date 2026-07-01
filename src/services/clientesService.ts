@@ -40,6 +40,7 @@ interface ClienteBackend {
   historial_mensual?: HistorialMes[] | null;
   tiene_comprobantes?: boolean | null;
   tiene_facturacion?: boolean | null;
+  clave_requiere_cambio?: boolean | null; // ARCA le pide al cliente cambiar su Clave Fiscal
 }
 
 const CODIGOS: CategoriaCodigo[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
@@ -119,6 +120,7 @@ function construirCliente(
     // En la ficha del cliente, comprobantes viene completo y este flag pasa a sobrarle.
     tieneComprobantes: bk.tiene_comprobantes ?? comprobantes.length > 0,
     tieneFacturacion: bk.tiene_facturacion ?? false,
+    claveRequiereCambio: bk.clave_requiere_cambio ?? false,
     causales: [],
     extracciones,
     fuente: 'arca',

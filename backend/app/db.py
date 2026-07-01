@@ -184,6 +184,12 @@ def _migrar_clientes_arca(conn) -> None:
     # BOOLEAN anda igual en SQLite y Postgres.
     if "relacion_dependencia" not in cols:
         conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN relacion_dependencia BOOLEAN"))
+    # ARCA forzó cambio de Clave Fiscal: bloquea la sync hasta que el cliente la cambie. Se muestra en
+    # la lista de clientes. DEFAULT FALSE anda igual en SQLite (0/FALSE) y Postgres.
+    if "clave_requiere_cambio" not in cols:
+        conn.execute(
+            text("ALTER TABLE clientes_arca ADD COLUMN clave_requiere_cambio BOOLEAN DEFAULT FALSE")
+        )
 
 
 def _migrar_comprobantes_emitidos(conn) -> None:

@@ -144,6 +144,9 @@ export interface Cliente {
   /** Facturación electrónica habilitada (certificado ya generado). Define si el botón de la ficha
    *  dice "Habilitar facturación" (false) o "Emitir comprobante" (true). */
   tieneFacturacion?: boolean;
+  /** ARCA le pide al cliente cambiar su Clave Fiscal (campaña de seguridad de AFIP). Mientras esté en
+   *  true no se puede actualizar la info del cliente: el contador tiene que avisarle que la cambie. */
+  claveRequiereCambio?: boolean;
   causales: EstadoCausalCliente[];
   extracciones: Extraccion[];
   /** 'arca' = los comprobantes se traen reales del backend (WSFEv1); 'mock'/undefined = datos de prueba. */

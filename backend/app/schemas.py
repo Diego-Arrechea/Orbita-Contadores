@@ -135,6 +135,9 @@ class ClienteOut(BaseModel):
     historial_mensual: list[HistorialMesOut] = []
     tiene_comprobantes: bool = False  # para el semáforo 'sin datos' sin necesidad de bajarlos
     tiene_facturacion: bool = False  # facturación electrónica habilitada (certificado ya generado)
+    # ARCA le pide al cliente cambiar su Clave Fiscal (campaña de seguridad de AFIP). Mientras esté en
+    # true, no se puede sincronizar: el contador tiene que avisarle al cliente que la cambie en ARCA.
+    clave_requiere_cambio: bool = False
 
 
 class NotificacionesIn(BaseModel):
