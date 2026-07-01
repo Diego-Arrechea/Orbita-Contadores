@@ -60,6 +60,13 @@ class Settings(BaseSettings):
     # esperar el intervalo completo). Cubre los fallos transitorios de ARCA (sesión vencida, 503,
     # "Error DB") que se recuperan en una corrida posterior. En minutos.
     sync_reintento_fallidos_min: int = 30
+    # Circuit breaker del reintento rápido: tras N extracciones FALLIDAS consecutivas (sin ninguna
+    # exitosa en el medio), el cliente DEJA de re-despacharse cada `sync_reintento_fallidos_min` y
+    # vuelve a la cadencia normal (`sync_intervalo_horas`). Corta el martilleo de un fallo persistente
+    # (p. ej. login que ARCA rechaza sin recuperar): el hammering ni resuelve ni conviene (dispara
+    # bloqueos/captcha). Se resetea solo cuando una sync sale bien. Cada re-despacho hace hasta
+    # SYNC_REINTENTOS+1 intentos, así que 3 ≈ un burst de intentos y a la cadencia lenta.
+    sync_max_reintentos_rapidos: int = 3
     # Cada cuánto el despachador revisa qué clientes están vencidos y los encola (segundos).
     sync_poll_segundos: int = 60
     # Envío automático de alertas por WhatsApp desde el motor continuo. Default APAGADO: el motor
