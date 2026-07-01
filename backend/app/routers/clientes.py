@@ -155,6 +155,7 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
         historial_mensual=historial,
         tiene_comprobantes=tiene_comps,
         tiene_facturacion=bool(c.cert_cifrado and c.key_cifrado),
+        clave_requiere_cambio=bool(c.clave_requiere_cambio),
     )
 
 

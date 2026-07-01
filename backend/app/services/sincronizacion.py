@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..arca import motor
+from ..arca.afip import ClaveVencidaError
 from ..config import settings
 from ..crypto import descifrar
 from ..scraping import miscomprobantes  # sólo helpers motor-agnósticos: ventanas() + PLAN_*
@@ -210,11 +211,24 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
         )
         if nombre:  # nombre real del contribuyente desde el navbar de Mis Comprobantes
             cliente.nombre = nombre
+        # El login funcionó → si el cliente estaba marcado con "ARCA pide cambiar la clave", ya la
+        # cambió: apagamos el aviso.
+        if cliente.clave_requiere_cambio:
+            cliente.clave_requiere_cambio = False
         nuevos = 0
         for direccion, crudos in datos.items():
             _, nv = _upsert(db, cuit, direccion, crudos)
             nuevos += nv
         db.commit()
+    except ClaveVencidaError as e:
+        # ARCA fuerza el cambio de Clave Fiscal: no es un fallo transitorio ni lo arreglamos nosotros.
+        # Marcamos el cliente para avisarle al contador y NO reintentamos en vano (el circuit breaker
+        # del motor igual lo saca del reintento rápido tras unos fallos).
+        db.rollback()
+        cliente.clave_requiere_cambio = True
+        db.commit()
+        _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
+        raise
     except Exception as e:  # noqa: BLE001 — registra la extracción fallida y re-lanza
         db.rollback()
         _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])

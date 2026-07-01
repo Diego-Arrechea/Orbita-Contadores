@@ -216,6 +216,14 @@ class AFIPError(Exception):
     """Error en el flujo de AFIP (paso inesperado, login fallido, etc.)."""
 
 
+class ClaveVencidaError(AFIPError):
+    """ARCA forzó al titular a cambiar su Clave Fiscal (campaña de seguridad de AFIP): el login
+    devuelve la pantalla `cambioClaveForzado.xhtml` en vez del JWT. NO se puede sincronizar hasta
+    que el cliente cambie la clave en el sitio de ARCA — no es un fallo transitorio ni algo que
+    resolvamos nosotros. Es una subclase de AFIPError distinta para que el caller la detecte y avise
+    al contador en vez de reintentar."""
+
+
 class AFIP:
     """Cliente de Clave Fiscal de AFIP/ARCA.
 
@@ -354,6 +362,13 @@ class AFIP:
 
         m = _RE_JWT.search(r.text)
         if not m:
+            # ARCA fuerza el cambio de clave (campaña de seguridad): responde la pantalla
+            # cambioClaveForzado.xhtml ("Por medidas de seguridad tenés que cambiar tu contraseña").
+            # No se recupera reintentando: el cliente tiene que cambiar la clave en ARCA.
+            if "cambioClaveForzado" in r.text or "cambiar tu contrase" in r.text:
+                raise ClaveVencidaError(
+                    "ARCA le pide al cliente cambiar su Clave Fiscal (por seguridad) antes de continuar."
+                )
             # Si vuelve a aparecer el form de clave, la contraseña es incorrecta.
             if "F1:password" in r.text:
                 raise AFIPError("Clave incorrecta o login rechazado.")

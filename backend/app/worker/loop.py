@@ -227,9 +227,10 @@ def _quizas_janitor() -> None:
 def main() -> None:
     # Asegura que las tablas existan (idempotente) por si el worker arranca antes que el backend:
     # importar WorkerHeartbeat ya registró el modelo en Base.metadata.
-    from ..db import Base, engine
+    from ..db import Base, asegurar_columnas, engine
 
     Base.metadata.create_all(bind=engine)
+    asegurar_columnas()  # columnas nuevas (p. ej. clave_requiere_cambio) por si el worker arranca 1º
 
     n = max(1, settings.sync_worker_concurrencia)
 

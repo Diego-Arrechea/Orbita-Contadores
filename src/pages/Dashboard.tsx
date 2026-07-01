@@ -15,6 +15,7 @@ import {
   ArrowDown,
   ChevronsUpDown,
   Loader2,
+  KeyRound,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -325,6 +326,7 @@ export function Dashboard() {
                       <div className="text-xs text-muted-foreground tabular-nums">
                         {formatCuit(cliente.cuit)}
                       </div>
+                      {cliente.claveRequiereCambio && <AvisoClaveFiscal />}
                     </div>
                   </Link>
                 </TableCell>
@@ -455,6 +457,7 @@ export function Dashboard() {
                       <div className="text-xs text-muted-foreground tabular-nums">
                         {formatCuit(cliente.cuit)}
                       </div>
+                      {cliente.claveRequiereCambio && <AvisoClaveFiscal />}
                     </div>
                   </div>
                   <AlertaBadge estado={estado} />
@@ -523,6 +526,21 @@ export function Dashboard() {
           )}
         </div>
       </Card>
+    </div>
+  );
+}
+
+// Aviso, en la fila/tarjeta del cliente, de que ARCA le pide cambiar la Clave Fiscal. Mientras esté
+// así, la info del cliente no se puede actualizar: el contador tiene que avisarle que la cambie.
+function AvisoClaveFiscal() {
+  return (
+    <div
+      className="mt-1 inline-flex items-center gap-1 rounded-md bg-warning/15 px-1.5 py-0.5 text-[11px] font-medium text-warning-foreground"
+      title="Este cliente tiene que cambiar su Clave Fiscal (AFIP lo pide cada tanto por seguridad). Hasta que la cambie, su información no se actualiza. Avisale para que la renueve."
+      onClick={e => e.preventDefault()}
+    >
+      <KeyRound className="h-3 w-3 shrink-0" />
+      Debe cambiar su Clave Fiscal
     </div>
   );
 }
