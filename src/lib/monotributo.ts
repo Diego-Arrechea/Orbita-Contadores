@@ -49,6 +49,12 @@ export interface CalculoCliente {
   categoriaConInflacion: Categoria;
   /** true si actualizar los topes por inflación te deja en una categoría MÁS BAJA que con los topes de hoy (el caso útil). */
   inflacionEvitaSubirCategoria: boolean;
+  /** Factor por el que suben los topes al actualizarse por la inflación de 6 meses: (1 + r)^6. */
+  factorTopesInflacion: number;
+  /** Tope de referencia (el de tu MISMA categoría), YA actualizado por la inflación del semestre. */
+  topeReferenciaInflado: number;
+  /** % del tope consumido midiendo contra el tope de tu misma categoría ya inflado (baja respecto de hoy). */
+  porcentajeTopeInflado: number;
   diasParaProximaVentana: number;
   proximaVentana?: VentanaRecategorizacion;
   // Valores intermedios expuestos para la trazabilidad ("ver detalle"): son los mismos insumos que
@@ -122,18 +128,22 @@ export function calcularCliente(
     topeRef,
   );
 
-  // "Ajustado por inflación": el FACTURADO no cambia (es el de los últimos 12 meses); lo que sube son
-  // los topes de la escala, que se actualizan cada SEMESTRE por la inflación acumulada de esos 6
-  // meses. Medimos el MISMO facturado actual (nivelTope) contra esos topes ya inflados para ver en
-  // qué categoría quedás. Compararlo con la categoría que te toca hoy aísla el efecto de la inflación.
+  // "Ajustado por inflación": el FACTURADO no cambia (es el de los últimos 12 meses); lo que sube es
+  // el TOPE de tu MISMA categoría, que se actualiza cada SEMESTRE por la inflación acumulada de esos
+  // 6 meses. La vista muestra el mismo facturado contra ese tope inflado (baja el % consumido: te da
+  // aire). No cambiamos la categoría mostrada — comparar tope-hoy vs tope-inflado de la MISMA
+  // categoría es lo intuitivo para el contador.
   const r = inflacionMensual;
   const factorTopesProx = (1 + r) ** 6;
+  const topeReferenciaInflado = topeRef * factorTopesProx;
+  const porcentajeTopeInflado = topeRef > 0 ? nivelTope / topeReferenciaInflado : 0;
+  // Bajo el capó igual calculamos en qué categoría caería el MISMO facturado contra los topes ya
+  // inflados: si es una más baja que la que te tocaría hoy, la inflación te evita recategorizar para
+  // arriba. Ese dato alimenta el cartel "te evita subir", sin cambiar la categoría/tope que se muestran.
   const categoriaConInflacion =
     CATEGORIAS.find(c => nivelTope <= c.topeAnual * factorTopesProx) ||
     CATEGORIAS[CATEGORIAS.length - 1];
   const topeCategoriaConInflacion = categoriaConInflacion.topeAnual * factorTopesProx;
-  // Si con los topes inflados quedás en una categoría más baja que la que te tocaría hoy (mismo
-  // facturado, topes sin inflar = categoriaCorresponde), la inflación te evita subir: ese es el dato útil.
   const inflacionEvitaSubirCategoria =
     CATEGORIAS.indexOf(categoriaConInflacion) < CATEGORIAS.indexOf(categoriaCorresponde);
 
@@ -158,6 +168,9 @@ export function calcularCliente(
     variacionMensualPromedio: variacion,
     categoriaConInflacion,
     inflacionEvitaSubirCategoria,
+    factorTopesInflacion: factorTopesProx,
+    topeReferenciaInflado,
+    porcentajeTopeInflado,
     diasParaProximaVentana: proxima?.dias ?? Infinity,
     proximaVentana: proxima,
     nivelTope,

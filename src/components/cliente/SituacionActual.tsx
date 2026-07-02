@@ -68,14 +68,14 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
   const topeMostrado = topeOficialValido ? cliente.topeCategoriaOficial! : categoriaActual.topeAnual;
   const porcentajeMostrado = topeMostrado > 0 ? facturacionMostrada / topeMostrado : 0;
 
-  // Visor del tope: "Hoy" (facturado contra los topes vigentes) vs "Ajustado por inflación". En el
-  // segundo modo el FACTURADO no cambia (es el mismo de los últimos 12 meses); sólo sube el TOPE,
-  // actualizado por la inflación del semestre. Así se ve si la suba de topes te evita pasarte de
-  // categoría. El tope inflado y la categoría resultante ya vienen calculados en el motor (calc.*).
+  // Visor del tope: "Hoy" (facturado contra el tope vigente) vs "Ajustado por inflación". En el
+  // segundo modo el FACTURADO y la CATEGORÍA no cambian; sólo sube el TOPE de tu misma categoría,
+  // actualizado por la inflación del semestre → baja el % consumido (te da aire). El cartel de "te
+  // evita subir" se calcula aparte en el motor y no toca la categoría/tope que se muestran acá.
   const facturacionVista = facturacionMostrada;
-  const topeVista = verInflacion ? calc.topeCategoriaConInflacion : topeMostrado;
+  const topeVista = verInflacion ? topeMostrado * calc.factorTopesInflacion : topeMostrado;
   const porcentajeVista = topeVista > 0 ? facturacionVista / topeVista : porcentajeMostrado;
-  const categoriaVista = verInflacion ? calc.categoriaConInflacion.codigo : cliente.categoria;
+  const categoriaVista = cliente.categoria;
 
   // Trazabilidad: explicación de cada valor calculado de esta vista (ver botones ⓘ).
   const d = detallesSituacion(cliente, calc);
