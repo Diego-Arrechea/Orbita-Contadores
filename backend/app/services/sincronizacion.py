@@ -187,10 +187,10 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
     cliente = db.get(models.ClienteARCA, cuit)
     if cliente is None:
         raise ValueError(f"Cliente {cuit} no registrado")
-    contador = db.get(models.Contador, cliente.cuit_contador)
-    if contador is None:
-        raise ValueError(f"El cliente {cuit} no tiene un contador con clave guardada")
-    clave = descifrar(contador.clave_cifrada).decode()
+    credencial = db.get(models.CredencialARCA, cliente.cuit_credencial)
+    if credencial is None:
+        raise ValueError(f"El cliente {cuit} no tiene una credencial con clave guardada")
+    clave = descifrar(credencial.clave_cifrada).decode()
 
     # Una sola sincronización por CUIT en simultáneo EN TODO EL SISTEMA. Si otra corrida (el motor
     # 24/7, un sync manual, "sincronizar todos"…) ya está sobre este cliente, nos vamos sin hacer
@@ -207,7 +207,7 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
     inicio = time.monotonic()
     try:
         nombre, datos = motor.descargar(
-            contador.cuit, clave, cuit, plan, headless=headless, on_progress=on_progress
+            credencial.cuit, clave, cuit, plan, headless=headless, on_progress=on_progress
         )
         if nombre:  # nombre real del contribuyente desde el navbar de Mis Comprobantes
             cliente.nombre = nombre
@@ -244,11 +244,11 @@ def sincronizar_padron(db: Session, cuit: str, headless: bool | None = None) -> 
     cliente = db.get(models.ClienteARCA, cuit)
     if cliente is None:
         raise ValueError(f"Cliente {cuit} no registrado")
-    contador = db.get(models.Contador, cliente.cuit_contador)
-    if contador is None:
-        raise ValueError(f"El cliente {cuit} no tiene un contador con clave guardada")
-    clave = descifrar(contador.clave_cifrada).decode()
-    # Trae la categoría/datos del padrón del CUIT objetivo. Si es representado (≠ contador),
+    credencial = db.get(models.CredencialARCA, cliente.cuit_credencial)
+    if credencial is None:
+        raise ValueError(f"El cliente {cuit} no tiene una credencial con clave guardada")
+    clave = descifrar(credencial.clave_cifrada).decode()
+    # Trae la categoría/datos del padrón del CUIT objetivo. Si es representado (≠ credencial),
     # datos_monotributo fija "actuando en representación" y verifica el CUIT (guard anti-cruce):
     # devuelve {} si la representación no tomó, así nunca se le atribuye la categoría del contador.
     datos = motor.datos_monotributo(contador.cuit, clave, cuit_objetivo=cuit, headless=headless)
@@ -317,11 +317,11 @@ def sincronizar_deuda(db: Session, cuit: str, headless: bool | None = None) -> d
     cliente = db.get(models.ClienteARCA, cuit)
     if cliente is None:
         raise ValueError(f"Cliente {cuit} no registrado")
-    contador = db.get(models.Contador, cliente.cuit_contador)
-    if contador is None:
-        raise ValueError(f"El cliente {cuit} no tiene un contador con clave guardada")
-    clave = descifrar(contador.clave_cifrada).decode()
-    res = motor.consultar_deuda(contador.cuit, clave, cuit_objetivo=cuit, headless=headless)
+    credencial = db.get(models.CredencialARCA, cliente.cuit_credencial)
+    if credencial is None:
+        raise ValueError(f"El cliente {cuit} no tiene una credencial con clave guardada")
+    clave = descifrar(credencial.clave_cifrada).decode()
+    res = motor.consultar_deuda(credencial.cuit, clave, cuit_objetivo=cuit, headless=headless)
     if isinstance(res.get("deuda_detalle"), dict):
         cliente.deuda_detalle = json.dumps(res["deuda_detalle"], ensure_ascii=False)
         for campo in ("cuota_estado", "cuota_deuda", "cuota_saldo_favor"):

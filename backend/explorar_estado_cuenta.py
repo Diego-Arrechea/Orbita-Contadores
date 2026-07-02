@@ -18,8 +18,8 @@ OUT = Path("data/explora")
 OUT.mkdir(parents=True, exist_ok=True)
 
 db = SessionLocal()
-cont = db.get(models.Contador, CUIT)
-clave = descifrar(cont.clave_cifrada).decode()
+cred = db.get(models.CredencialARCA, CUIT)
+clave = descifrar(cred.clave_cifrada).decode()
 db.close()
 
 

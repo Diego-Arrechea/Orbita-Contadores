@@ -18,8 +18,8 @@ OUT.mkdir(parents=True, exist_ok=True)
 BASE = "https://servicios2.afip.gob.ar/tramites_con_clave_fiscal/ccam/"
 
 db = SessionLocal()
-cont = db.get(models.Contador, CUIT)
-clave = descifrar(cont.clave_cifrada).decode()
+cred = db.get(models.CredencialARCA, CUIT)
+clave = descifrar(cred.clave_cifrada).decode()
 db.close()
 
 

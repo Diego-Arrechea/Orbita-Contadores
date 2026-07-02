@@ -185,6 +185,12 @@ class EdicionClienteIn(BaseModel):
     relacionDependencia: bool | None = None  # noqa: N815 — el contador marca si tiene trabajo en blanco
 
 
+class ClaveClienteIn(BaseModel):
+    """Nueva clave fiscal del cliente, para reemplazar la guardada cuando la cambian en ARCA."""
+
+    clave: str = Field(min_length=1)
+
+
 class ExtraccionOut(BaseModel):
     """Una sincronización con ARCA (replica el tipo `Extraccion` del front)."""
 

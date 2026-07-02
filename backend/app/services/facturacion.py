@@ -97,14 +97,14 @@ def asegurar_certificado(
     if cliente.cert_cifrado and cliente.key_cifrado:
         return descifrar(cliente.cert_cifrado), descifrar(cliente.key_cifrado)
 
-    contador = db.get(models.Contador, cliente.cuit_contador)
-    if contador is None:
+    credencial = db.get(models.CredencialARCA, cliente.cuit_credencial)
+    if credencial is None:
         raise ValueError(f"El cliente {cuit} no tiene credencial de acceso guardada")
-    clave = descifrar(contador.clave_cifrada).decode()
+    clave = descifrar(credencial.clave_cifrada).decode()
 
     cert_pem, key_pem = motor.bootstrap_cliente(
         cuit_cliente=cuit,
-        cuit_login=cliente.cuit_contador,
+        cuit_login=cliente.cuit_credencial,
         clave=clave,
         on_progress=on_progress,
     )
@@ -140,12 +140,12 @@ def asegurar_punto_venta(db: Session, cuit: str, on_progress: ProgressCb | None 
         ws = None
     if ws:
         return ws[0]
-    contador = db.get(models.Contador, cliente.cuit_contador)
-    if contador is None:
+    credencial = db.get(models.CredencialARCA, cliente.cuit_credencial)
+    if credencial is None:
         raise ValueError(f"El cliente {cuit} no tiene credencial de acceso guardada")
-    clave = descifrar(contador.clave_cifrada).decode()
+    clave = descifrar(credencial.clave_cifrada).decode()
     # 2) No figura en el WS. ¿Hay un MAW en el ABM (que no se propagó al WS aún)? No duplicar.
-    pvs = motor.puntos_venta_pvel(contador.cuit, clave)
+    pvs = motor.puntos_venta_pvel(credencial.cuit, clave)
     existente = next(
         (p for p in pvs if p.get("sistema") in _PV_SIS_WS and not p.get("baja") and not p.get("bloqueado")),
         None,
@@ -155,8 +155,8 @@ def asegurar_punto_venta(db: Session, cuit: str, on_progress: ProgressCb | None 
     # 3) Crear el PV (MAW) y devolver el recién creado.
     if on_progress:
         on_progress(85, "Creando el punto de venta…")
-    motor.crear_punto_venta(contador.cuit, clave, nombre="Órbita", sistema="MAW")
-    pvs = motor.puntos_venta_pvel(contador.cuit, clave)
+    motor.crear_punto_venta(credencial.cuit, clave, nombre="Órbita", sistema="MAW")
+    pvs = motor.puntos_venta_pvel(credencial.cuit, clave)
     return next(
         (p for p in pvs if p.get("sistema") in _PV_SIS_WS and not p.get("baja")), None
     )

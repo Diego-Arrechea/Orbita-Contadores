@@ -42,6 +42,32 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-02-actualizar-clave-fiscal',
+    fecha: '2026-07-02',
+    titulo: 'Actualizá la clave fiscal de un cliente desde su ficha',
+    resumen:
+      'Si un cliente cambia su clave fiscal, ahora la actualizás vos mismo y su información vuelve a mantenerse al día.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Cuando un cliente cambia su clave fiscal, entrá a su ficha, abrí el menú (los tres puntos, arriba a la derecha) y elegí "Actualizar clave fiscal". Cargás la nueva clave y listo: su información vuelve a mantenerse al día, sin tener que darlo de alta otra vez.',
+      },
+    ],
+  },
+  {
+    id: '2026-07-01-ajuste-inflacion-mismo-tope',
+    fecha: '2026-07-01',
+    titulo: 'Vista "Ajustado por inflación": más clara, sobre tu misma categoría',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'En la facturación de los últimos 12 meses, la opción "Ajustado por inflación" ahora mantiene la categoría del cliente y actualiza el tope de esa misma categoría por la inflación estimada del semestre. Así se ve directo cuánto aire te da la suba de topes: con el mismo facturado, el porcentaje consumido baja. Cuando corresponde, seguimos avisando si esa actualización le evita al cliente recategorizar para arriba.',
+      },
+    ],
+  },
+  {
     id: '2026-07-01-domicilio-fiscal-electronico',
     fecha: '2026-07-01',
     titulo: 'Domicilio Fiscal Electrónico: las comunicaciones de cada cliente, adentro de Órbita',

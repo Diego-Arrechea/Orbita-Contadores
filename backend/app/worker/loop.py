@@ -40,7 +40,7 @@ logger = logging.getLogger("orbita.worker")
 # --- Estado compartido del pool ---
 _cola: queue.Queue[tuple[str, str]] = queue.Queue()
 _en_vuelo_cuits: set[str] = set()        # clientes encolados o sincronizándose ahora
-_en_vuelo_contadores: set[str] = set()   # cuit_contador en vuelo (serializa por clave fiscal)
+_en_vuelo_credenciales: set[str] = set()   # cuit_credencial en vuelo (serializa por clave fiscal)
 _lock = threading.Lock()
 _stop = threading.Event()
 
@@ -83,7 +83,7 @@ def _clientes_vencidos(db, limite: dt.datetime, limite_fallidos: dt.datetime):
     # coalesce a una fecha muy vieja: NULL (nunca sincronizado) ordena primero, de forma portable.
     epoch = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
     q = (
-        select(ClienteARCA.cuit, ClienteARCA.cuit_contador)
+        select(ClienteARCA.cuit, ClienteARCA.cuit_credencial)
         .outerjoin(ult, ult.c.cuit == ClienteARCA.cuit)
         .outerjoin(fallos, fallos.c.cuit == ClienteARCA.cuit)
         .where(
@@ -101,7 +101,7 @@ def _clientes_vencidos(db, limite: dt.datetime, limite_fallidos: dt.datetime):
 
 
 def _despachar() -> int:
-    """Encola los clientes vencidos que no estén en vuelo y cuyo contador esté libre. Devuelve
+    """Encola los clientes vencidos que no estén en vuelo y cuya credencial esté libre. Devuelve
     cuántos encoló en esta pasada."""
     ahora = dt.datetime.now(dt.timezone.utc)
     limite = ahora - dt.timedelta(hours=settings.sync_intervalo_horas)
@@ -114,14 +114,14 @@ def _despachar() -> int:
 
     encolados = 0
     with _lock:
-        for cuit, cuit_contador in vencidos:
+        for cuit, cuit_credencial in vencidos:
             if cuit in _en_vuelo_cuits:
                 continue
-            if cuit_contador in _en_vuelo_contadores:
-                continue  # ese contador ya tiene un cliente en vuelo → serializa
+            if cuit_credencial in _en_vuelo_credenciales:
+                continue  # esa credencial ya tiene un cliente en vuelo → serializa
             _en_vuelo_cuits.add(cuit)
-            _en_vuelo_contadores.add(cuit_contador)
-            _cola.put((cuit, cuit_contador))
+            _en_vuelo_credenciales.add(cuit_credencial)
+            _cola.put((cuit, cuit_credencial))
             encolados += 1
     return encolados
 
@@ -130,7 +130,7 @@ def _worker(idx: int) -> None:
     """Hilo worker: saca un cliente de la cola, lo sincroniza (comprobantes + padrón) y libera."""
     while not _stop.is_set():
         try:
-            cuit, cuit_contador = _cola.get(timeout=2)
+            cuit, cuit_credencial = _cola.get(timeout=2)
         except queue.Empty:
             continue
         db = SessionLocal()
@@ -147,7 +147,7 @@ def _worker(idx: int) -> None:
             db.close()
             with _lock:
                 _en_vuelo_cuits.discard(cuit)
-                _en_vuelo_contadores.discard(cuit_contador)
+                _en_vuelo_credenciales.discard(cuit_credencial)
             _cola.task_done()
 
 

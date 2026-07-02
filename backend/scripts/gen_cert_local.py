@@ -30,13 +30,13 @@ cli = db.get(models.ClienteARCA, cuit)
 if cli is None:
     print(f"❌ El cliente {cuit} no está en la DB local.")
     sys.exit(1)
-cont = db.get(models.Contador, cli.cuit_contador)
-if cont is None:
-    print(f"❌ El cliente {cuit} no tiene credencial (Contador) guardada.")
+cred = db.get(models.CredencialARCA, cli.cuit_credencial)
+if cred is None:
+    print(f"❌ El cliente {cuit} no tiene credencial (CredencialARCA) guardada.")
     sys.exit(1)
 
-clave = descifrar(cont.clave_cifrada).decode()
-print(f"Cliente: {cli.nombre} ({cuit}) · login con credencial {cli.cuit_contador}")
+clave = descifrar(cred.clave_cifrada).decode()
+print(f"Cliente: {cli.nombre} ({cuit}) · login con credencial {cli.cuit_credencial}")
 print("Generando certificado (scraping)… puede tardar ~1 min.\n")
 
 
@@ -52,7 +52,7 @@ alias_base = sys.argv[2] if len(sys.argv) > 2 else "orbitafac"
 print(f"Alias base: {alias_base}")
 cert_pem, key_pem = bootstrap.bootstrap_cliente(
     cuit_cliente=cuit,
-    cuit_login=cli.cuit_contador,
+    cuit_login=cli.cuit_credencial,
     clave=clave,
     alias=alias_base,
     on_progress=prog,

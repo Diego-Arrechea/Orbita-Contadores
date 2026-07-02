@@ -6,13 +6,15 @@ import json
 import threading
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, distinct, func, select
+from sqlalchemy import delete, distinct, func, select, update
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..crypto import cifrar
 from ..db import SessionLocal, get_db
 from ..schemas import (
     TIPOS_NOTA_CREDITO,
+    ClaveClienteIn,
     ClienteOut,
     ComprobanteOut,
     ComunicacionOut,
@@ -186,6 +188,41 @@ def editar_cliente(
     actual.update(datos.model_dump(exclude_none=True))
     cliente.edicion_json = json.dumps(actual, ensure_ascii=False)
     db.add(cliente)
+    db.commit()
+    return {"ok": True}
+
+
+@router.put("/clientes/{cuit}/clave")
+def actualizar_clave_cliente(
+    cuit: str,
+    datos: ClaveClienteIn,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_actual),
+):
+    """Reemplaza la clave fiscal con la que se sincroniza este cliente (para cuando el cliente la
+    cambia en ARCA). La clave vive cifrada en la `CredencialARCA` de su `cuit_credencial` —el CUIT
+    con el que se loguea este cliente—; si ese CUIT representa a otros, todos pasan a usar la nueva
+    clave. Apaga el aviso de "debe cambiar la clave" en los clientes afectados de este contador (la
+    clave es de esa cuenta, no de un cliente puntual); si quedara mal, la próxima sincronización
+    vuelve a marcar el que corresponda."""
+    cliente = _cliente_propio(db, cuit, usuario)
+    clave = datos.clave.strip()
+    if not clave:
+        raise HTTPException(status_code=400, detail="La clave no puede estar vacía.")
+    cuit_cred = cliente.cuit_credencial
+    credencial = db.get(models.CredencialARCA, cuit_cred)
+    if credencial is None:
+        db.add(models.CredencialARCA(cuit=cuit_cred, clave_cifrada=cifrar(clave.encode())))
+    else:
+        credencial.clave_cifrada = cifrar(clave.encode())
+    db.execute(
+        update(models.ClienteARCA)
+        .where(
+            models.ClienteARCA.usuario_id == usuario.id,
+            models.ClienteARCA.cuit_credencial == cuit_cred,
+        )
+        .values(clave_requiere_cambio=False)
+    )
     db.commit()
     return {"ok": True}
 

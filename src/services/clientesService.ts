@@ -177,3 +177,9 @@ export type CamposEdicion = Partial<
 export async function editarCliente(cuit: string, campos: CamposEdicion): Promise<void> {
   await apiPut(`/clientes/${cuit.replace(/\D/g, '')}/edicion`, campos);
 }
+
+/** Actualiza la clave fiscal con la que se sincroniza el cliente (cuando la cambia en ARCA). Se
+ *  guarda cifrada en el backend; apaga el aviso de "debe cambiar la clave" del cliente. */
+export async function actualizarClaveFiscal(cuit: string, clave: string): Promise<void> {
+  await apiPut(`/clientes/${cuit.replace(/\D/g, '')}/clave`, { clave });
+}
