@@ -56,18 +56,6 @@ export const NOVEDADES: Novedad[] = [
     ],
   },
   {
-    id: '2026-07-01-ajuste-inflacion-mismo-tope',
-    fecha: '2026-07-01',
-    titulo: 'Vista "Ajustado por inflación": más clara, sobre tu misma categoría',
-    items: [
-      {
-        tipo: 'mejora',
-        texto:
-          'En la facturación de los últimos 12 meses, la opción "Ajustado por inflación" ahora mantiene la categoría del cliente y actualiza el tope de esa misma categoría por la inflación estimada del semestre. Así se ve directo cuánto aire te da la suba de topes: con el mismo facturado, el porcentaje consumido baja. Cuando corresponde, seguimos avisando si esa actualización le evita al cliente recategorizar para arriba.',
-      },
-    ],
-  },
-  {
     id: '2026-07-01-domicilio-fiscal-electronico',
     fecha: '2026-07-01',
     titulo: 'Domicilio Fiscal Electrónico: las comunicaciones de cada cliente, adentro de Órbita',
