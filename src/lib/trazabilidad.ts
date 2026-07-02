@@ -210,16 +210,27 @@ export function detallesSituacion(cliente: Cliente, calc: CalculoCliente): Detal
   const proyeccionInflacion: DetalleCalculo = {
     titulo: 'Ajustado por inflación',
     resumen:
-      'En qué categoría quedás con tu facturación actual cuando se actualicen los topes por la inflación del semestre (el ajuste que se hace cada 6 meses). El facturado no cambia; sólo suben los topes.',
+      'Cuánto del tope consumís cuando se actualiza el tope de TU categoría por la inflación del semestre (el ajuste que ARCA hace cada 6 meses). El facturado no cambia; sólo sube el tope, así que el porcentaje consumido baja.',
     formula:
-      'Tu facturación de los últimos 12 meses comparada contra los topes YA actualizados por la inflación acumulada de los últimos 6 meses.',
+      'Facturación de los últimos 12 meses ÷ (tope de tu categoría × inflación acumulada de 6 meses).',
     insumos: [
       { etiqueta: 'Facturación últimos 12 meses', valor: formatCurrency(calc.nivelTope) },
+      { etiqueta: `Tope categoría ${codCat} (hoy)`, valor: formatCurrency(calc.topeReferencia) },
       { etiqueta: 'Inflación mensual estimada', valor: formatPercent(calc.inflacionMensualUsada, 1) },
       {
-        etiqueta: 'Categoría con topes actualizados',
-        valor: `${calc.categoriaConInflacion.codigo} (hasta ${formatCurrency(calc.topeCategoriaConInflacion)})`,
+        etiqueta: 'Tope actualizado (6 meses)',
+        valor: formatCurrency(calc.topeReferenciaInflado),
       },
+      { etiqueta: 'Consumido', valor: formatPercent(calc.porcentajeTopeInflado, 1) },
+      ...(calc.inflacionEvitaSubirCategoria
+        ? [
+            {
+              etiqueta: 'Efecto en la categoría',
+              valor: `Te evita subir a ${catSugerida.codigo}`,
+              nota: 'con el mismo facturado, el tope actualizado te mantiene en una categoría más baja',
+            },
+          ]
+        : []),
     ],
     nota: 'La inflación mensual se toma de las expectativas de mercado (o del valor que fijes en los ajustes del estudio).',
   };
