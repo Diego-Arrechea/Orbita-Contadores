@@ -227,15 +227,16 @@ def borrar_cuenta(
     db.execute(delete(models.AlertaEnviada).where(models.AlertaEnviada.usuario_id == usuario.id))
     # Auditoría donde figura como admin (FK a usuarios.id, no nullable) → se borra para no violar la FK.
     db.execute(delete(models.AuditoriaAdmin).where(models.AuditoriaAdmin.admin_id == usuario.id))
-    # Clave fiscal cifrada (Contador): se borra sólo si ya no la referencia ningún cliente (de nadie).
+    # Clave fiscal cifrada (CredencialARCA): se borra sólo si ya no la referencia ningún cliente
+    # (de nadie). Aplica cuando el CUIT del contador coincide con el de una credencial de cliente.
     if usuario.cuit:
         en_uso = db.scalar(
             select(models.ClienteARCA.cuit)
-            .where(models.ClienteARCA.cuit_contador == usuario.cuit)
+            .where(models.ClienteARCA.cuit_credencial == usuario.cuit)
             .limit(1)
         )
         if en_uso is None:
-            db.execute(delete(models.Contador).where(models.Contador.cuit == usuario.cuit))
+            db.execute(delete(models.CredencialARCA).where(models.CredencialARCA.cuit == usuario.cuit))
     db.delete(usuario)
     db.commit()
     return {"ok": True}

@@ -26,10 +26,10 @@ def _clave_cliente(db: Session, cuit: str) -> tuple[models.ClienteARCA, str]:
     cliente = db.get(models.ClienteARCA, cuit)
     if cliente is None:
         raise ValueError(f"Cliente {cuit} no registrado")
-    contador = db.get(models.Contador, cliente.cuit_contador)
-    if contador is None:
+    credencial = db.get(models.CredencialARCA, cliente.cuit_credencial)
+    if credencial is None:
         raise ValueError(f"El cliente {cuit} no tiene una credencial guardada")
-    return cliente, descifrar(contador.clave_cifrada).decode()
+    return cliente, descifrar(credencial.clave_cifrada).decode()
 
 
 def _dt(v) -> dt.datetime | None:
@@ -41,10 +41,10 @@ def sincronizar_comunicaciones(db: Session, cuit: str) -> int:
     """Trae las comunicaciones del DFE del cliente y las upsertea. Devuelve cuántas NUEVAS se
     guardaron en esta corrida (las que no existían). Baseline en el primer sync: nacen ya vistas."""
     cliente, clave = _clave_cliente(db, cuit)
-    # Nos logueamos con la credencial guardada (cuit_contador) y consultamos el CUIT del cliente:
-    # si el cliente representa a otro, cuit_contador ≠ cuit → ARCA autoriza por delegación. Para un
+    # Nos logueamos con la credencial guardada (cuit_credencial) y consultamos el CUIT del cliente:
+    # si el cliente representa a otro, cuit_credencial ≠ cuit → ARCA autoriza por delegación. Para un
     # titular normal ambos coinciden. Ver notificaciones_listar(cuit=...).
-    lista = motor.comunicaciones(cliente.cuit_contador, clave, cuit_objetivo=cliente.cuit)
+    lista = motor.comunicaciones(cliente.cuit_credencial, clave, cuit_objetivo=cliente.cuit)
 
     primer_sync = cliente.dfe_baseline_en is None
     existentes = set(
@@ -132,7 +132,7 @@ def marcar_vista(db: Session, cuit: str, id_comunicacion: str) -> models.Comunic
         try:
             cliente, clave = _clave_cliente(db, cuit)
             det = motor.comunicacion_detalle(
-                cliente.cuit_contador, clave, id_comunicacion, cuit_objetivo=cliente.cuit
+                cliente.cuit_credencial, clave, id_comunicacion, cuit_objetivo=cliente.cuit
             )
             if det.get("mensaje"):
                 com.detalle = det["mensaje"]

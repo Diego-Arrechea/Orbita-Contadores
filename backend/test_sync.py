@@ -14,10 +14,10 @@ CLIENTE, NOMBRE = "30715434233", "AV INGENIERIA S.R.L."
 
 Base.metadata.create_all(engine)
 db = SessionLocal()
-if not db.get(models.Contador, CONTADOR):
-    db.add(models.Contador(cuit=CONTADOR, clave_cifrada=cifrar(CLAVE.encode())))
+if not db.get(models.CredencialARCA, CONTADOR):
+    db.add(models.CredencialARCA(cuit=CONTADOR, clave_cifrada=cifrar(CLAVE.encode())))
 if not db.get(models.ClienteARCA, CLIENTE):
-    db.add(models.ClienteARCA(cuit=CLIENTE, nombre=NOMBRE, cuit_contador=CONTADOR))
+    db.add(models.ClienteARCA(cuit=CLIENTE, nombre=NOMBRE, cuit_credencial=CONTADOR))
 db.commit()
 print("contador + cliente OK. Sincronizando (1 anio)...", flush=True)
 

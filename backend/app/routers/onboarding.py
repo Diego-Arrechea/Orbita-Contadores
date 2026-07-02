@@ -43,12 +43,12 @@ def monitorear(datos: MonitorearIn, usuario: models.Usuario = Depends(usuario_ac
 
     db = SessionLocal()
     try:
-        cont = db.get(models.Contador, datos.cuit)
-        if cont is None:
-            cont = models.Contador(cuit=datos.cuit, clave_cifrada=cifrar(datos.clave.encode()))
-            db.add(cont)
+        cred = db.get(models.CredencialARCA, datos.cuit)
+        if cred is None:
+            cred = models.CredencialARCA(cuit=datos.cuit, clave_cifrada=cifrar(datos.clave.encode()))
+            db.add(cred)
         else:
-            cont.clave_cifrada = cifrar(datos.clave.encode())  # refresca por si cambió
+            cred.clave_cifrada = cifrar(datos.clave.encode())  # refresca por si cambió
         db.commit()
     finally:
         db.close()
@@ -83,7 +83,7 @@ def cancelar_monitoreo(job_id: str, usuario: models.Usuario = Depends(usuario_ac
 
 
 def _correr_monitoreo(
-    job_id: str, cuit_contador: str, seleccionados: list[tuple], usuario_id: int
+    job_id: str, cuit_credencial: str, seleccionados: list[tuple], usuario_id: int
 ) -> None:
     """Por cada cliente: lo registra (asociado al contador) y sincroniza su histórico. Si el contador
     cancela el alta, aborta y deshace los clientes que este job hubiera creado."""
@@ -117,14 +117,14 @@ def _correr_monitoreo(
                         models.ClienteARCA(
                             cuit=cuit_cliente,
                             nombre=nombre,
-                            cuit_contador=cuit_contador,
+                            cuit_credencial=cuit_credencial,
                             usuario_id=usuario_id,
                         )
                     )
                     creados.append(cuit_cliente)
                 else:
                     cli.nombre = nombre
-                    cli.cuit_contador = cuit_contador
+                    cli.cuit_credencial = cuit_credencial
                     cli.usuario_id = usuario_id
                 db.commit()
             finally:

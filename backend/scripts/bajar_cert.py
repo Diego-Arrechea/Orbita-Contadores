@@ -29,9 +29,9 @@ alias = sys.argv[2] if len(sys.argv) > 2 else "orbitafac"
 
 db = SessionLocal()
 cli = db.get(models.ClienteARCA, cuit)
-cont = db.get(models.Contador, cli.cuit_contador)
-clave = descifrar(cont.clave_cifrada).decode()
-cuit_login = cli.cuit_contador
+cred = db.get(models.CredencialARCA, cli.cuit_credencial)
+clave = descifrar(cred.clave_cifrada).decode()
+cuit_login = cli.cuit_credencial
 print(f"Bajando cert del alias '{alias}' de {cuit} (login {cuit_login})…")
 
 perfil = tempfile.mkdtemp(prefix="orbita_dl_")

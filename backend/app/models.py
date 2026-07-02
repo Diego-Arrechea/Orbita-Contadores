@@ -20,13 +20,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
 
-class Contador(Base):
-    """Credencial de acceso a ARCA (CUIT + clave fiscal, cifrada con Fernet) usada para sincronizar
-    'Mis Comprobantes' automáticamente.
+class CredencialARCA(Base):
+    """Credencial de acceso a ARCA (CUIT + clave fiscal del CLIENTE, cifrada con Fernet) usada para
+    sincronizar 'Mis Comprobantes' automáticamente.
 
-    OJO — el nombre es histórico y ENGAÑOSO: esto NO es la clave del contador-usuario de Órbita. El
-    contador NUNCA carga su propia clave fiscal ni su CUIT: carga las credenciales (CUIT + clave
-    fiscal) de sus CLIENTES, y eso es lo que se guarda acá. `cuit` es el de esa credencial de cliente."""
+    OJO — el `cuit` es SIEMPRE de un CLIENTE, NUNCA del contador-usuario de Órbita: el contador
+    NUNCA carga su propia clave fiscal ni su CUIT, carga las credenciales (CUIT + clave fiscal) de
+    sus CLIENTES, y eso es lo que se guarda acá.
+
+    La tabla física sigue llamándose `contadores` por historia (así se creó en prod); renombrarla
+    exigiría una migración con downtime, así que sólo se corrigió el nombre en el código."""
 
     __tablename__ = "contadores"
 
@@ -39,8 +42,9 @@ class Contador(Base):
 
 class Usuario(Base):
     """El contador registrado en Órbita: su login propio (email + contraseña hasheada).
-    Distinto de `Contador`, que guarda la clave fiscal de ARCA para el scraping. El `cuit` de
-    acá puede coincidir con el de un `Contador`, pero son tablas independientes a propósito."""
+    Distinto de `CredencialARCA`, que guarda la clave fiscal de ARCA (de un CLIENTE) para el
+    scraping. El `cuit` de acá puede coincidir con el de una `CredencialARCA`, pero son tablas
+    independientes a propósito."""
 
     __tablename__ = "usuarios"
 
@@ -114,10 +118,13 @@ class ClienteARCA(Base):
 
     cuit: Mapped[str] = mapped_column(String(11), primary_key=True)
     nombre: Mapped[str] = mapped_column(String(200))
-    cuit_contador: Mapped[str] = mapped_column(
-        String(11), ForeignKey("contadores.cuit"), index=True
+    # CUIT de la credencial ARCA (de un CLIENTE) con cuya clave fiscal se sincroniza este cliente:
+    # para un titular coincide con su propio `cuit`; para un representado es el CUIT del que lo
+    # representa. La columna física sigue llamándose `cuit_contador` por historia (evita migración).
+    cuit_credencial: Mapped[str] = mapped_column(
+        "cuit_contador", String(11), ForeignKey("contadores.cuit"), index=True
     )
-    # Dueño en Órbita: el contador-usuario que administra este cliente. Distinto de cuit_contador,
+    # Dueño en Órbita: el contador-usuario que administra este cliente. Distinto de cuit_credencial,
     # que es el CUIT de la credencial ARCA (del CLIENTE) con cuya clave fiscal se sincroniza — NO la
     # clave del contador. Nullable por datos previos al multi-tenant.
     usuario_id: Mapped[int | None] = mapped_column(

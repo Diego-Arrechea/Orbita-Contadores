@@ -11,6 +11,7 @@ import {
   FilePlus2,
   UserPlus,
   MoreVertical,
+  KeyRound,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,7 @@ import { puedeFacturar } from '@/lib/cuenta';
 import { getMovimientos } from '@/services/movimientosService';
 import { useClienteReal, useComunicaciones } from '@/lib/queries';
 import { EditarClienteDialog } from '@/components/cliente/EditarClienteDialog';
+import { CambiarClaveDialog } from '@/components/cliente/CambiarClaveDialog';
 import { EliminarClienteDialog } from '@/components/cliente/EliminarClienteDialog';
 import { EmitirComprobanteDialog } from '@/components/cliente/EmitirComprobanteDialog';
 
@@ -68,6 +70,7 @@ export function ClienteDetalle() {
   const { data: comunicaciones = [] } = useComunicaciones(id, !clienteMock);
   const comunicacionesSinVer = comunicaciones.filter(c => !c.vista).length;
   const [editarOpen, setEditarOpen] = useState(false);
+  const [claveOpen, setClaveOpen] = useState(false);
   const [eliminarOpen, setEliminarOpen] = useState(false);
   const [tab, setTab] = useState('situacion');
   const [generandoExcel, setGenerandoExcel] = useState(false);
@@ -231,6 +234,11 @@ export function ClienteDetalle() {
                       <Pencil /> Editar
                     </DropdownMenuItem>
                     {esReal && (
+                      <DropdownMenuItem onSelect={() => setTimeout(() => setClaveOpen(true), 0)}>
+                        <KeyRound /> Actualizar clave fiscal
+                      </DropdownMenuItem>
+                    )}
+                    {esReal && (
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -251,6 +259,14 @@ export function ClienteDetalle() {
                   open={editarOpen}
                   onOpenChange={setEditarOpen}
                 />
+                {esReal && (
+                  <CambiarClaveDialog
+                    cliente={cliente}
+                    onGuardado={() => void refetchCliente()}
+                    open={claveOpen}
+                    onOpenChange={setClaveOpen}
+                  />
+                )}
                 {esReal && (
                   <EliminarClienteDialog
                     cliente={cliente}
