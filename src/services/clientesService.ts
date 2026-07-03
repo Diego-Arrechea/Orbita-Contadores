@@ -41,6 +41,7 @@ interface ClienteBackend {
   tiene_comprobantes?: boolean | null;
   tiene_facturacion?: boolean | null;
   clave_requiere_cambio?: boolean | null; // ARCA le pide al cliente cambiar su Clave Fiscal
+  clave_invalida?: boolean | null; // la Clave Fiscal guardada no es válida (hay que corregirla)
 }
 
 const CODIGOS: CategoriaCodigo[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
@@ -121,6 +122,7 @@ function construirCliente(
     tieneComprobantes: bk.tiene_comprobantes ?? comprobantes.length > 0,
     tieneFacturacion: bk.tiene_facturacion ?? false,
     claveRequiereCambio: bk.clave_requiere_cambio ?? false,
+    claveInvalida: bk.clave_invalida ?? false,
     causales: [],
     extracciones,
     fuente: 'arca',

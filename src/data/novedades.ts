@@ -42,6 +42,20 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-03-aviso-clave-fiscal-a-revisar',
+    fecha: '2026-07-03',
+    titulo: 'Te avisamos cuando la clave fiscal de un cliente hay que revisarla',
+    resumen:
+      'Si no podemos acceder a la información de un cliente porque su clave fiscal no es válida, ahora lo ves marcado en la lista.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Cuando la clave fiscal guardada de un cliente deja de servir (porque el cliente la cambió o quedó mal cargada), su información no se puede mantener actualizada. Ahora lo marcamos con un aviso en la lista de clientes ("Revisá su Clave Fiscal") para que la corrijas. Actualizás la clave desde la ficha del cliente y, en cuanto vuelve a funcionar, el aviso desaparece solo.',
+      },
+    ],
+  },
+  {
     id: '2026-07-02-actualizar-clave-fiscal',
     fecha: '2026-07-02',
     titulo: 'Actualizá la clave fiscal de un cliente desde su ficha',

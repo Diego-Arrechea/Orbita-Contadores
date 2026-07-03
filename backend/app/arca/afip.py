@@ -224,6 +224,19 @@ class ClaveVencidaError(AFIPError):
     al contador en vez de reintentar."""
 
 
+class ClaveInvalidaError(AFIPError):
+    """La Clave Fiscal guardada del cliente NO es válida: ARCA rechazó el login y volvió a mostrar la
+    pantalla de clave. A diferencia de ClaveVencidaError (AFIP fuerza el cambio por seguridad), acá la
+    clave está mal cargada o el cliente la cambió; se resuelve cargando la clave correcta. Subclase
+    propia para que el caller marque el cliente y avise al contador."""
+
+
+class LoginSinJWTError(AFIPError):
+    """El login envió la clave pero ARCA no devolvió el JWT (ni la pantalla de clave, ni la de cambio
+    forzado): respuesta inesperada (WAF/captcha/pantalla intermedia). Puede ser transitorio, así que
+    el caller sólo marca la clave a revisar si esto se repite varias veces seguidas."""
+
+
 class AFIP:
     """Cliente de Clave Fiscal de AFIP/ARCA.
 
@@ -371,8 +384,8 @@ class AFIP:
                 )
             # Si vuelve a aparecer el form de clave, la contraseña es incorrecta.
             if "F1:password" in r.text:
-                raise AFIPError("Clave incorrecta o login rechazado.")
-            raise AFIPError("No se encontró el JWT tras enviar la clave.")
+                raise ClaveInvalidaError("Clave incorrecta o login rechazado.")
+            raise LoginSinJWTError("No se encontró el JWT tras enviar la clave.")
         return m.group(1)
 
     def _paso4_post_jwt(self, jwt: str) -> None:

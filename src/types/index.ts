@@ -147,6 +147,9 @@ export interface Cliente {
   /** ARCA le pide al cliente cambiar su Clave Fiscal (campaña de seguridad de AFIP). Mientras esté en
    *  true no se puede actualizar la info del cliente: el contador tiene que avisarle que la cambie. */
   claveRequiereCambio?: boolean;
+  /** La Clave Fiscal guardada del cliente no es válida (ARCA la rechaza o el acceso falla repetido).
+   *  Se resuelve cargando la clave correcta desde la ficha. Distinto de claveRequiereCambio. */
+  claveInvalida?: boolean;
   causales: EstadoCausalCliente[];
   extracciones: Extraccion[];
   /** 'arca' = los comprobantes se traen reales del backend (WSFEv1); 'mock'/undefined = datos de prueba. */
