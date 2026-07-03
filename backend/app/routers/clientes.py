@@ -160,6 +160,7 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
         tiene_comprobantes=tiene_comps,
         tiene_facturacion=bool(c.cert_cifrado and c.key_cifrado),
         clave_requiere_cambio=bool(c.clave_requiere_cambio),
+        clave_invalida=bool(c.clave_invalida),
     )
 
 
@@ -202,9 +203,9 @@ def actualizar_clave_cliente(
     """Reemplaza la clave fiscal con la que se sincroniza este cliente (para cuando el cliente la
     cambia en ARCA). La clave vive cifrada en la `CredencialARCA` de su `cuit_credencial` —el CUIT
     con el que se loguea este cliente—; si ese CUIT representa a otros, todos pasan a usar la nueva
-    clave. Apaga el aviso de "debe cambiar la clave" en los clientes afectados de este contador (la
-    clave es de esa cuenta, no de un cliente puntual); si quedara mal, la próxima sincronización
-    vuelve a marcar el que corresponda."""
+    clave. Apaga los avisos de clave ("debe cambiar la clave" y "revisá su Clave Fiscal") en los
+    clientes afectados de este contador (la clave es de esa cuenta, no de un cliente puntual); si
+    quedara mal, la próxima sincronización vuelve a marcar el que corresponda."""
     cliente = _cliente_propio(db, cuit, usuario)
     clave = datos.clave.strip()
     if not clave:
@@ -221,7 +222,7 @@ def actualizar_clave_cliente(
             models.ClienteARCA.usuario_id == usuario.id,
             models.ClienteARCA.cuit_credencial == cuit_cred,
         )
-        .values(clave_requiere_cambio=False)
+        .values(clave_requiere_cambio=False, clave_invalida=False)
     )
     db.commit()
     return {"ok": True}

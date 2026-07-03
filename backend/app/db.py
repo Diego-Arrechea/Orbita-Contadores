@@ -194,6 +194,12 @@ def _migrar_clientes_arca(conn) -> None:
         conn.execute(
             text("ALTER TABLE clientes_arca ADD COLUMN clave_requiere_cambio BOOLEAN DEFAULT FALSE")
         )
+    # La Clave Fiscal del cliente dejó de servir (ARCA la rechaza o el acceso falla repetido): el
+    # contador la corrige desde la ficha. Se muestra en la lista. DEFAULT FALSE anda en SQLite y Postgres.
+    if "clave_invalida" not in cols:
+        conn.execute(
+            text("ALTER TABLE clientes_arca ADD COLUMN clave_invalida BOOLEAN DEFAULT FALSE")
+        )
 
 
 def _migrar_comprobantes_emitidos(conn) -> None:

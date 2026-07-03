@@ -198,6 +198,14 @@ class ClienteARCA(Base):
     clave_requiere_cambio: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False
     )
+    # La Clave Fiscal guardada del cliente dejó de servir para acceder a su información: ARCA la rechaza
+    # (clave mal cargada o que el cliente cambió) o el acceso falla repetidamente. A diferencia de
+    # clave_requiere_cambio (AFIP fuerza el cambio), acá el contador lo resuelve cargando la clave
+    # correcta desde la ficha. La sync lo prende (ver services/sincronizacion.py) y una sync exitosa lo
+    # apaga solo. Se muestra en la lista de clientes.
+    clave_invalida: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
     # Línea de base del Domicilio Fiscal Electrónico: cuándo el motor "fotografió" por primera vez las
     # comunicaciones de este cliente. NULL = todavía no se baselineó → la primera pasada guarda las
     # comunicaciones vigentes como YA VISTAS (sin punto rojo ni alerta); sólo las que aparezcan después

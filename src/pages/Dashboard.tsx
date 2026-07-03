@@ -327,6 +327,7 @@ export function Dashboard() {
                         {formatCuit(cliente.cuit)}
                       </div>
                       {cliente.claveRequiereCambio && <AvisoClaveFiscal />}
+                      {cliente.claveInvalida && <AvisoClaveInvalida />}
                     </div>
                   </Link>
                 </TableCell>
@@ -458,6 +459,7 @@ export function Dashboard() {
                         {formatCuit(cliente.cuit)}
                       </div>
                       {cliente.claveRequiereCambio && <AvisoClaveFiscal />}
+                      {cliente.claveInvalida && <AvisoClaveInvalida />}
                     </div>
                   </div>
                   <AlertaBadge estado={estado} />
@@ -541,6 +543,22 @@ function AvisoClaveFiscal() {
     >
       <KeyRound className="h-3 w-3 shrink-0" />
       Debe cambiar su Clave Fiscal
+    </div>
+  );
+}
+
+// Aviso, en la fila/tarjeta del cliente, de que no pudimos acceder a su información con la Clave Fiscal
+// guardada (está mal cargada o el cliente la cambió). Lo resuelve el contador cargando la clave
+// correcta desde la ficha; el aviso se apaga solo cuando la info vuelve a actualizarse.
+function AvisoClaveInvalida() {
+  return (
+    <div
+      className="mt-1 inline-flex items-center gap-1 rounded-md bg-destructive/15 px-1.5 py-0.5 text-[11px] font-medium text-destructive"
+      title="No pudimos actualizar la información de este cliente porque su Clave Fiscal no es válida. Verificá que sea la correcta y actualizala si el cliente la cambió."
+      onClick={e => e.preventDefault()}
+    >
+      <KeyRound className="h-3 w-3 shrink-0" />
+      Revisá su Clave Fiscal
     </div>
   );
 }

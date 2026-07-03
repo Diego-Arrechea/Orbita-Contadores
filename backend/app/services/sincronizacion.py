@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..arca import motor
-from ..arca.afip import ClaveVencidaError
+from ..arca.afip import ClaveInvalidaError, ClaveVencidaError, LoginSinJWTError
 from ..config import settings
 from ..crypto import descifrar
 from ..scraping import miscomprobantes  # sólo helpers motor-agnósticos: ventanas() + PLAN_*
@@ -168,6 +168,25 @@ def _registrar_extraccion(
     db.commit()
 
 
+# Motivo exacto que registra la bitácora cuando el login no devolvió el JWT (ver arca/afip.py). Se usa
+# para detectar el patrón "el acceso falla repetido" sin depender de la clase de la excepción.
+_MOTIVO_SIN_JWT = "No se encontró el JWT tras enviar la clave."
+
+
+def _login_falla_repetido(db: Session, cuit: str, minimo: int = 2) -> bool:
+    """True si las últimas `minimo` extracciones del cliente fallaron TODAS por 'no se pudo entrar'
+    (sin JWT). Sirve para NO marcar la clave a revisar por un fallo puntual/transitorio de ARCA: recién
+    lo damos por problema real de la clave cuando se repite. Se llama DESPUÉS de registrar el fallo
+    actual, así la corrida en curso ya cuenta."""
+    motivos = db.scalars(
+        select(models.Extraccion.motivo)
+        .where(models.Extraccion.cuit == cuit)
+        .order_by(models.Extraccion.fecha.desc(), models.Extraccion.id.desc())
+        .limit(minimo)
+    ).all()
+    return len(motivos) >= minimo and all(m and _MOTIVO_SIN_JWT in m for m in motivos)
+
+
 def ultima_extraccion(db: Session, cuit: str) -> "models.Extraccion | None":
     """La extracción más reciente de un cliente (para 'última sincronización')."""
     return db.scalar(
@@ -211,10 +230,12 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
         )
         if nombre:  # nombre real del contribuyente desde el navbar de Mis Comprobantes
             cliente.nombre = nombre
-        # El login funcionó → si el cliente estaba marcado con "ARCA pide cambiar la clave", ya la
-        # cambió: apagamos el aviso.
+        # El login funcionó → si el cliente estaba marcado por un problema de clave (cambio forzado por
+        # AFIP o clave inválida), ya se resolvió: apagamos los avisos.
         if cliente.clave_requiere_cambio:
             cliente.clave_requiere_cambio = False
+        if cliente.clave_invalida:
+            cliente.clave_invalida = False
         nuevos = 0
         for direccion, crudos in datos.items():
             _, nv = _upsert(db, cuit, direccion, crudos)
@@ -228,6 +249,25 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
         cliente.clave_requiere_cambio = True
         db.commit()
         _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
+        raise
+    except ClaveInvalidaError as e:
+        # ARCA rechazó la clave guardada: no es transitorio ni lo arreglamos nosotros. Marcamos el
+        # cliente para que el contador cargue la clave correcta desde la ficha; una sync exitosa apaga
+        # el aviso solo.
+        db.rollback()
+        cliente.clave_invalida = True
+        db.commit()
+        _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
+        raise
+    except LoginSinJWTError as e:
+        # El login no devolvió el JWT: puede ser un hipo puntual de ARCA (WAF/captcha/pantalla rara).
+        # Registramos el fallo y SÓLO marcamos la clave a revisar si viene fallando así 2 veces seguidas
+        # (evita marcar clientes sanos por una caída momentánea).
+        db.rollback()
+        _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
+        if _login_falla_repetido(db, cuit):
+            cliente.clave_invalida = True
+            db.commit()
         raise
     except Exception as e:  # noqa: BLE001 — registra la extracción fallida y re-lanza
         db.rollback()

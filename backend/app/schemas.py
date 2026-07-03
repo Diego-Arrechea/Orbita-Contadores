@@ -138,6 +138,10 @@ class ClienteOut(BaseModel):
     # ARCA le pide al cliente cambiar su Clave Fiscal (campaña de seguridad de AFIP). Mientras esté en
     # true, no se puede sincronizar: el contador tiene que avisarle al cliente que la cambie en ARCA.
     clave_requiere_cambio: bool = False
+    # La Clave Fiscal guardada del cliente no es válida (ARCA la rechaza o el acceso falla repetido): el
+    # contador la corrige cargando la correcta desde la ficha. Distinto de clave_requiere_cambio (que es
+    # el cambio forzado por AFIP, que sólo puede hacer el cliente).
+    clave_invalida: bool = False
 
 
 class NotificacionesIn(BaseModel):
