@@ -306,6 +306,58 @@ def comunicacion_detalle(
     return afip.notificacion_detalle(id_com, cuit=cuit_objetivo or cuit_login)
 
 
+# --- Liquidaciones Electrónicas del sector primario (agro) — SÓLO HTTP ---------
+def _map_liquidacion(r: dict, direccion: str, sector: str, importe_bruto: float | None) -> dict:
+    """Fila de afip.lsp_consultar (+ importe del PDF) -> dict que espera services/agro._upsert."""
+    return {
+        "liq_id": str(r["liq_id"]),
+        "sector": sector,
+        "direccion": direccion,
+        "cbte_tipo": int(r.get("cbte_tipo") or 0),
+        "tipo_liq": (r.get("tipo_liq") or "")[:80],
+        "punto_venta": int(r.get("punto_venta") or 0),
+        "numero": int(r.get("numero") or 0),
+        "cuit_contraparte": str(r.get("cuit_contraparte") or ""),
+        "fecha_comprobante": r.get("fecha_comprobante"),  # 'dd/mm/aaaa'
+        "fecha_emision": r.get("fecha_emision"),           # 'dd/mm/aaaa'
+        "sistema": (r.get("sistema") or "")[:4],
+        "importe_bruto": importe_bruto,                     # del PDF; None = no se pudo leer
+    }
+
+
+@_con_sesion
+def liquidaciones_agro(
+    afip: AFIP,
+    cuit_login: str,
+    clave: str,
+    cuit_cliente: str,
+    sector: str = "hacienda",
+    desde=None,
+    hasta=None,
+    on_progress=None,
+) -> list[dict]:
+    """Trae las Liquidaciones Electrónicas del `sector` (receptor + emisor) con su Importe Bruto.
+
+    La grilla no trae importe: por cada liquidación se baja el PDF y se parsea el Importe Bruto
+    (services/liquidacion_pdf). Devuelve dicts listos para services/agro._upsert. Pacea entre PDF
+    para no gatillar el WAF de serviciosjava2 (son pocas y la sync es semanal)."""
+    from ..services import liquidacion_pdf
+
+    out: list[dict] = []
+    for direccion in ("receptor", "emisor"):
+        filas = afip.lsp_consultar(direccion, sector=sector, desde=desde, hasta=hasta)
+        for i, r in enumerate(filas):
+            if on_progress:
+                on_progress(f"{direccion} {i + 1}/{len(filas)}")
+            try:
+                bruto = liquidacion_pdf.importe_bruto(afip.lsp_pdf(r["liq_id"], sector=sector))
+            except Exception:  # noqa: BLE001  (un PDF ilegible no debe cortar toda la sync)
+                bruto = None
+            out.append(_map_liquidacion(r, direccion, sector, bruto))
+            _time.sleep(0.5)
+    return out
+
+
 # --- Certificado (reemplaza scraping.bootstrap.bootstrap_cliente) --------------
 def bootstrap_cliente(
     cuit_cliente: str, cuit_login: str, clave: str, alias: str | None = None, on_progress=None

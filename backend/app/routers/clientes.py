@@ -22,6 +22,8 @@ from ..schemas import (
     ExtraccionOut,
     HistorialMesOut,
     JobOut,
+    LiquidacionAgroOut,
+    LiquidacionesAgroOut,
     clasificar_regimen,
     nombre_tipo,
     resolver_regimen,
@@ -409,6 +411,39 @@ def comprobantes_cliente(
         )
         for c in comps
     ]
+
+
+@router.get("/clientes/{cuit}/liquidaciones-agro", response_model=LiquidacionesAgroOut)
+def liquidaciones_agro_cliente(
+    cuit: str, db: Session = Depends(get_db), usuario: models.Usuario = Depends(usuario_actual)
+):
+    """Apartado de Facturación Agropecuaria: las Liquidaciones Electrónicas del sector primario
+    cacheadas del cliente + su total bruto. Vacío si no le aplica."""
+    cliente = _cliente_propio(db, cuit, usuario)
+    liqs = db.scalars(
+        select(models.LiquidacionAgro)
+        .where(models.LiquidacionAgro.cuit == cuit)
+        .order_by(models.LiquidacionAgro.fecha_comprobante.desc().nullslast())
+    ).all()
+    return LiquidacionesAgroOut(
+        facturaAgro=cliente.factura_agro,
+        totalBruto=float(sum(float(x.importe_bruto or 0) for x in liqs)),
+        liquidaciones=[
+            LiquidacionAgroOut(
+                id=x.liq_id,
+                direccion=x.direccion,
+                tipo=x.tipo_liq or nombre_tipo(x.cbte_tipo),
+                cbteTipo=x.cbte_tipo,
+                puntoVenta=x.punto_venta,
+                numero=str(x.numero).zfill(8),
+                fechaComprobante=x.fecha_comprobante.isoformat() if x.fecha_comprobante else None,
+                contraparteCuit=x.cuit_contraparte or "",
+                sistema=x.sistema or "",
+                importeBruto=float(x.importe_bruto or 0),
+            )
+            for x in liqs
+        ],
+    )
 
 
 @router.get("/clientes/{cuit}/deuda")

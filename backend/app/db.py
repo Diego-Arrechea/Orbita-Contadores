@@ -200,6 +200,12 @@ def _migrar_clientes_arca(conn) -> None:
         conn.execute(
             text("ALTER TABLE clientes_arca ADD COLUMN clave_invalida BOOLEAN DEFAULT FALSE")
         )
+    # ¿Factura por Liquidaciones Electrónicas del sector primario (agro)? Habilita la sync semanal de
+    # esas liquidaciones y su apartado. DEFAULT FALSE anda igual en SQLite (0/FALSE) y Postgres.
+    if "factura_agro" not in cols:
+        conn.execute(
+            text("ALTER TABLE clientes_arca ADD COLUMN factura_agro BOOLEAN DEFAULT FALSE")
+        )
 
 
 def _migrar_comprobantes_emitidos(conn) -> None:

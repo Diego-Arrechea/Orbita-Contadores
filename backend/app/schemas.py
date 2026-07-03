@@ -91,6 +91,29 @@ class ComprobanteOut(BaseModel):
     tienePdf: bool = False  # noqa: N815
 
 
+class LiquidacionAgroOut(BaseModel):
+    """Una Liquidación Electrónica del sector primario (agro) para la ficha del cliente (camelCase)."""
+
+    id: str  # liq_id de AFIP
+    direccion: str  # receptor | emisor
+    tipo: str  # descripción legible (p.ej. "Liquidación Compra Directa")
+    cbteTipo: int  # noqa: N815 — código ARCA (180-191 sector pecuario, etc.)
+    puntoVenta: int  # noqa: N815
+    numero: str
+    fechaComprobante: str | None = None  # noqa: N815 — ISO (aaaa-mm-dd)
+    contraparteCuit: str = ""  # noqa: N815 — el emisor (o receptor si direccion=emisor)
+    sistema: str = ""  # WB | WS
+    importeBruto: float = 0  # noqa: N815 — venta bruta (del PDF), en pesos
+
+
+class LiquidacionesAgroOut(BaseModel):
+    """Apartado de Facturación Agropecuaria del cliente: total + liquidaciones."""
+
+    facturaAgro: bool  # noqa: N815 — si el cliente está marcado como agropecuario
+    totalBruto: float  # noqa: N815 — suma de importeBruto de todas las liquidaciones
+    liquidaciones: list[LiquidacionAgroOut]
+
+
 class HistorialMesOut(BaseModel):
     """Un mes agregado del historial del cliente (replica `HistorialMes` del front). El dashboard
     los consume para calcular % tope, ratio de gastos y proyección sin tener que bajar todos los

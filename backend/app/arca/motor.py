@@ -132,6 +132,25 @@ def comunicacion_detalle(
     return motor_http.comunicacion_detalle(cuit_login, clave, id_com, cuit_objetivo=cuit_objetivo)
 
 
+# --- Liquidaciones Electrónicas del sector primario (agro) — SÓLO HTTP --------
+def liquidaciones_agro(
+    cuit_login: str,
+    clave: str,
+    cuit_cliente: str,
+    sector: str = "hacienda",
+    desde=None,
+    hasta=None,
+    on_progress=None,
+) -> list[dict]:
+    """Liquidaciones del agro (receptor + emisor) con su Importe Bruto. Sólo HTTP: el motor browser
+    nunca hizo el sector primario (LSP)."""
+    from . import motor_http
+
+    return motor_http.liquidaciones_agro(
+        cuit_login, clave, cuit_cliente, sector=sector, desde=desde, hasta=hasta, on_progress=on_progress
+    )
+
+
 # --- Certificado de facturación (cert + Fase B) -------------------------------
 def bootstrap_cliente(
     cuit_cliente: str, cuit_login: str, clave: str, alias: str | None = None, on_progress=None

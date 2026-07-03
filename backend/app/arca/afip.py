@@ -162,6 +162,26 @@ SERVICIOS_ENTRY = {
     "e-ventanilla": f"{VE_BASE}/login",
 }
 
+# Comprobantes en Línea (rcel) en fe.afip.gob.ar. NO es mcmp: rcel es el facturador web, y su
+# menú principal es el TRAMPOLÍN a las Liquidaciones Electrónicas del sector primario (agro). El
+# entry real del SSO es index.jsp (index_bis.jsp da 403); el POST del token+sign va ahí.
+RCEL_BASE = "https://fe.afip.gob.ar/rcel/jsp"
+# Auth "legacy" (.gov, no .gob) que canjea el token 'request' del forward rcel→sector por el
+# token 'granted' del sub-servicio (paso intermedio del doble SSO; ver _lsp_abrir).
+AUTH_GOV_FORWARD = "https://auth.afip.gov.ar/contribuyente/"
+
+# Liquidaciones Electrónicas del sector primario: cada sector es un SUB-SERVICIO propio con su
+# `data-token` (el botón del menú de rcel) y su web-app. Sólo 'hacienda' (token 'lsp', app
+# serviciosjava2/lsp-web = "Liquidación Electrónica - Sector Pecuario") está mapeado end-to-end.
+# Los otros 3 usan el MISMO mecanismo de forward pero caen en OTRA app (host/paths sin mapear:
+# hay que hacerlo con un cliente que realmente tenga liquidaciones de ese sector).
+LSP_SECTORES = {
+    "hacienda": {"token": "lsp", "base": "https://serviciosjava2.afip.gob.ar/lsp-web"},
+    # "lecheria": {"token": "lum", "base": ...},
+    # "tabaco":   {"token": "ltv", "base": ...},
+    # "azucar":   {"token": "leu_web_lca", "base": ...},
+}
+
 # Servicios interactivos que, si el CUIT NO los tiene adheridos en su Clave Fiscal,
 # adherimos solos (Administrador de Relaciones) y reintentamos abrirlos. Mapea el
 # nombre SSO -> el servicename del árbol de relaciones (web://<name>). Así el alta /
@@ -281,6 +301,9 @@ class AFIP:
         # último abierto para reabrir si cambia (cert <-> relaciones).
         self._serviciosweb_servicio = None
         self._adhiriendo = False  # guard de re-entrada del auto-adherir (ver abrir_servicio)
+        # Sector de Liquidaciones del agro (LSP) que ya quedó abierto en esta sesión (o None): así
+        # consultar/descargar-PDF del mismo sector no rehace el doble SSO. Ver _lsp_preparar.
+        self._lsp_sector = None
 
         # Logger por CUIT: en multi-tenant los logs distinguen de qué cliente son.
         self.log = logging.getLogger(f"afip.{self.cuit}")
@@ -2312,6 +2335,163 @@ class AFIP:
             }
             for e in j.get("eventos", [])
         ]
+
+    # --- Liquidaciones Electrónicas del sector primario (LSP / agro) ---------
+    # Flujo (validado end-to-end contra prod): el portal NO autoriza el sub-servicio
+    # directo, hay que entrar por rcel (Comprobantes en línea) y desde su menú saltar
+    # al sector con un DOBLE SSO (forward → auth .gov → app del sector). Ver LSP_SECTORES
+    # y la memoria `facturacion-agropecuaria`. Cada liquidación se consulta en grilla
+    # (sin importe) y el importe sale del PDF (getPdf). Sync SEMANAL (aparecen rara vez).
+    @staticmethod
+    def _lsp_form(html_txt: str) -> tuple[str, dict]:
+        """Parsea un form de SSO (forward): (action, {campos ocultos})."""
+        m = re.search(r"""action=['"]([^'"]+)['"]""", html_txt, re.I)
+        if not m:
+            raise AFIPError("No se encontró el form de SSO de liquidaciones.")
+        campos = {
+            k: _html.unescape(v)
+            for k, v in re.findall(r"""name="([^"]+)"[^>]*value=['"]([^'"]*)['"]""", html_txt)
+        }
+        return m.group(1), campos
+
+    @staticmethod
+    def _lsp_split_numero(txt: str) -> tuple[int, int]:
+        """'00001 - 00000132' -> (punto_venta, numero) = (1, 132)."""
+        nums = re.findall(r"\d+", txt or "")
+        if len(nums) >= 2:
+            return int(nums[0]), int(nums[1])
+        return 0, int(nums[0]) if nums else 0
+
+    def _abrir_rcel(self) -> None:
+        """Abre 'Comprobantes en línea' (rcel) y deja el menú principal listo (trampolín)."""
+        if not self.logged_in:
+            self.login()
+        r = self.session.get(
+            f"{URL_PORTAL_API}/{self.cuit}/servicio/rcel/autorizacion",
+            headers={"Accept": "application/json, text/plain, */*", "Referer": URL_PORTAL_APP},
+        )
+        try:
+            aut = r.json()
+        except ValueError:
+            raise AFIPError("Sesión del portal expirada (rcel autorizacion sin JSON).")
+        if not isinstance(aut, dict) or "token" not in aut:
+            raise AFIPError("El servicio 'Comprobantes en línea' no está disponible para este CUIT.")
+        # Entry REAL = index.jsp (index_bis.jsp da 403). Setea SESSION_TOKEN/SIGN + JSESSIONID en fe.
+        self.session.post(
+            f"{RCEL_BASE}/index.jsp",
+            data={"token": aut["token"], "sign": aut["sign"]},
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Origin": "https://portalcf.cloud.afip.gob.ar",
+                "Referer": "https://portalcf.cloud.afip.gob.ar/",
+            },
+        )
+        # El ORDEN importa: setearContribuyente + menu_ppal (ir directo a menu_ppal da 403 del WAF).
+        ref = {"Referer": f"{RCEL_BASE}/index_bis.jsp"}
+        self.session.get(f"{RCEL_BASE}/setearContribuyente.do?idContribuyente=0", headers=ref)
+        self.session.get(f"{RCEL_BASE}/menu_ppal.jsp", headers=ref)
+
+    def _lsp_preparar(self, sector: str) -> str:
+        """Abre el sub-servicio del `sector` (doble SSO) si no está abierto. Devuelve su base URL.
+
+        Reusa la sesión: si ya se abrió ESTE sector en esta instancia, no rehace el SSO.
+        """
+        conf = LSP_SECTORES.get(sector)
+        if not conf:
+            raise AFIPError(f"Sector de liquidaciones no soportado: {sector!r}")
+        base = conf["base"]
+        if self._lsp_sector == sector:
+            return base
+        self.log.info("LSP: abriendo sector %s (%s)", sector, conf["token"])
+        self._abrir_rcel()
+        # forwardToken → form1 (token 'request') que se postea al auth .gov
+        r = self.session.get(
+            f"{RCEL_BASE}/forwardToken.do?serviceDST={conf['token']}",
+            headers={"X-Requested-With": "XMLHttpRequest", "Referer": f"{RCEL_BASE}/menu_ppal.jsp"},
+        )
+        a1, f1 = self._lsp_form(r.text)
+        # auth .gov → servicio.xhtml con form2 (token 'granted' del sector)
+        r = self.session.post(
+            a1, data=f1, allow_redirects=True,
+            headers={"Content-Type": "application/x-www-form-urlencoded",
+                     "Origin": "https://auth.afip.gov.ar", "Referer": "https://auth.afip.gov.ar/"},
+        )
+        a2, f2 = self._lsp_form(r.text)
+        # PRIME: iniciar sesión en la app del sector ANTES de entregar el granted. Sin este GET, el
+        # POST del granted devuelve "Error General del Sistema" (arranca JSESSIONID + cookies WAF).
+        self.session.get(f"{base}/inicioPerfil.htm", headers={"Referer": "https://auth.afip.gov.ar/"})
+        self.session.post(
+            a2, data=f2, allow_redirects=True,
+            headers={"Content-Type": "application/x-www-form-urlencoded",
+                     "Origin": "https://auth.afip.gov.ar", "Referer": "https://auth.afip.gov.ar/"},
+        )
+        # Fijar el contribuyente (0 = titular; los clientes del agro entran con su propia clave).
+        self.session.get(f"{base}/jsp/setearContribuyente.htm?idContribuyente=0",
+                         headers={"Referer": f"{base}/index.jsp"})
+        self.session.get(f"{base}/inicioPerfil.htm", headers={"Referer": f"{base}/index.jsp"})
+        self._lsp_sector = sector
+        return base
+
+    def lsp_consultar(
+        self, direccion: str = "receptor", *, sector: str = "hacienda", desde=None, hasta=None
+    ) -> list[dict]:
+        """Lista las liquidaciones electrónicas del `sector` (grilla, SIN importe).
+
+        Args:
+            direccion: 'receptor' (le compran al cliente; el ~95%) o 'emisor'.
+            sector: clave de LSP_SECTORES (por ahora sólo 'hacienda').
+            desde, hasta: fecha (date o 'dd/mm/aaaa'); default 2000-01-01 → hoy.
+
+        Devuelve dicts: cuit_contraparte, tipo_liq, cbte_tipo, punto_venta, numero,
+        fecha_comprobante, fecha_emision, sistema, liq_id (el id de AFIP para el PDF).
+        """
+        base = self._lsp_preparar(sector)
+        if direccion == "receptor":
+            cpage, action = "consultaLiquidacionReceptor", "filtarLiquidacionesReceptor"
+        elif direccion == "emisor":
+            cpage, action = "consultaLiquidacionEmisor", "filtarLiquidacionesEmisor"
+        else:
+            raise AFIPError(f"direccion inválida: {direccion!r} (usar 'receptor'|'emisor').")
+        self.session.get(f"{base}/{cpage}", headers={"Referer": f"{base}/inicioPerfil.htm"})
+        params = {
+            "sortDirections": "desc", "sortFields": "fechaCreacion",
+            "displayLength": "500", "currentPage": "1",
+            "cuitEmisor": "", "nroComprobante": "", "sistemaIngreso": "-1", "tipoDeComprobante": "-1",
+            "fechaDesde": self._fmt_fecha(desde or _dt.date(2000, 1, 1)),
+            "fechaHasta": self._fmt_fecha(hasta or _dt.date.today()),
+        }
+        r = self.session.get(f"{base}/{action}", params=params, headers={"Referer": f"{base}/{cpage}"})
+        html_txt = r.text
+        tb = html_txt[html_txt.find("<tbody>"): html_txt.find("</tbody>")]
+        filas = []
+        for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", tb, re.S):
+            did = re.search(r'data-id="(\d+)"', tr)
+            tds = [
+                re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", td)).strip()
+                for td in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)
+            ]
+            if len(tds) < 7 or not did:
+                continue
+            pv, nro = self._lsp_split_numero(tds[3])
+            filas.append({
+                "cuit_contraparte": tds[0], "tipo_liq": tds[1], "cbte_tipo": int(tds[2] or 0),
+                "punto_venta": pv, "numero": nro,
+                "fecha_comprobante": tds[4], "fecha_emision": tds[5], "sistema": tds[6],
+                "liq_id": did.group(1),
+            })
+        self.log.info("LSP %s/%s: %s liquidaciones", sector, direccion, len(filas))
+        return filas
+
+    def lsp_pdf(self, liq_id, *, sector: str = "hacienda") -> bytes:
+        """Descarga el PDF de una liquidación (de ahí sale el Importe Bruto)."""
+        base = self._lsp_preparar(sector)
+        r = self.session.get(
+            f"{base}/consultaLiquidacion/getPdf?id={liq_id}",
+            headers={"Referer": f"{base}/consultaLiquidacionReceptor"},
+        )
+        if not r.content.startswith(b"%PDF"):
+            raise AFIPError(f"getPdf {liq_id} no devolvió un PDF (¿sesión caída?).")
+        return r.content
 
     def verificar(self) -> bool:
         """Comprueba que la sesión esté viva cargando el portal."""

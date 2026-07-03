@@ -214,6 +214,14 @@ class ClienteARCA(Base):
     dfe_baseline_en: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # ¿El cliente factura por Liquidaciones Electrónicas del sector primario (agro)? Cuando está en
+    # True se le sincronizan esas liquidaciones (aparte de Mis Comprobantes) y se muestran en su
+    # apartado de Facturación Agropecuaria, sumándose a su facturación. Lo tilda el contador en el
+    # alta/ficha, o lo prende solo la barrida inicial si le detecta liquidaciones. Sync SEMANAL
+    # (aparecen rara vez). Ver services/agro.py y la memoria `facturacion-agropecuaria`.
+    factura_agro: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
 
 
 class ComprobanteEmitido(Base):
@@ -254,6 +262,40 @@ class ComprobanteEmitido(Base):
     # Sólo en comprobantes emitidos desde la app (es el dato que se eligió al emitir); se imprime en la
     # representación del comprobante. NULL = no registrada (filas previas a esta columna).
     condicion_iva_receptor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sincronizado_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class LiquidacionAgro(Base):
+    """Liquidación Electrónica del sector primario (agro) de un cliente productor.
+
+    Son comprobantes de sectores primarios (Hacienda y Carne, Lechería, Tabaco, Azúcar) que NO
+    aparecen en 'Mis Comprobantes': los EMITE el comprador/acopiador y el productor los RECIBE
+    (`direccion='receptor'`, el ~95%), o los emite el propio cliente (`direccion='emisor'`). Son la
+    venta real del cliente y se suman a su facturación. `importe_bruto` = la venta bruta (para
+    topes de monotributo; se lee del PDF, ver services/liquidacion_pdf.py). `liq_id` es el id de
+    AFIP (clave estable para deduplicar). Ver la memoria `facturacion-agropecuaria`."""
+
+    __tablename__ = "liquidaciones_agro"
+    __table_args__ = (
+        UniqueConstraint("cuit", "liq_id", name="uq_liquidacion_agro"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cuit: Mapped[str] = mapped_column(String(11), ForeignKey("clientes_arca.cuit"), index=True)
+    liq_id: Mapped[str] = mapped_column(String(20))  # id de AFIP (getPdf?id=)
+    sector: Mapped[str] = mapped_column(String(12), default="hacienda")  # hacienda | lecheria | ...
+    direccion: Mapped[str] = mapped_column(String(10), default="receptor")  # receptor | emisor
+    cbte_tipo: Mapped[int] = mapped_column(Integer)          # 180-191 (sector pecuario), etc.
+    tipo_liq: Mapped[str] = mapped_column(String(80), default="")  # descripción legible de AFIP
+    punto_venta: Mapped[int] = mapped_column(Integer, default=0)
+    numero: Mapped[int] = mapped_column(Integer, default=0)
+    cuit_contraparte: Mapped[str] = mapped_column(String(11), default="")  # emisor (o receptor)
+    fecha_comprobante: Mapped[dt.date | None] = mapped_column(nullable=True)
+    fecha_emision: Mapped[dt.date | None] = mapped_column(nullable=True)
+    sistema: Mapped[str] = mapped_column(String(4), default="")  # WB (web) | WS (web services)
+    importe_bruto: Mapped[float] = mapped_column(Numeric(15, 2), default=0)  # venta bruta (del PDF)
     sincronizado_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
