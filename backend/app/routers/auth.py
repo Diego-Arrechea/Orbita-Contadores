@@ -23,7 +23,6 @@ from ..schemas import (
     RegistroIn,
     RestablecerIn,
     UsuarioOut,
-    dias_restantes_trial,
 )
 from ..security import (
     crear_token,
@@ -40,9 +39,6 @@ from ..services import crisp, email
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# Duración del período de prueba gratis para cada cuenta nueva.
-TRIAL_DIAS = 30
-
 
 def _usuario_out(u: models.Usuario) -> UsuarioOut:
     return UsuarioOut(
@@ -57,8 +53,6 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         matricula=u.matricula,
         rol=u.rol,
         email_confirmado=bool(u.email_confirmado),
-        trial_fin=u.trial_fin.isoformat() if u.trial_fin else None,
-        trial_dias_restantes=dias_restantes_trial(u.trial_fin),
         aviso_alertas_pendiente=u.aviso_alertas_pendiente or 0,
         facturacion_habilitada=usuario_puede_facturar(u),
     )
@@ -93,8 +87,6 @@ def registrar(datos: RegistroIn, db: Session = Depends(get_db)):
         # El registro ya deja al contador logueado (devuelve token): contamos eso como su primer
         # acceso, si no la cuenta figura como "nunca entró" hasta que pase por la pantalla de login.
         ultimo_acceso=ahora,
-        # Período de prueba gratis de 30 días desde el alta.
-        trial_fin=ahora + dt.timedelta(days=TRIAL_DIAS),
         # Confirmación de email pendiente (enforcement suave: igual queda logueado). NO mandamos el
         # correo en el alta: el contador lo dispara manualmente desde el banner / Configuración →
         # Seguridad ("Enviar correo de confirmación"), que recién ahí genera y envía el token

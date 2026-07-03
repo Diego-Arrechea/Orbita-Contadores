@@ -27,7 +27,6 @@ from ..schemas import (
     JobIdOut,
     ResetPasswordAdminOut,
     UsuarioOut,
-    dias_restantes_trial,
 )
 from ..scraping import jobs
 from ..security import (
@@ -60,8 +59,6 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         rol=u.rol,
         email_confirmado=bool(u.email_confirmado),
         facturacion_habilitada=usuario_puede_facturar(u),
-        trial_fin=u.trial_fin.isoformat() if u.trial_fin else None,
-        trial_dias_restantes=dias_restantes_trial(u.trial_fin),
     )
 
 
@@ -82,8 +79,6 @@ def _admin_usuario_out(u: models.Usuario, clientes: int) -> AdminUsuarioOut:
         ultimo_acceso=_iso(u.ultimo_acceso),
         ultimo_logout=_iso(u.ultimo_logout),
         clientes=clientes,
-        trial_fin=_iso(u.trial_fin),
-        trial_dias_restantes=dias_restantes_trial(u.trial_fin),
     )
 
 

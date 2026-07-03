@@ -94,7 +94,6 @@ import {
 import { mensajeDeError } from '@/services/authService';
 import { iniciarImpersonacion, usuarioActual } from '@/lib/cuenta';
 import { cn } from '@/lib/utils';
-import { diasDeTrial } from '@/lib/trial';
 
 function fechaCorta(iso?: string | null): string {
   if (!iso) return '—';
@@ -114,26 +113,6 @@ function fechaHora(iso?: string | null): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-/** Badge del estado de la prueba gratis de una cuenta (para el panel). Los admins no tienen trial. */
-function TrialBadge({ trialFin, rol }: { trialFin?: string | null; rol?: string }) {
-  if (rol === 'admin') return <span className="text-muted-foreground text-xs">—</span>;
-  const dias = diasDeTrial(trialFin);
-  if (dias === null) return <span className="text-muted-foreground text-xs">—</span>;
-  const fecha = fechaCorta(trialFin);
-  if (dias <= 0) {
-    return (
-      <Badge variant="danger" title={`Venció el ${fecha}`}>
-        Vencida
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant={dias <= 5 ? 'warning' : 'muted'} title={`Hasta el ${fecha}`}>
-      {dias} {dias === 1 ? 'día' : 'días'}
-    </Badge>
-  );
 }
 
 /** Botón "Actualizar" con feedback: fuerza un refetch (ignora el caché) y muestra "Actualizado ✓"
@@ -432,7 +411,6 @@ function AccionesCuenta({
 // Columnas por las que se puede ordenar la tabla de cuentas (las "Acciones" no se ordenan).
 type ColumnaOrden =
   | 'contador'
-  | 'prueba'
   | 'clientes'
   | 'alta'
   | 'acceso'
@@ -451,9 +429,6 @@ function valorOrden(u: AdminUsuario, col: ColumnaOrden): string | number | null 
   switch (col) {
     case 'contador':
       return `${u.nombre ?? ''} ${u.apellido ?? ''}`.trim().toLowerCase();
-    case 'prueba':
-      // Los admins no tienen prueba; se ordenan como "sin dato".
-      return u.rol === 'admin' ? null : diasDeTrial(u.trial_fin);
     case 'clientes':
       return u.clientes ?? 0;
     case 'alta':
@@ -671,9 +646,6 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
               <EncabezadoOrden col="contador" orden={orden} onOrdenar={ordenarPor}>
                 Contador
               </EncabezadoOrden>
-              <EncabezadoOrden col="prueba" orden={orden} onOrdenar={ordenarPor} className="text-center">
-                Prueba
-              </EncabezadoOrden>
               <EncabezadoOrden col="clientes" orden={orden} onOrdenar={ordenarPor} className="text-center">
                 Clientes
               </EncabezadoOrden>
@@ -717,9 +689,6 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                     <div className="text-xs text-muted-foreground">{u.email}</div>
                   </button>
                 </TableCell>
-                <TableCell className="text-center">
-                  <TrialBadge trialFin={u.trial_fin} rol={u.rol} />
-                </TableCell>
                 <TableCell className="text-center tabular-nums">{u.clientes}</TableCell>
                 <TableCell className="text-sm">{fechaCorta(u.creado_en)}</TableCell>
                 <TableCell className="text-sm">{fechaHora(u.ultimo_acceso)}</TableCell>
@@ -750,7 +719,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
             ))}
             {ordenados.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
                   No hay cuentas que coincidan con la búsqueda.
                 </TableCell>
               </TableRow>
@@ -788,7 +757,6 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
               ) : (
                 <Badge variant="muted">Inhabilitada</Badge>
               )}
-              <TrialBadge trialFin={u.trial_fin} rol={u.rol} />
               <EmailConfirmadoBadge confirmado={u.email_confirmado} />
               <span className="text-xs text-muted-foreground tabular-nums">
                 {u.clientes} cliente(s)
@@ -1924,7 +1892,6 @@ function FichaContador({
               ) : (
                 <Badge variant="muted">Inhabilitada</Badge>
               )}
-              <TrialBadge trialFin={u.trial_fin} rol={u.rol} />
             </div>
           </div>
         </div>

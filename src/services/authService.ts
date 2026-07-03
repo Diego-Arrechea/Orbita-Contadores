@@ -17,8 +17,6 @@ export interface Usuario {
   matricula?: string | null;
   rol?: string; // 'contador' | 'admin' — el front muestra el panel superadmin sólo si 'admin'
   email_confirmado?: boolean; // false → mostramos el banner "confirmá tu correo"
-  trial_fin?: string | null; // ISO: fin del período de prueba gratis (30 días)
-  trial_dias_restantes?: number | null; // snapshot del backend; el front recalcula desde trial_fin
   aviso_alertas_pendiente?: number; // ingresos que faltan para dejar de mostrar el modal de alertas (0 = no)
   facturacion_habilitada?: boolean; // rollout gateado: el front muestra "Emitir comprobante" sólo si true
 }

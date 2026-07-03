@@ -41,9 +41,9 @@ import { Novedades } from '@/pages/Novedades';
 import { Admin } from '@/pages/Admin';
 
 export default function App() {
-  // Al cargar la app con sesión, refresca los datos del usuario (días de prueba, rol, estado) desde
-  // el backend y los re-guarda. Así el header muestra el trial sin obligar a re-loguear. Silencioso:
-  // si el token ya no sirve, los guards de ruta se encargan de mandar al login.
+  // Al cargar la app con sesión, refresca los datos del usuario (rol, estado) desde el backend y los
+  // re-guarda. Así se reflejan los cambios sin obligar a re-loguear. Silencioso: si el token ya no
+  // sirve, los guards de ruta se encargan de mandar al login.
   useEffect(() => {
     if (tokenActual()) {
       getMe().then(actualizarUsuarioGuardado).catch(() => {});

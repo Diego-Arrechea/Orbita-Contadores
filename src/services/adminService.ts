@@ -22,8 +22,6 @@ export interface AdminUsuario {
   ultimo_acceso?: string | null;
   ultimo_logout?: string | null; // ISO: última vez que cerró la app
   clientes: number;
-  trial_fin?: string | null; // ISO: fin del período de prueba gratis
-  trial_dias_restantes?: number | null; // días que faltan (0 = vencida)
 }
 
 export interface AdminMetricas {
