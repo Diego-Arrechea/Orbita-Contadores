@@ -27,6 +27,7 @@ from sqlalchemy import func, or_, select
 from ..config import settings
 from ..db import SessionLocal
 from ..models import ClienteARCA, Extraccion, WorkerHeartbeat
+from ..services.agro import sincronizar_agro_si_corresponde
 from ..services.alertas import evaluar_y_notificar
 from ..services.scheduler import _sincronizar_con_reintento
 from ..services.sincronizacion import sincronizar_padron
@@ -138,6 +139,14 @@ def _worker(idx: int) -> None:
             n = _sincronizar_con_reintento(db, cuit)
             try:
                 sincronizar_padron(db, cuit)  # best-effort: no aplica o falló, comprobantes ya están
+            except Exception:  # noqa: BLE001
+                pass
+            # Liquidaciones del agro: SÓLO para clientes marcados y a lo sumo una vez por semana
+            # (best-effort; un fallo acá no debe tumbar la sync de comprobantes ya hecha).
+            try:
+                ra = sincronizar_agro_si_corresponde(db, cuit)
+                if ra:
+                    logger.info("[w%d] %s agro -> %s liq (nuevas %s)", idx, cuit, ra["procesadas"], ra["nuevas"])
             except Exception:  # noqa: BLE001
                 pass
             logger.info("[w%d] %s OK -> %s comprobantes nuevos", idx, cuit, n)
