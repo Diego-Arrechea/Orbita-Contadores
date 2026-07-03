@@ -2433,7 +2433,8 @@ class AFIP:
         return base
 
     def lsp_consultar(
-        self, direccion: str = "receptor", *, sector: str = "hacienda", desde=None, hasta=None
+        self, direccion: str = "receptor", *, sector: str = "hacienda", desde=None, hasta=None,
+        _reintento: bool = True,
     ) -> list[dict]:
         """Lista las liquidaciones electrónicas del `sector` (grilla, SIN importe).
 
@@ -2462,6 +2463,22 @@ class AFIP:
         }
         r = self.session.get(f"{base}/{action}", params=params, headers={"Referer": f"{base}/{cpage}"})
         html_txt = r.text
+        # La grilla SIEMPRE trae un <tbody> (con filas o con "No resultados de busqueda"). Si NO está,
+        # la sesión LSP no quedó establecida (cayó en final.htm/error, p.ej. por una colisión con otra
+        # sesión del mismo CUIT): NO es "sin liquidaciones". Reabrimos el doble SSO y reintentamos UNA
+        # vez (auto-sanación); si sigue sin grilla, lo levantamos → el caller lo marca reintentable en
+        # vez de registrar un falso "sin liquidaciones".
+        if "<tbody" not in html_txt:
+            self._lsp_sector = None
+            if _reintento:
+                self.log.warning("LSP %s/%s sin grilla (%s); reabro SSO y reintento", sector, direccion, r.url)
+                time.sleep(2)
+                return self.lsp_consultar(
+                    direccion, sector=sector, desde=desde, hasta=hasta, _reintento=False
+                )
+            raise AFIPError(
+                f"Liquidaciones {sector}/{direccion}: la grilla no cargó (sesión no establecida)."
+            )
         tb = html_txt[html_txt.find("<tbody>"): html_txt.find("</tbody>")]
         filas = []
         for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", tb, re.S):
