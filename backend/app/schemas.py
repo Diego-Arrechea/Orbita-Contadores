@@ -408,18 +408,6 @@ class ResetPasswordAdminOut(BaseModel):
     password_temporal: str
 
 
-def dias_restantes_trial(trial_fin: "dt.datetime | None") -> int | None:
-    """Días que faltan para que termine la prueba, contados por CALENDARIO (fecha contra fecha), no
-    por timestamp: así la hora del día no infla el número (un trial de 30 días muestra 30 el día que
-    arranca y 29 al siguiente). 0 si ya venció; None si la cuenta no tiene trial. El front recalcula
-    desde trial_fin (con la fecha LOCAL del contador); esto es sólo el snapshot."""
-    if trial_fin is None:
-        return None
-    ahora = dt.datetime.now(dt.timezone.utc)
-    fin = trial_fin if trial_fin.tzinfo else trial_fin.replace(tzinfo=dt.timezone.utc)
-    return max(0, (fin.date() - ahora.date()).days)
-
-
 class UsuarioOut(BaseModel):
     """Datos del contador que devolvemos al front (sin la contraseña)."""
 
@@ -435,10 +423,6 @@ class UsuarioOut(BaseModel):
     rol: str = "contador"  # contador | admin (el front muestra el panel sólo si admin)
     # Confirmación de email: el front muestra el banner "confirmá tu correo" mientras sea False.
     email_confirmado: bool = False
-    # Período de prueba gratis: fin (ISO) + días restantes ya calculados (el front igual recalcula
-    # desde trial_fin para que el conteo no quede viejo entre cargas).
-    trial_fin: str | None = None
-    trial_dias_restantes: int | None = None
     # Ingresos que faltan para dejar de mostrar el modal de "ya podés configurar tus alertas" (0 = no).
     aviso_alertas_pendiente: int = 0
     # Rollout gateado de facturación electrónica: el front muestra "Emitir comprobante" sólo si True.
@@ -544,8 +528,6 @@ class AdminUsuarioOut(BaseModel):
     ultimo_acceso: str | None = None  # ISO; None = nunca inició sesión
     ultimo_logout: str | None = None  # ISO; None = nunca registró un cierre de la app
     clientes: int = 0  # cuántos clientes tiene cargados
-    trial_fin: str | None = None  # ISO: fin del período de prueba gratis
-    trial_dias_restantes: int | None = None  # días que faltan (0 = vencida)
 
 
 class AdminUsuarioPatch(BaseModel):

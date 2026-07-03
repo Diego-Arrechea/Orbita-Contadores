@@ -85,9 +85,9 @@ class Usuario(Base):
     creado_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
-    # Fin del período de prueba GRATIS (30 días). Se setea al registrarse; las cuentas previas a la
-    # feature se backfillean a 30 días desde la migración (ver db._migrar_usuarios). Informativo: se
-    # muestra el conteo en el header. NULL = sin trial definido (no debería pasar tras la migración).
+    # LEGACY: fin del período de prueba gratis. La feature se retiró; ya no se setea ni se lee.
+    # Se conserva la columna sólo para no tener que dropearla en prod (queda siempre NULL en cuentas
+    # nuevas). No usar.
     trial_fin: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

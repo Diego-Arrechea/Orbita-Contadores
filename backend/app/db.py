@@ -56,6 +56,8 @@ def _migrar_usuarios(conn) -> None:
         "activo": "BOOLEAN DEFAULT TRUE" if not es_sqlite else "BOOLEAN DEFAULT 1",
         "ultimo_acceso": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
         "ultimo_logout": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
+        # LEGACY: la feature de prueba gratis se retiró. Mantenemos la columna para no dropearla en
+        # prod (queda NULL); ya no se backfillea ni se usa.
         "trial_fin": "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE",
         # Recuperación de contraseña: hash del token de reset + su expiración (NULL = sin reset pendiente).
         "reset_token_hash": "VARCHAR(64)",
@@ -78,13 +80,6 @@ def _migrar_usuarios(conn) -> None:
         text("UPDATE usuarios SET activo = TRUE WHERE activo IS NULL")
         if not es_sqlite
         else text("UPDATE usuarios SET activo = 1 WHERE activo IS NULL")
-    )
-    # Período de prueba: las cuentas previas a la feature (sin fin de trial) arrancan 30 días desde
-    # HOY. Las nuevas lo setean en el registro. Idempotente (sólo toca las NULL).
-    conn.execute(
-        text("UPDATE usuarios SET trial_fin = NOW() + INTERVAL '30 days' WHERE trial_fin IS NULL")
-        if not es_sqlite
-        else text("UPDATE usuarios SET trial_fin = datetime('now', '+30 days') WHERE trial_fin IS NULL")
     )
     # Confirmación de email: las cuentas previas a la feature quedan sin confirmar (NULL → FALSE);
     # verán el banner y se confirman solas con el botón "reenviar" del front. No mandamos correos en
