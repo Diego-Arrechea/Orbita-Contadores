@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -21,6 +21,7 @@ import {
   ArrowLeft,
   Receipt,
   ChevronRight,
+  ChevronDown,
   Cpu,
   Clock,
   Timer,
@@ -1239,12 +1240,43 @@ function TabMetricas() {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// Un cliente (cuit) con TODAS sus sincronizaciones fallidas agrupadas. La primera de `items` es la
+// más reciente (el backend las manda ordenadas por fecha desc), así que define el estado actual.
+interface GrupoFallidas {
+  cuit: string;
+  cliente?: string | null;
+  contador_email?: string | null;
+  items: AdminSyncFallida[];
+}
+
 // Log de sincronizaciones con problemas (vista de ops: motivo técnico + estado actual + reintento).
+// La lista es POR CLIENTE: cada cuit aparece una sola vez y se despliega para ver todos sus errores.
 function SyncsFallidas({ fallidas }: { fallidas: AdminSyncFallida[] }) {
   const qc = useQueryClient();
   // Estado de reintento por cuit: 'corriendo' mientras poolea el job; mensaje de error si falló.
   const [reintentando, setReintentando] = useState<Record<string, boolean>>({});
   const [errores, setErrores] = useState<Record<string, string>>({});
+  // Qué clientes tienen el detalle de errores desplegado.
+  const [abiertos, setAbiertos] = useState<Record<string, boolean>>({});
+
+  // Agrupa las filas por cuit conservando el orden de aparición (fecha desc del backend).
+  const grupos = useMemo<GrupoFallidas[]>(() => {
+    const mapa = new Map<string, GrupoFallidas>();
+    for (const f of fallidas) {
+      let g = mapa.get(f.cuit);
+      if (!g) {
+        g = { cuit: f.cuit, cliente: f.cliente, contador_email: f.contador_email, items: [] };
+        mapa.set(f.cuit, g);
+      }
+      g.items.push(f);
+      // Completa nombre/contador si alguna fila del grupo los trae y todavía faltaban.
+      if (!g.cliente && f.cliente) g.cliente = f.cliente;
+      if (!g.contador_email && f.contador_email) g.contador_email = f.contador_email;
+    }
+    return [...mapa.values()];
+  }, [fallidas]);
+
+  const toggle = (cuit: string) => setAbiertos(prev => ({ ...prev, [cuit]: !prev[cuit] }));
 
   async function reintentar(cuit: string) {
     setReintentando(prev => ({ ...prev, [cuit]: true }));
@@ -1276,11 +1308,11 @@ function SyncsFallidas({ fallidas }: { fallidas: AdminSyncFallida[] }) {
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 text-warning-foreground" />
-        <h2 className="text-sm font-semibold">Sincronizaciones con problemas</h2>
-        <Badge variant={fallidas.length ? 'warning' : 'muted'}>{fallidas.length}</Badge>
+        <h2 className="text-sm font-semibold">Clientes con sincronizaciones con problemas</h2>
+        <Badge variant={grupos.length ? 'warning' : 'muted'}>{grupos.length}</Badge>
       </div>
 
-      {fallidas.length === 0 ? (
+      {grupos.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">
           No hay sincronizaciones con problemas recientes. 🎉
         </Card>
@@ -1291,68 +1323,111 @@ function SyncsFallidas({ fallidas }: { fallidas: AdminSyncFallida[] }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="whitespace-nowrap">Fecha</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Contador</TableHead>
+                  <TableHead className="text-center">Errores</TableHead>
                   <TableHead className="text-center">Estado actual</TableHead>
-                  <TableHead>Detalle del problema</TableHead>
+                  <TableHead>Último problema</TableHead>
                   <TableHead className="text-right">Acción</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {fallidas.map((f, i) => {
-                  const corriendo = reintentando[f.cuit];
-                  const err = errores[f.cuit];
+                {grupos.map(g => {
+                  const corriendo = reintentando[g.cuit];
+                  const err = errores[g.cuit];
+                  const reciente = g.items[0];
+                  const abierto = abiertos[g.cuit];
                   return (
-                    <TableRow key={`${f.cuit}-${f.fecha}-${i}`}>
-                      <TableCell className="text-sm whitespace-nowrap">{fechaHora(f.fecha)}</TableCell>
-                      <TableCell className="text-sm">
-                        <div>{f.cliente || '—'}</div>
-                        <div className="text-xs text-muted-foreground tabular-nums">{f.cuit}</div>
-                      </TableCell>
-                      <TableCell className="text-sm">{f.contador_email || '—'}</TableCell>
-                      <TableCell className="text-center">
-                        {f.resuelto ? (
-                          <Badge variant="success" title={`Sincronizado después: ${fechaHora(f.ultima_sync_ok)}`}>
-                            <CheckCircle2 className="h-3 w-3" /> Resuelto
-                          </Badge>
-                        ) : (
-                          <Badge variant="danger">Sin resolver</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <code
-                          className="block max-w-sm truncate font-mono text-xs text-danger"
-                          title={f.motivo || ''}
-                        >
-                          {(f.motivo || '—').split('\n')[0]}
-                        </code>
-                        {err && <div className="text-xs text-danger mt-1">{err}</div>}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {f.resuelto ? (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={corriendo}
-                            onClick={() => void reintentar(f.cuit)}
-                            title="Volver a intentar la sincronización de este cliente"
-                          >
-                            {corriendo ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin" /> Reintentando…
-                              </>
+                    <Fragment key={g.cuit}>
+                      <TableRow
+                        className="cursor-pointer"
+                        onClick={() => toggle(g.cuit)}
+                      >
+                        <TableCell className="text-sm">
+                          <div className="flex items-center gap-1.5">
+                            {abierto ? (
+                              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
                             ) : (
-                              <>
-                                <RotateCw className="h-4 w-4" /> Reintentar
-                              </>
+                              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                             )}
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
+                            <div className="min-w-0">
+                              <div>{g.cliente || '—'}</div>
+                              <div className="text-xs text-muted-foreground tabular-nums">{g.cuit}</div>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">{g.contador_email || '—'}</TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="muted">{g.items.length}</Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {reciente.resuelto ? (
+                            <Badge variant="success" title={`Sincronizado después: ${fechaHora(reciente.ultima_sync_ok)}`}>
+                              <CheckCircle2 className="h-3 w-3" /> Resuelto
+                            </Badge>
+                          ) : (
+                            <Badge variant="danger">Sin resolver</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-xs text-muted-foreground whitespace-nowrap">{fechaHora(reciente.fecha)}</div>
+                          <code
+                            className="block max-w-sm truncate font-mono text-xs text-danger"
+                            title={reciente.motivo || ''}
+                          >
+                            {(reciente.motivo || '—').split('\n')[0]}
+                          </code>
+                          {err && <div className="text-xs text-danger mt-1">{err}</div>}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {reciente.resuelto ? (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={corriendo}
+                              onClick={e => {
+                                e.stopPropagation();
+                                void reintentar(g.cuit);
+                              }}
+                              title="Volver a intentar la sincronización de este cliente"
+                            >
+                              {corriendo ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 animate-spin" /> Reintentando…
+                                </>
+                              ) : (
+                                <>
+                                  <RotateCw className="h-4 w-4" /> Reintentar
+                                </>
+                              )}
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                      {abierto && (
+                        <TableRow className="bg-muted/30 hover:bg-muted/30">
+                          <TableCell colSpan={6} className="py-2">
+                            <ul className="space-y-1.5 pl-6">
+                              {g.items.map((f, j) => (
+                                <li key={`${f.fecha}-${j}`} className="flex items-start gap-3 text-xs">
+                                  <span className="w-32 shrink-0 whitespace-nowrap text-muted-foreground">
+                                    {fechaHora(f.fecha)}
+                                  </span>
+                                  <code
+                                    className="min-w-0 flex-1 font-mono text-danger break-words"
+                                    title={f.motivo || ''}
+                                  >
+                                    {f.motivo || '—'}
+                                  </code>
+                                </li>
+                              ))}
+                            </ul>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
                   );
                 })}
               </TableBody>
@@ -1360,18 +1435,20 @@ function SyncsFallidas({ fallidas }: { fallidas: AdminSyncFallida[] }) {
           </Card>
 
           <div className="space-y-3 lg:hidden">
-            {fallidas.map((f, i) => {
-              const corriendo = reintentando[f.cuit];
-              const err = errores[f.cuit];
+            {grupos.map(g => {
+              const corriendo = reintentando[g.cuit];
+              const err = errores[g.cuit];
+              const reciente = g.items[0];
+              const abierto = abiertos[g.cuit];
               return (
-                <Card key={`${f.cuit}-${f.fecha}-${i}`} className="space-y-2 p-4 text-sm">
+                <Card key={g.cuit} className="space-y-2 p-4 text-sm">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="font-medium">{f.cliente || '—'}</div>
-                      <div className="text-xs text-muted-foreground tabular-nums">{f.cuit}</div>
+                      <div className="font-medium">{g.cliente || '—'}</div>
+                      <div className="text-xs text-muted-foreground tabular-nums">{g.cuit}</div>
                     </div>
-                    {f.resuelto ? (
-                      <Badge variant="success" title={`Sincronizado después: ${fechaHora(f.ultima_sync_ok)}`}>
+                    {reciente.resuelto ? (
+                      <Badge variant="success" title={`Sincronizado después: ${fechaHora(reciente.ultima_sync_ok)}`}>
                         <CheckCircle2 className="h-3 w-3" /> Resuelto
                       </Badge>
                     ) : (
@@ -1379,22 +1456,53 @@ function SyncsFallidas({ fallidas }: { fallidas: AdminSyncFallida[] }) {
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground break-all">
-                    {f.contador_email || '—'} · {fechaHora(f.fecha)}
+                    {g.contador_email || '—'}
                   </div>
-                  <code
-                    className="block font-mono text-xs text-danger break-words"
-                    title={f.motivo || ''}
+
+                  <button
+                    type="button"
+                    onClick={() => toggle(g.cuit)}
+                    className="flex w-full items-center gap-1.5 text-left text-xs font-medium text-muted-foreground"
                   >
-                    {(f.motivo || '—').split('\n')[0]}
-                  </code>
+                    {abierto ? (
+                      <ChevronDown className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0" />
+                    )}
+                    {g.items.length} {g.items.length === 1 ? 'error' : 'errores'}
+                  </button>
+
+                  {abierto ? (
+                    <ul className="space-y-2 border-l pl-3">
+                      {g.items.map((f, j) => (
+                        <li key={`${f.fecha}-${j}`} className="space-y-0.5">
+                          <div className="text-xs text-muted-foreground">{fechaHora(f.fecha)}</div>
+                          <code
+                            className="block font-mono text-xs text-danger break-words"
+                            title={f.motivo || ''}
+                          >
+                            {f.motivo || '—'}
+                          </code>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <code
+                      className="block font-mono text-xs text-danger break-words"
+                      title={reciente.motivo || ''}
+                    >
+                      {(reciente.motivo || '—').split('\n')[0]}
+                    </code>
+                  )}
+
                   {err && <div className="text-xs text-danger">{err}</div>}
-                  {!f.resuelto && (
+                  {!reciente.resuelto && (
                     <Button
                       variant="outline"
                       size="sm"
                       className="w-full"
                       disabled={corriendo}
-                      onClick={() => void reintentar(f.cuit)}
+                      onClick={() => void reintentar(g.cuit)}
                     >
                       {corriendo ? (
                         <>
