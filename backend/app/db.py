@@ -201,6 +201,10 @@ def _migrar_clientes_arca(conn) -> None:
         conn.execute(
             text("ALTER TABLE clientes_arca ADD COLUMN factura_agro BOOLEAN DEFAULT FALSE")
         )
+    # Meses seguidos de monotributo que adeuda hoy (Consulta de Saldos de la CCMA). INTEGER anda igual
+    # en SQLite y Postgres; NULL = sin dato (no monotributista o sync sin CCMA).
+    if "meses_adeudados" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN meses_adeudados INTEGER"))
 
 
 def _migrar_comprobantes_emitidos(conn) -> None:

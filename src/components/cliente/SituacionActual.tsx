@@ -296,6 +296,13 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
               {cliente.cuotaDeuda ? ` · ${formatCurrency(cliente.cuotaDeuda)}` : ''}
             </Badge>
           )}
+          {/* Racha de meses seguidos que adeuda (de la Consulta de Saldos). Sólo cuando efectivamente
+              es deudor hoy (>= 1); el número acumula mientras no se ponga al día. */}
+          {cliente.estadoCuotaMesActual === 'con-deuda' && !!cliente.mesesAdeudados && cliente.mesesAdeudados >= 1 && (
+            <Badge variant="warning">
+              Adeuda {cliente.mesesAdeudados} {cliente.mesesAdeudados === 1 ? 'mes' : 'meses'} seguido{cliente.mesesAdeudados === 1 ? '' : 's'}
+            </Badge>
+          )}
           {cliente.debitoAutomatico && <Badge variant="muted">Débito automático</Badge>}
           {!!cliente.cuotaSaldoFavor && cliente.cuotaSaldoFavor > 0 && (
             <span className="text-xs text-success">

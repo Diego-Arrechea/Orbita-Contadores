@@ -291,7 +291,7 @@ def sincronizar_padron(db: Session, cuit: str, headless: bool | None = None) -> 
     # Trae la categoría/datos del padrón del CUIT objetivo. Si es representado (≠ credencial),
     # datos_monotributo fija "actuando en representación" y verifica el CUIT (guard anti-cruce):
     # devuelve {} si la representación no tomó, así nunca se le atribuye la categoría del contador.
-    datos = motor.datos_monotributo(contador.cuit, clave, cuit_objetivo=cuit, headless=headless)
+    datos = motor.datos_monotributo(credencial.cuit, clave, cuit_objetivo=cuit, headless=headless)
     # Régimen AUTORITATIVO del padrón (fuente oficial): si el portal de Monotributo abrió, es
     # monotributista; si no abrió, ARCA confirma que NO lo es. Sólo lo pisamos con una señal real
     # (no con None) para no borrar un valor previo si el padrón falló a medias.
@@ -311,6 +311,7 @@ def sincronizar_padron(db: Session, cuit: str, headless: bool | None = None) -> 
         "prox_venc_fecha",
         "prox_venc_importe",
         "debito_automatico",
+        "meses_adeudados",  # meses seguidos que adeuda (0 = al día); se persiste aunque sea 0
         "facturacion_12m",
         "tope_categoria",
         "facturometro_actualizado",
@@ -364,7 +365,7 @@ def sincronizar_deuda(db: Session, cuit: str, headless: bool | None = None) -> d
     res = motor.consultar_deuda(credencial.cuit, clave, cuit_objetivo=cuit, headless=headless)
     if isinstance(res.get("deuda_detalle"), dict):
         cliente.deuda_detalle = json.dumps(res["deuda_detalle"], ensure_ascii=False)
-        for campo in ("cuota_estado", "cuota_deuda", "cuota_saldo_favor"):
+        for campo in ("cuota_estado", "cuota_deuda", "cuota_saldo_favor", "meses_adeudados"):
             if res.get(campo) is not None:
                 setattr(cliente, campo, res[campo])
         db.commit()
@@ -379,5 +380,6 @@ def sincronizar_deuda(db: Session, cuit: str, headless: bool | None = None) -> d
         cliente.cuota_estado = None
         cliente.cuota_deuda = None
         cliente.cuota_saldo_favor = None
+        cliente.meses_adeudados = None
         db.commit()
     return res

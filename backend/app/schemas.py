@@ -141,6 +141,7 @@ class ClienteOut(BaseModel):
     prox_venc_fecha: str | None = None
     prox_venc_importe: float | None = None
     debito_automatico: bool | None = None
+    meses_adeudados: int | None = None  # meses seguidos de monotributo que adeuda hoy (CCMA); 0 = al día
     facturacion_12m: float | None = None  # ingresos brutos 12m oficiales (facturómetro ARCA)
     tope_categoria: float | None = None  # tope oficial de la categoría actual (facturómetro ARCA)
     facturometro_actualizado: str | None = None  # fecha de corte que informa ARCA (dd/mm/aaaa)

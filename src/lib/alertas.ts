@@ -16,6 +16,7 @@ export type TipoAlerta =
   | 'ventana'
   | 'exclusion'
   | 'cuota'
+  | 'meses_adeudados'
   | 'sync';
 
 export interface Alerta {
@@ -141,6 +142,18 @@ export function derivarAlertas(
         deuda ? `Adeuda ${formatCurrency(deuda)}.` : 'Tiene la cuota del mes con deuda.',
       );
     }
+  }
+
+  // Deuda de varios meses seguidos (de la Consulta de Saldos de la CCMA). Distinta de la cuota del
+  // mes: mide la RACHA de meses impagos. Avisa al alcanzar el umbral configurado (8 por defecto).
+  const meses = cliente.mesesAdeudados ?? 0;
+  if (meses >= config.alertas.meses_adeudados.umbralMeses) {
+    add(
+      'urgente',
+      'meses_adeudados',
+      `Adeuda ${meses} meses seguidos`,
+      `Acumula ${meses} meses seguidos de deuda en la cuota del monotributo.`,
+    );
   }
 
   return alertas;

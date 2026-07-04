@@ -204,7 +204,14 @@ def consultar_deuda(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: str 
         det = afip.calcular_deuda()
     except AFIPError:
         return {"no_aplica": True, "motivo": MSG_NO_CCMA}
-    return _cuota_desde_deuda(det)
+    res = _cuota_desde_deuda(det)
+    # Meses seguidos que adeuda (Consulta de Saldos P05). Reusa el estado del cálculo recién hecho
+    # (asegurar_calculo=False) → +1 request. best-effort: si falla, no se pisa el valor previo.
+    try:
+        res["meses_adeudados"] = afip.meses_adeudados(asegurar_calculo=False)
+    except Exception:  # noqa: BLE001
+        pass
+    return res
 
 
 # --- Padrón / Monotributo (reemplaza padron.datos_monotributo) -----------------
@@ -245,6 +252,12 @@ def datos_monotributo(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: st
     # el CUIT no tiene CCMA o falla, seguimos sin cuota (no se pisa el valor previo).
     try:
         out.update(_cuota_desde_deuda(afip.calcular_deuda()))
+        # Meses seguidos que adeuda (Consulta de Saldos P05). Reusa el estado del cálculo recién
+        # hecho (asegurar_calculo=False) → +1 request. best-effort: si falla, no se pisa el previo.
+        try:
+            out["meses_adeudados"] = afip.meses_adeudados(asegurar_calculo=False)
+        except Exception:  # noqa: BLE001
+            pass
     except Exception:  # noqa: BLE001
         pass
     # Snapshot del domicilio fiscal del EMISOR (para imprimir el comprobante emitido). best-effort:
@@ -325,6 +338,9 @@ def _map_liquidacion(r: dict, direccion: str, sector: str, importe_bruto: float 
     }
 
 
+_PAUSA_PDF = 1.5  # s entre descargas de PDF (anti rate-limit del WAF de serviciosjava2)
+
+
 @_con_sesion
 def liquidaciones_agro(
     afip: AFIP,
@@ -334,27 +350,32 @@ def liquidaciones_agro(
     sector: str = "hacienda",
     desde=None,
     hasta=None,
+    con_importe: bool = True,
     on_progress=None,
 ) -> list[dict]:
-    """Trae las Liquidaciones Electrónicas del `sector` (receptor + emisor) con su Importe Bruto.
+    """Trae las Liquidaciones Electrónicas del `sector` (receptor + emisor).
 
-    La grilla no trae importe: por cada liquidación se baja el PDF y se parsea el Importe Bruto
-    (services/liquidacion_pdf). Devuelve dicts listos para services/agro._upsert. Pacea entre PDF
-    para no gatillar el WAF de serviciosjava2 (son pocas y la sync es semanal)."""
-    from ..services import liquidacion_pdf
-
+    `con_importe=True`: por cada liquidación baja el PDF y parsea el Importe Bruto (más pesado; se
+    pacea entre PDF para no gatillar el WAF de serviciosjava2). `con_importe=False` (modo DETECCIÓN):
+    sólo la grilla, sin PDFs → mucho más liviano; el importe queda en None (se llena después). La
+    grilla ya alcanza para saber si el cliente ES agropecuario. Devuelve dicts para agro._upsert."""
     out: list[dict] = []
+    liq_pdf = None
+    if con_importe:
+        from ..services import liquidacion_pdf as liq_pdf
     for direccion in ("receptor", "emisor"):
         filas = afip.lsp_consultar(direccion, sector=sector, desde=desde, hasta=hasta)
         for i, r in enumerate(filas):
             if on_progress:
                 on_progress(f"{direccion} {i + 1}/{len(filas)}")
-            try:
-                bruto = liquidacion_pdf.importe_bruto(afip.lsp_pdf(r["liq_id"], sector=sector))
-            except Exception:  # noqa: BLE001  (un PDF ilegible no debe cortar toda la sync)
-                bruto = None
+            bruto = None
+            if con_importe:
+                try:
+                    bruto = liq_pdf.importe_bruto(afip.lsp_pdf(r["liq_id"], sector=sector))
+                except Exception:  # noqa: BLE001  (un PDF ilegible no debe cortar toda la sync)
+                    bruto = None
+                _time.sleep(_PAUSA_PDF)
             out.append(_map_liquidacion(r, direccion, sector, bruto))
-            _time.sleep(0.5)
     return out
 
 

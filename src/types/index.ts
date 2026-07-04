@@ -129,6 +129,9 @@ export interface Cliente {
   proxVencFecha?: string;
   proxVencImporte?: number;
   debitoAutomatico?: boolean;
+  /** Cuántos meses SEGUIDOS de monotributo adeuda hoy (de la Consulta de Saldos de la CCMA).
+   *  0 = al día; undefined = no se sabe / no aplica. Se muestra junto a la cuota del mes. */
+  mesesAdeudados?: number;
   // Facturómetro oficial del padrón (ARCA): ingresos brutos 12m, tope de su categoría y la fecha de
   // corte que informa ARCA. Numerador/denominador OFICIALES del gauge (el cálculo por comprobantes
   // queda como estimación al día). Sólo titular monotributista.
@@ -172,6 +175,7 @@ export type TipoNotificable =
   | 'exclusion'
   | 'cuota'
   | 'vencimiento'
+  | 'meses_adeudados'
   | 'sync';
 
 /** Preferencias del CANAL de alertas por WhatsApp (sólo cómo/cuándo se entrega). El "qué" y "con qué
@@ -202,6 +206,9 @@ export interface ConfigAlertas {
   vencimiento: { activo: boolean; avisarDiasAntes: number };
   /** No pudimos actualizar sus datos (binario). */
   sync: { activo: boolean };
+  /** Adeuda varios meses seguidos. `umbralMeses`: a partir de cuántos meses seguidos de deuda avisar
+   *  (8 por defecto). `reavisarSubidaMeses`: re-avisar cada tantos meses más de deuda acumulada. */
+  meses_adeudados: { activo: boolean; umbralMeses: number; reavisarSubidaMeses: number };
 }
 
 /** Inflación mensual esperada según el mercado (mediana del REM), que el panel trae como base de las proyecciones. */

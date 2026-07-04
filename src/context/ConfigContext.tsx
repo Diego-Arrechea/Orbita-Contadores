@@ -67,6 +67,7 @@ function combinar(guardado: Partial<Configuracion> | null | undefined): Configur
     cuota: { ...I.cuota, urgenteDesdePct: num(viejo.umbralDeudaCuotaUrgente, I.cuota.urgenteDesdePct), ...(guardadas.cuota ?? {}) },
     vencimiento: { ...I.vencimiento, ...(guardadas.vencimiento ?? {}) },
     sync: { ...I.sync, ...(guardadas.sync ?? {}) },
+    meses_adeudados: { ...I.meses_adeudados, ...(guardadas.meses_adeudados ?? {}) },
   };
 
   const nb = (x: unknown, def: boolean) => (typeof x === 'boolean' ? x : def);

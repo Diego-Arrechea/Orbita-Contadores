@@ -45,6 +45,9 @@ ALERTAS_DEFAULT = {
     "cuota": {"activo": True, "urgenteDesdePct": 0.10, "reavisarSubidaPct": 0.10},
     "vencimiento": {"activo": True, "avisarDiasAntes": 7},
     "sync": {"activo": True},
+    # Deuda de varios meses seguidos (Consulta de Saldos CCMA): avisa al llegar a `umbralMeses` (8
+    # por defecto) y re-avisa cada `reavisarSubidaMeses` meses más de deuda acumulada.
+    "meses_adeudados": {"activo": True, "umbralMeses": 8, "reavisarSubidaMeses": 1},
 }
 NOTIF_DEFAULT = {"activo": False, "horaDesde": 9, "horaHasta": 21}
 INFLACION_DEFAULT = 0.02
@@ -143,8 +146,10 @@ def en_ventana_disponible(notif: dict, ahora_ar: dt.datetime) -> bool:
 
 
 def _reaviso_step(tipo: str, alertas_cfg: dict) -> float:
-    """Umbral de subida (fracción) para re-avisar una alerta numérica; 0 = no aplica."""
-    return float(alertas_cfg.get(tipo, {}).get("reavisarSubidaPct", 0) or 0)
+    """Umbral de subida para re-avisar una alerta numérica (fracción para las de %, meses para la de
+    deuda por meses); 0 = no aplica."""
+    c = alertas_cfg.get(tipo, {})
+    return float(c.get("reavisarSubidaPct", c.get("reavisarSubidaMeses", 0)) or 0)
 
 
 def derivar_alertas(cliente, calc: monotributo.CalculoCliente, a: dict, hoy: dt.date) -> list[dict]:
@@ -202,6 +207,12 @@ def derivar_alertas(cliente, calc: monotributo.CalculoCliente, a: dict, hoy: dt.
             add("aviso", "cuota", f"saldo pendiente en la cuota ({_money(deuda)}, {_pct(ratio_cuota)} de la cuota del mes)", ratio_cuota)
         else:
             add("urgente", "cuota", f"cuota del mes impaga{f' (debe {_money(deuda)})' if deuda else ''}", ratio_cuota)
+
+    # Deuda de varios meses seguidos (de la Consulta de Saldos de la CCMA). `valor` = cantidad de
+    # meses, para el re-aviso cuando la racha crece (ver _reaviso_step con reavisarSubidaMeses).
+    meses = cliente.meses_adeudados
+    if meses and meses >= int(a["meses_adeudados"].get("umbralMeses", 8)):
+        add("urgente", "meses_adeudados", f"adeuda {meses} meses seguidos del monotributo", float(meses))
 
     # Vencimiento de cuota próximo.
     venc = _parse_fecha_ar(cliente.prox_venc_fecha)

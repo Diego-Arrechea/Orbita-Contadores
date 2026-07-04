@@ -521,6 +521,32 @@ export function Configuracion() {
                 );
               })()}
 
+              {/* Meses adeudados */}
+              {(() => {
+                const m = conf.alertas.meses_adeudados;
+                return (
+                  <TarjetaAlerta
+                    titulo="Deuda de varios meses seguidos"
+                    descripcion="Cuando el cliente acumula cuotas impagas de varios meses seguidos."
+                    activo={m.activo}
+                    onToggle={() => setAlerta('meses_adeudados', { activo: !m.activo })}
+                  >
+                    <CampoInline
+                      label="Avisar a partir de"
+                      value={m.umbralMeses}
+                      sufijo="meses"
+                      onChange={(n) => setAlerta('meses_adeudados', { umbralMeses: n })}
+                    />
+                    <CampoInline
+                      label="Re-avisar cada"
+                      value={m.reavisarSubidaMeses}
+                      sufijo="meses más"
+                      onChange={(n) => setAlerta('meses_adeudados', { reavisarSubidaMeses: n })}
+                    />
+                  </TarjetaAlerta>
+                );
+              })()}
+
               {/* Sync */}
               <TarjetaAlerta
                 titulo="No pudimos actualizar sus datos"
