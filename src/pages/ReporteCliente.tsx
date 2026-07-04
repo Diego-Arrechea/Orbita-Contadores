@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Orbit, Printer, ArrowLeft, Building2, SlidersHorizontal, X } from 'lucide-react';
+import { Printer, ArrowLeft, Building2, SlidersHorizontal, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -250,12 +250,10 @@ export function ReporteCliente() {
       </div>
 
       {/* Documento */}
-      <div className="mx-auto max-w-[820px] my-6 bg-white text-foreground rounded-xl shadow-sm border border-border/60 p-5 sm:p-10 print:my-0 print:p-0 print:border-0 print:shadow-none print:rounded-none">
+      <div className="mx-auto max-w-[820px] my-6 bg-white text-foreground rounded-xl shadow-sm border border-border/60 p-5 sm:p-10 print:my-0 print:px-[16mm] print:py-[14mm] print:border-0 print:shadow-none print:rounded-none">
         <header className="flex items-start justify-between border-b border-border/60 pb-5">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-              <Orbit className="h-6 w-6" />
-            </div>
+            <img src="/favicon.svg" alt="Órbita" className="h-12 w-12 rounded-2xl shadow-sm" />
             <div className="leading-tight">
               <div className="flex items-baseline gap-1.5">
                 <span className="text-2xl font-bold tracking-tight text-foreground">Órbita</span>

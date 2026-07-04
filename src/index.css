@@ -168,3 +168,19 @@
     }
   }
 }
+
+/* --- Impresión (reporte del cliente → Imprimir / Guardar PDF) --- */
+@media print {
+  /* Márgenes de página en 0: así el navegador NO dibuja sus encabezados/pies automáticos
+     (la URL abajo, la fecha/hora y el título del documento arriba). El reporte pone su propio
+     margen interno con padding (ver ReporteCliente). */
+  @page {
+    margin: 0;
+  }
+  /* Respetar fondos y colores al imprimir/guardar PDF (el logo azul, los badges, los puntos de
+     alerta y las cajas resaltadas): por defecto el navegador los descarta. */
+  html {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
