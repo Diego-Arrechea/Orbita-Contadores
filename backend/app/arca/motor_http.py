@@ -194,6 +194,32 @@ def _cuota_desde_deuda(det: dict) -> dict:
     }
 
 
+def _adjuntar_saldos_p05(afip: AFIP, cuota: dict, *, solo_si_deuda: bool) -> dict:
+    """Enriquece el dict de cuota (`_cuota_desde_deuda`) con la Consulta de Saldos (P05): setea
+    `meses_adeudados` (racha de meses DEUDOR de monotributo) y guarda los saldos por período limpios
+    en `deuda_detalle["saldos_periodo"]` — P05 da el estado por período YA RESUELTO (DEUDOR/SALDADO/
+    ACREEDOR), a diferencia del ledger de P04 que viene flaky.
+
+    Reusa el estado del Cálculo de Deuda ya hecho (asegurar_calculo=False) → +1 request. Con
+    `solo_si_deuda=True` (sync masiva) SALTA P05 en los al-día: no aportan racha y así ahorramos el
+    request en la mayor parte de la cartera (racha = 0). best-effort: si falla, no pisa nada previo."""
+    estado = cuota.get("cuota_estado")
+    if solo_si_deuda and estado != "con-deuda":
+        if estado == "al-dia":
+            cuota["meses_adeudados"] = 0  # al día → racha 0 (self-heal si venía debiendo)
+        return cuota
+    try:
+        filas = afip.saldos_ccma(asegurar_calculo=False)
+        cuota["meses_adeudados"] = afip._contar_meses_deudor(filas)  # la racha está arriba (más nuevo)
+        if isinstance(cuota.get("deuda_detalle"), dict):
+            # P05 puede traer toda la vida de la cuenta (cientos de meses): guardamos sólo los últimos
+            # 24 (más reciente primero) — alcanza para la racha y para el detalle del Estado de cuenta.
+            cuota["deuda_detalle"]["saldos_periodo"] = filas[:24]
+    except Exception:  # noqa: BLE001
+        pass
+    return cuota
+
+
 # --- Deuda CCMA (reemplaza ccma.consultar_deuda) -------------------------------
 @_con_sesion
 def consultar_deuda(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: str | None = None) -> dict:
@@ -204,14 +230,9 @@ def consultar_deuda(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: str 
         det = afip.calcular_deuda()
     except AFIPError:
         return {"no_aplica": True, "motivo": MSG_NO_CCMA}
-    res = _cuota_desde_deuda(det)
-    # Meses seguidos que adeuda (Consulta de Saldos P05). Reusa el estado del cálculo recién hecho
-    # (asegurar_calculo=False) → +1 request. best-effort: si falla, no se pisa el valor previo.
-    try:
-        res["meses_adeudados"] = afip.meses_adeudados(asegurar_calculo=False)
-    except Exception:  # noqa: BLE001
-        pass
-    return res
+    # On-demand ("Consultar deuda"): SIEMPRE traemos P05 (meses adeudados + saldos por período para
+    # el detalle del Estado de cuenta), el contador abrió el estado de cuenta a propósito.
+    return _adjuntar_saldos_p05(afip, _cuota_desde_deuda(det), solo_si_deuda=False)
 
 
 # --- Padrón / Monotributo (reemplaza padron.datos_monotributo) -----------------
@@ -249,15 +270,11 @@ def datos_monotributo(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: st
             out["tope_categoria"] = tope
         out["facturometro_actualizado"] = m.get("ultima_actualizacion")
     # Cuota desde el Cálculo de Deuda oficial (capital + intereses). best-effort: si
-    # el CUIT no tiene CCMA o falla, seguimos sin cuota (no se pisa el valor previo).
+    # el CUIT no tiene CCMA o falla, seguimos sin cuota (no se pisa el valor previo). Los meses
+    # adeudados (P05) sólo se piden si el cliente está con deuda (solo_si_deuda=True): así la sync
+    # masiva NO gasta el request de P05 en los al-día (la mayoría), que quedan en racha 0.
     try:
-        out.update(_cuota_desde_deuda(afip.calcular_deuda()))
-        # Meses seguidos que adeuda (Consulta de Saldos P05). Reusa el estado del cálculo recién
-        # hecho (asegurar_calculo=False) → +1 request. best-effort: si falla, no se pisa el previo.
-        try:
-            out["meses_adeudados"] = afip.meses_adeudados(asegurar_calculo=False)
-        except Exception:  # noqa: BLE001
-            pass
+        out.update(_adjuntar_saldos_p05(afip, _cuota_desde_deuda(afip.calcular_deuda()), solo_si_deuda=True))
     except Exception:  # noqa: BLE001
         pass
     # Snapshot del domicilio fiscal del EMISOR (para imprimir el comprobante emitido). best-effort:

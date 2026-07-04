@@ -17,6 +17,15 @@ export interface DeudaPeriodo {
   saldo: number;
 }
 
+/** Saldo por período de la Consulta de Saldos (P05), el estado YA RESUELTO por ARCA. Más fiable que
+ *  `por_periodo`/`movimientos` (el ledger de P04 viene flaky). `saldo` negativo = deuda. */
+export interface DeudaSaldoPeriodo {
+  periodo: string;
+  saldo: number | null;
+  tipo: string; // MONOTRIBUTO | AUTONOMO
+  estado: 'DEUDOR' | 'SALDADO' | 'ACREEDOR';
+}
+
 /**
  * Lo que quedó guardado del último cálculo de deuda. Puede ser:
  *  - el detalle real (deudor/capital/intereses/movimientos), o
@@ -33,6 +42,7 @@ export interface DeudaDetalle {
   intereses?: number | null; // Accesorios (intereses resarcitorios)
   movimientos?: DeudaMovimiento[];
   por_periodo?: DeudaPeriodo[];
+  saldos_periodo?: DeudaSaldoPeriodo[]; // Consulta de Saldos (P05): estado por período, fiable
   no_aplica?: boolean; // marcador: el cliente no tiene cuenta corriente
   motivo?: string | null;
 }
