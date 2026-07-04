@@ -42,6 +42,25 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-04-facturacion-agropecuaria',
+    fecha: '2026-07-04',
+    titulo: 'Facturación agropecuaria de tus clientes',
+    resumen:
+      'Si un cliente factura por el sector agropecuario, ahora sumamos sus liquidaciones (hacienda, etc.) a su facturación, junto al resto de sus comprobantes.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Para los clientes del sector agropecuario traemos sus liquidaciones (venta de hacienda, etc.) y las sumamos a su facturación, igual que con el resto de sus comprobantes.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Al dar de alta un cliente sumamos una ruedita de opciones (arriba a la derecha del recuadro): desde ahí indicás que el cliente es agropecuario, o que representa a otro CUIT. Si no lo marcás, igual lo detectamos solos con el tiempo.',
+      },
+    ],
+  },
+  {
     id: '2026-07-04-reporte-personalizable',
     fecha: '2026-07-04',
     titulo: 'Armá el reporte del cliente a tu manera',

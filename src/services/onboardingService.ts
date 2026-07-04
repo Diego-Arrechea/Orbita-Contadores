@@ -25,13 +25,20 @@ export function listarRepresentados(cuit: string, clave: string): Promise<Repres
   return apiPost<Representado[]>('/onboarding/representados', { cuit, clave });
 }
 
-/** Inicia el bootstrap del cert de los clientes elegidos. Devuelve el job_id para el polling. */
+/** Inicia el bootstrap del cert de los clientes elegidos. Devuelve el job_id para el polling.
+ * `facturaAgro`: el contador marcó en el alta que el cliente factura por el sector agropecuario. */
 export function iniciarMonitoreo(
   cuit: string,
   clave: string,
   seleccionados: Representado[],
+  facturaAgro = false,
 ): Promise<{ job_id: string }> {
-  return apiPost<{ job_id: string }>('/onboarding/monitorear', { cuit, clave, seleccionados });
+  return apiPost<{ job_id: string }>('/onboarding/monitorear', {
+    cuit,
+    clave,
+    seleccionados,
+    factura_agro: facturaAgro,
+  });
 }
 
 /** Estado del bootstrap en curso (para mover la barra de progreso). */

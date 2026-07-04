@@ -56,7 +56,9 @@ def monitorear(datos: MonitorearIn, usuario: models.Usuario = Depends(usuario_ac
     job_id = jobs.crear_job(usuario.id)
     seleccionados = [(s.cuit, s.nombre) for s in datos.seleccionados]
     threading.Thread(
-        target=_correr_monitoreo, args=(job_id, datos.cuit, seleccionados, usuario.id), daemon=True
+        target=_correr_monitoreo,
+        args=(job_id, datos.cuit, seleccionados, usuario.id, datos.factura_agro),
+        daemon=True,
     ).start()
     return {"job_id": job_id}
 
@@ -83,10 +85,15 @@ def cancelar_monitoreo(job_id: str, usuario: models.Usuario = Depends(usuario_ac
 
 
 def _correr_monitoreo(
-    job_id: str, cuit_credencial: str, seleccionados: list[tuple], usuario_id: int
+    job_id: str,
+    cuit_credencial: str,
+    seleccionados: list[tuple],
+    usuario_id: int,
+    factura_agro: bool = False,
 ) -> None:
     """Por cada cliente: lo registra (asociado al contador) y sincroniza su histórico. Si el contador
-    cancela el alta, aborta y deshace los clientes que este job hubiera creado."""
+    cancela el alta, aborta y deshace los clientes que este job hubiera creado. `factura_agro`: si el
+    contador lo marcó en el alta, prende el flag agropecuario del cliente (nunca lo apaga)."""
     total = len(seleccionados)
     creados: list[str] = []  # CUITs que ESTE job dio de alta (los borramos si se cancela)
     cancelado = False
@@ -119,6 +126,7 @@ def _correr_monitoreo(
                             nombre=nombre,
                             cuit_credencial=cuit_credencial,
                             usuario_id=usuario_id,
+                            factura_agro=factura_agro,
                         )
                     )
                     creados.append(cuit_cliente)
@@ -126,6 +134,8 @@ def _correr_monitoreo(
                     cli.nombre = nombre
                     cli.cuit_credencial = cuit_credencial
                     cli.usuario_id = usuario_id
+                    if factura_agro:  # sólo lo prende; no apaga uno ya marcado (manual o auto)
+                        cli.factura_agro = True
                 db.commit()
             finally:
                 db.close()
