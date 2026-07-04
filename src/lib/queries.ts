@@ -5,10 +5,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { getClientesReales, getClienteReal } from '@/services/clientesService';
 import { getComunicaciones } from '@/services/comunicacionesService';
+import { getLiquidacionesAgro } from '@/services/liquidacionesAgroService';
 
 export const qkClientes = ['clientes', 'reales'] as const;
 export const qkCliente = (cuit: string) => ['cliente', cuit] as const;
 export const qkComunicaciones = (cuit: string) => ['comunicaciones', cuit] as const;
+export const qkLiquidacionesAgro = (cuit: string) => ['liquidaciones-agro', cuit] as const;
 
 /** Cartera completa del contador (cacheada). La consumen Dashboard, Conciliación y useAlertas: una
  *  sola request compartida en vez de tres. */
@@ -30,6 +32,15 @@ export function useComunicaciones(cuit: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ['comunicaciones', cuit ?? ''],
     queryFn: () => getComunicaciones(cuit as string),
+    enabled: enabled && !!cuit,
+  });
+}
+
+/** Facturación agropecuaria de un cliente (liquidaciones del sector primario). Sólo si le aplica. */
+export function useLiquidacionesAgro(cuit: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['liquidaciones-agro', cuit ?? ''],
+    queryFn: () => getLiquidacionesAgro(cuit as string),
     enabled: enabled && !!cuit,
   });
 }

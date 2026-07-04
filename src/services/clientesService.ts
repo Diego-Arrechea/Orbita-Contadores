@@ -43,6 +43,9 @@ interface ClienteBackend {
   tiene_facturacion?: boolean | null;
   clave_requiere_cambio?: boolean | null; // ARCA le pide al cliente cambiar su Clave Fiscal
   clave_invalida?: boolean | null; // la Clave Fiscal guardada no es válida (hay que corregirla)
+  factura_agro?: boolean | null; // factura por el sector agropecuario (Liquidaciones Electrónicas)
+  facturacion_agro_12m?: number | null; // suma de liquidaciones agro de los últimos 12 meses
+  facturacion_agro_total?: number | null; // histórico de liquidaciones agro
 }
 
 const CODIGOS: CategoriaCodigo[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
@@ -125,6 +128,9 @@ function construirCliente(
     tieneFacturacion: bk.tiene_facturacion ?? false,
     claveRequiereCambio: bk.clave_requiere_cambio ?? false,
     claveInvalida: bk.clave_invalida ?? false,
+    facturaAgro: bk.factura_agro ?? false,
+    facturacionAgro12m: bk.facturacion_agro_12m ?? 0,
+    facturacionAgroTotal: bk.facturacion_agro_total ?? 0,
     causales: [],
     extracciones,
     fuente: 'arca',

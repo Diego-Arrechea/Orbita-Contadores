@@ -103,6 +103,29 @@ def _historial_12m(db: Session, cuit: str) -> tuple[list[HistorialMesOut], bool]
     return historial, tiene
 
 
+def _agro_facturacion(db: Session, cuit: str, factura_agro: bool) -> tuple[float, float]:
+    """(total, 12m) de las Liquidaciones Electrónicas del agro del cliente (suma de Importe Bruto). El
+    12m usa la MISMA ventana de 12 meses calendario que el historial. Devuelve (0, 0) si el cliente no
+    factura agropecuario (evita la query para el 99% de la cartera)."""
+    if not factura_agro:
+        return 0.0, 0.0
+    hoy = dt.date.today()
+    primer_mes_idx = hoy.year * 12 + (hoy.month - 1) - 11
+    desde = dt.date(primer_mes_idx // 12, primer_mes_idx % 12 + 1, 1)
+    filas = db.execute(
+        select(models.LiquidacionAgro.fecha_comprobante, models.LiquidacionAgro.importe_bruto).where(
+            models.LiquidacionAgro.cuit == cuit
+        )
+    ).all()
+    total = doce = 0.0
+    for fecha, imp in filas:
+        v = float(imp or 0)
+        total += v
+        if fecha and fecha >= desde:
+            doce += v
+    return total, doce
+
+
 def _cliente_propio(db: Session, cuit: str, usuario: models.Usuario) -> models.ClienteARCA:
     """Devuelve el cliente sólo si pertenece al usuario logueado; si no, 404 (sin revelar que existe)."""
     cliente = db.get(models.ClienteARCA, cuit)
@@ -128,6 +151,7 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
     # edicion_json (separado), así sobreviven a la sincronización que pisa las columnas crudas.
     edic = json.loads(c.edicion_json) if c.edicion_json else {}
     historial, tiene_comps = _historial_12m(db, c.cuit)
+    agro_total, agro_12m = _agro_facturacion(db, c.cuit, c.factura_agro)
     return ClienteOut(
         cuit=c.cuit,
         nombre=edic.get("nombre") or c.nombre,
@@ -164,6 +188,9 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
         tiene_facturacion=bool(c.cert_cifrado and c.key_cifrado),
         clave_requiere_cambio=bool(c.clave_requiere_cambio),
         clave_invalida=bool(c.clave_invalida),
+        factura_agro=bool(c.factura_agro),
+        facturacion_agro_12m=agro_12m,
+        facturacion_agro_total=agro_total,
     )
 
 

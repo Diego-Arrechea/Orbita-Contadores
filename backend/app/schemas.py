@@ -166,6 +166,13 @@ class ClienteOut(BaseModel):
     # contador la corrige cargando la correcta desde la ficha. Distinto de clave_requiere_cambio (que es
     # el cambio forzado por AFIP, que sólo puede hacer el cliente).
     clave_invalida: bool = False
+    # Facturación agropecuaria (Liquidaciones Electrónicas del sector primario): si el cliente factura
+    # así, `factura_agro` está en true y `facturacion_agro_12m` es la suma de esas liquidaciones en los
+    # últimos 12 meses (para SUMARLA a la facturación 12m del cliente, que no las trae de otra fuente).
+    # `facturacion_agro_total` es el histórico. 0 para clientes que no facturan agropecuario.
+    factura_agro: bool = False
+    facturacion_agro_12m: float = 0
+    facturacion_agro_total: float = 0
 
 
 class NotificacionesIn(BaseModel):

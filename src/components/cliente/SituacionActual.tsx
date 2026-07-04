@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Building2 } from 'lucide-react';
+import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Building2, Wheat } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ProgresoTope } from '@/components/shared/ProgresoTope';
@@ -183,6 +183,13 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
             Ver los comprobantes que lo componen
             <ArrowRight className="h-3 w-3" />
           </button>
+        )}
+
+        {!verInflacion && cliente.facturaAgro && calc.facturacionAgro12m > 0 && (
+          <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <Wheat className="h-3 w-3 text-primary shrink-0" />
+            Incluye {formatCurrency(calc.facturacionAgro12m)} de facturación agropecuaria.
+          </div>
         )}
 
         {!verInflacion && tieneOficial && (
