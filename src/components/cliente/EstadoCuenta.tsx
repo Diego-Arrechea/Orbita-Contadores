@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw, AlertCircle, Wallet, Building2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -21,6 +22,13 @@ interface Props {
 
 const MSG_NO_CCMA =
   'El estado de cuenta solo aplica a monotributistas y autónomos, y este cliente no es ninguno de los dos.';
+
+// Estilo del estado por período de la Consulta de Saldos (P05).
+const ESTADO_SALDO: Record<string, { label: string; variant: 'danger' | 'success' | 'muted' }> = {
+  DEUDOR: { label: 'Deudor', variant: 'danger' },
+  ACREEDOR: { label: 'A favor', variant: 'success' },
+  SALDADO: { label: 'Al día', variant: 'muted' },
+};
 
 /** Tab "Estado de cuenta": deuda real de la CCMA (total, capital/intereses, movimientos por período). */
 export function EstadoCuenta({ cliente }: Props) {
@@ -90,6 +98,7 @@ export function EstadoCuenta({ cliente }: Props) {
   // Detalle REAL de deuda (descarta el marcador de "no aplica").
   const det = detalle && !detalle.no_aplica ? detalle : null;
   const movimientos = det?.movimientos ?? [];
+  const saldos = det?.saldos_periodo ?? [];
 
   return (
     <div className="space-y-4">
@@ -198,6 +207,61 @@ export function EstadoCuenta({ cliente }: Props) {
               </div>
             </Card>
           </div>
+
+          {saldos.length > 0 && (
+            <>
+              {/* Saldos por período (Consulta de Saldos): estado mes a mes, YA RESUELTO por ARCA.
+                  Más fiable que el ledger de movimientos (que a veces no trae detalle). */}
+              <Card className="hidden p-0 overflow-hidden lg:block">
+                <div className="px-5 py-3 border-b border-border/60 text-sm font-medium">
+                  Saldos por período
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[110px]">Período</TableHead>
+                      <TableHead className="w-[140px]">Estado</TableHead>
+                      <TableHead className="text-right">Saldo</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {saldos.map((s) => {
+                      const meta = ESTADO_SALDO[s.estado] ?? ESTADO_SALDO.SALDADO;
+                      return (
+                        <TableRow key={s.periodo}>
+                          <TableCell className="tabular-nums">{s.periodo}</TableCell>
+                          <TableCell>
+                            <Badge variant={meta.variant}>{meta.label}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {s.estado === 'SALDADO' || !s.saldo
+                              ? '—'
+                              : formatCurrency(Math.abs(s.saldo))}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </Card>
+
+              <div className="space-y-2 lg:hidden">
+                <div className="text-sm font-medium">Saldos por período</div>
+                {saldos.map((s) => {
+                  const meta = ESTADO_SALDO[s.estado] ?? ESTADO_SALDO.SALDADO;
+                  return (
+                    <Card key={s.periodo} className="flex items-center justify-between gap-2 p-3 text-sm">
+                      <span className="tabular-nums">{s.periodo}</span>
+                      <Badge variant={meta.variant}>{meta.label}</Badge>
+                      <span className="tabular-nums">
+                        {s.estado === 'SALDADO' || !s.saldo ? '—' : formatCurrency(Math.abs(s.saldo))}
+                      </span>
+                    </Card>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
           {movimientos.length > 0 ? (
             <>
