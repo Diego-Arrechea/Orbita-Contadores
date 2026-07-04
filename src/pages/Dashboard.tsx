@@ -16,6 +16,7 @@ import {
   ChevronsUpDown,
   Loader2,
   KeyRound,
+  CalendarClock,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -60,11 +61,13 @@ type FilaCliente = {
 
 // Columnas por las que se puede ordenar. Cada una expone un valor comparable
 // (número o string); los nulos van siempre al final sin importar el sentido.
-type ColumnaOrden = 'nombre' | 'categoria' | 'tope' | 'ratio' | 'ventana' | 'estado' | 'extraccion';
+type ColumnaOrden = 'nombre' | 'categoria' | 'tope' | 'ratio' | 'ventana' | 'meses' | 'estado' | 'extraccion';
 
 const accesoresOrden: Record<ColumnaOrden, (f: FilaCliente) => number | string | null> = {
   nombre: f => f.cliente.nombre.toLowerCase(),
   categoria: f => (esMonotributista(f.cliente) ? f.cliente.categoria ?? '' : null),
+  // Meses seguidos que adeuda (para cazar deudores crónicos). No-monotributistas / sin dato → null (al final).
+  meses: f => (esMonotributista(f.cliente) ? f.cliente.mesesAdeudados ?? null : null),
   tope: f => (esMonotributista(f.cliente) ? f.calc.porcentajeTopeActual : null),
   ratio: f => (esMonotributista(f.cliente) ? f.calc.ratioGastosTopeCatK : null),
   ventana: f =>
@@ -81,6 +84,8 @@ export function Dashboard() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroAlerta, setFiltroAlerta] = useState<EstadoAlerta | 'todos'>('todos');
   const [filtroActividad, setFiltroActividad] = useState<TipoActividad | 'todos'>('todos');
+  // Filtro "deudores crónicos": sólo clientes que arrastran deuda de al menos `umbralCronico` meses.
+  const [soloCronicos, setSoloCronicos] = useState(false);
   // Orden por defecto: alfabético por nombre del cliente (A→Z).
   const [ordenarPor, setOrdenarPor] = useState<ColumnaOrden>('nombre');
   const [sentido, setSentido] = useState<Sentido>('asc');
@@ -104,6 +109,8 @@ export function Dashboard() {
   const mock = cuenta?.datosEjemplo ? CLIENTES : [];
 
   const { config, inflacionEfectiva } = useConfig();
+  // Umbral de "deudor crónico": el mismo que dispara la alerta de meses adeudados del contador.
+  const umbralCronico = config.alertas.meses_adeudados.umbralMeses;
   const clientesConCalculo = useMemo(
     () =>
       [...reales, ...mock].map(c0 => {
@@ -122,6 +129,7 @@ export function Dashboard() {
       .filter(({ cliente, estado }) => {
         if (filtroAlerta !== 'todos' && estado !== filtroAlerta) return false;
         if (filtroActividad !== 'todos' && cliente.tipoActividad !== filtroActividad) return false;
+        if (soloCronicos && (cliente.mesesAdeudados ?? 0) < umbralCronico) return false;
         if (busqueda) {
           const q = busqueda.toLowerCase();
           const digitos = busqueda.replace(/\D/g, '');
@@ -146,7 +154,7 @@ export function Dashboard() {
         }
         return factor * (va - vb);
       });
-  }, [clientesConCalculo, busqueda, filtroAlerta, filtroActividad, ordenarPor, sentido]);
+  }, [clientesConCalculo, busqueda, filtroAlerta, filtroActividad, soloCronicos, umbralCronico, ordenarPor, sentido]);
 
   // Clientes que se están cargando ahora mismo (alta = trayendo sus comprobantes). Cada uno se
   // muestra como una fila propia con borde animado + progreso, y se OCULTA su fila normal mientras
@@ -180,6 +188,12 @@ export function Dashboard() {
     return counts;
   }, [clientesConCalculo]);
 
+  // Deudores crónicos: clientes que arrastran deuda de al menos `umbralCronico` meses seguidos.
+  const cronicos = useMemo(
+    () => clientesConCalculo.filter(({ cliente }) => (cliente.mesesAdeudados ?? 0) >= umbralCronico).length,
+    [clientesConCalculo, umbralCronico],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -198,7 +212,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
         <ResumenCard
           label="Acción urgente"
           value={resumen.rojo}
@@ -222,6 +236,14 @@ export function Dashboard() {
           tint="bg-muted text-muted-foreground"
           onClick={() => setFiltroAlerta('gris')}
           active={filtroAlerta === 'gris'}
+        />
+        <ResumenCard
+          label={`Deuda +${umbralCronico} meses`}
+          value={cronicos}
+          icon={<CalendarClock className="h-4 w-4" />}
+          tint="bg-danger/10 text-danger"
+          onClick={() => setSoloCronicos(v => !v)}
+          active={soloCronicos}
         />
         <ResumenCard
           label="Total clientes"
@@ -297,6 +319,7 @@ export function Dashboard() {
               <HeadOrdenable col="tope" label="% tope consumido" className="w-[220px]" {...propsOrden} />
               <HeadOrdenable col="ratio" label="Ratio gastos" {...propsOrden} />
               <HeadOrdenable col="ventana" label="Próx. ventana" {...propsOrden} />
+              <HeadOrdenable col="meses" label="Meses adeud." {...propsOrden} />
               <HeadOrdenable col="estado" label="Estado" {...propsOrden} />
               <HeadOrdenable col="extraccion" label="Última extracción" {...propsOrden} />
               <TableHead className="w-[40px]" />
@@ -305,7 +328,7 @@ export function Dashboard() {
           <TableBody>
             {cargando.map(e => (
               <TableRow key={e.key} className="hover:bg-transparent">
-                <TableCell colSpan={8} className="p-2">
+                <TableCell colSpan={9} className="p-2">
                   <CajaCargando cuit={e.cuit} nombre={e.nombre} progreso={e.progreso} mensaje={e.mensaje} cancelando={e.cancelando} />
                 </TableCell>
               </TableRow>
@@ -390,6 +413,21 @@ export function Dashboard() {
                   )}
                 </TableCell>
                 <TableCell>
+                  {noMono || !cliente.mesesAdeudados || cliente.mesesAdeudados < 1 ? (
+                    <span className="text-muted-foreground text-xs">—</span>
+                  ) : (
+                    <span
+                      className={
+                        cliente.mesesAdeudados >= umbralCronico
+                          ? 'text-danger font-medium text-sm tabular-nums'
+                          : 'text-warning-foreground text-sm tabular-nums'
+                      }
+                    >
+                      {cliente.mesesAdeudados} {cliente.mesesAdeudados === 1 ? 'mes' : 'meses'}
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell>
                   <AlertaBadge estado={estado} />
                 </TableCell>
                 <TableCell>
@@ -427,7 +465,7 @@ export function Dashboard() {
             })}
             {filtrados.length === 0 && cargando.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
                   No hay clientes que coincidan con los filtros aplicados.
                 </TableCell>
               </TableRow>
@@ -497,6 +535,18 @@ export function Dashboard() {
                       </span>
                     </div>
                     <ProgresoTope porcentaje={calc.porcentajeTopeActual} />
+                    {!!cliente.mesesAdeudados && cliente.mesesAdeudados >= 1 && (
+                      <div
+                        className={
+                          cliente.mesesAdeudados >= umbralCronico
+                            ? 'inline-flex items-center gap-1 text-xs text-danger font-medium'
+                            : 'inline-flex items-center gap-1 text-xs text-warning-foreground'
+                        }
+                      >
+                        <CalendarClock className="h-3 w-3" />
+                        Adeuda {cliente.mesesAdeudados} {cliente.mesesAdeudados === 1 ? 'mes' : 'meses'} seguido{cliente.mesesAdeudados === 1 ? '' : 's'}
+                      </div>
+                    )}
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span className="inline-flex items-center gap-1">
                         <Calendar className="h-3 w-3" />

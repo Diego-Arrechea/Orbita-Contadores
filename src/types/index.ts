@@ -229,4 +229,20 @@ export interface Configuracion {
   alertas: ConfigAlertas;
   /** Canal de entrega por WhatsApp (interruptor maestro + horario). */
   notificaciones: ConfigNotificaciones;
+  /** Personalización del reporte imprimible del cliente (preferencia global del contador). */
+  reporte: ConfigReporte;
+}
+
+/** Qué secciones del reporte imprimible del cliente se incluyen, y con cuánto historial. Preferencia
+ *  global del contador (se guarda en la cuenta); las observaciones son por reporte (no se guardan). */
+export interface ConfigReporte {
+  secciones: {
+    situacion: boolean;    // métricas de la situación de monotributo
+    historial: boolean;    // tabla del historial mensual
+    alertas: boolean;      // listado de alertas
+    movimientos: boolean;  // movimientos pendientes de respaldo fiscal
+    acciones: boolean;     // acciones sugeridas
+  };
+  /** Cuántos meses de historial mostrar (hay hasta 12 disponibles). */
+  mesesHistorial: number;
 }

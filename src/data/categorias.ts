@@ -8,8 +8,9 @@ import type { Categoria } from '@/types';
 //                             importe real del cliente (cliente.proxVencImporte lo pisa).
 //   alquilerMaxAnual        = "Alquileres devengados anualmente".
 //   topePrecioUnitario      = "Precio unitario máximo para venta de cosas muebles".
-// OJO: ARCA reajusta esta escala cada semestre → mantener actualizado (idealmente refrescándola
-// automáticamente desde la tabla pública de categorías; ver plan de "refresher global").
+// OJO: ARCA reajusta esta escala cada semestre. Estos valores son el FALLBACK: al iniciar, el front
+// pide la escala vigente al backend (GET /indicadores/categorias, tabla pública de ARCA) y la pisa
+// con `aplicarMontosOficiales`. Si esa fuente falla, quedan estos valores. Mantener actualizados igual.
 export const CATEGORIAS: Categoria[] = [
   { codigo: 'A', topeAnual: 10_277_988,  cuotaServicios: 42_387,    cuotaComercio: 42_387,   superficieMax: 30,  energiaMaxKwh: 3_330,   alquilerMaxAnual: 2_390_230 },
   { codigo: 'B', topeAnual: 15_058_448,  cuotaServicios: 48_251,    cuotaComercio: 48_251,   superficieMax: 45,  energiaMaxKwh: 5_000,   alquilerMaxAnual: 2_390_230 },
@@ -24,14 +25,40 @@ export const CATEGORIAS: Categoria[] = [
   { codigo: 'K', topeAnual: 108_357_084, cuotaServicios: 1_381_688, cuotaComercio: 600_880,  superficieMax: 200, energiaMaxKwh: 20_000,  alquilerMaxAnual: 7_170_689, topePrecioUnitario: 613_492 },
 ];
 
-export const TOPE_CATEGORIA_K = 108_357_084;
+// `let` (no const) a propósito: `aplicarMontosOficiales` lo repisa con el valor vigente de ARCA. Los
+// imports son bindings VIVOS (ESM), así que los consumidores ven el valor actualizado.
+export let TOPE_CATEGORIA_K = 108_357_084;
 
 // Precio unitario máximo para la venta de cosas muebles (productos). A diferencia de los topes de
 // ingresos, este límite es ÚNICO y aplica a TODAS las categorías (A→K), no sólo a las altas: un
 // monotributista no puede vender un producto a un precio unitario mayor a este valor. No alcanza a
 // servicios. ARCA no rechaza el comprobante que lo supera, pero queda registrado → lo avisamos al
 // emitir. (El campo `topePrecioUnitario` por categoría queda como referencia del dato oficial.)
-export const TOPE_PRECIO_UNITARIO = 613_492;
+export let TOPE_PRECIO_UNITARIO = 613_492;
+
+// Pisa la escala local con los montos OFICIALES vigentes (tabla pública de ARCA, vía el backend).
+// Muta CATEGORIAS in-place (los imports guardan la MISMA referencia de array, así que ven los nuevos
+// valores) y reasigna los topes derivados. Si nunca se llama (backend caído), quedan los valores
+// hardcodeados como fallback. Se llama una vez al iniciar (ConfigContext).
+export function aplicarMontosOficiales(oficiales: readonly Categoria[]): void {
+  for (const o of oficiales) {
+    const local = CATEGORIAS.find(c => c.codigo === o.codigo);
+    if (!local) continue;
+    local.topeAnual = o.topeAnual;
+    local.cuotaServicios = o.cuotaServicios;
+    local.cuotaComercio = o.cuotaComercio;
+    local.superficieMax = o.superficieMax;
+    local.energiaMaxKwh = o.energiaMaxKwh;
+    local.alquilerMaxAnual = o.alquilerMaxAnual;
+    if (local.topePrecioUnitario !== undefined && o.topePrecioUnitario) {
+      local.topePrecioUnitario = o.topePrecioUnitario;
+    }
+  }
+  const k = CATEGORIAS.find(c => c.codigo === 'K');
+  if (k) TOPE_CATEGORIA_K = k.topeAnual;
+  const pu = oficiales.find(o => o.topePrecioUnitario)?.topePrecioUnitario;
+  if (pu) TOPE_PRECIO_UNITARIO = pu;
+}
 
 export function getCategoria(codigo: string | null | undefined): Categoria {
   return CATEGORIAS.find(c => c.codigo === codigo) || CATEGORIAS[0];

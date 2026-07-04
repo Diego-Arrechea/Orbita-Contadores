@@ -42,6 +42,63 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-04-reporte-personalizable',
+    fecha: '2026-07-04',
+    titulo: 'Armá el reporte del cliente a tu manera',
+    resumen:
+      'Ahora elegís qué secciones incluir, cuánto historial mostrar y podés sumar tus propias observaciones antes de imprimir o guardar el PDF.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En el reporte del cliente sumamos un panel para personalizarlo: elegís qué secciones mostrar (situación, historial, alertas, movimientos pendientes, acciones sugeridas) y cuántos meses de historial incluir. Esa preferencia queda guardada para tus próximos reportes.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Podés escribir observaciones propias que aparecen destacadas al principio del reporte. Son de ese reporte puntual, ideales para dejar una nota o comentario para el cliente antes de imprimirlo o guardarlo como PDF.',
+      },
+    ],
+  },
+  {
+    id: '2026-07-04-deudores-cronicos-panel',
+    fecha: '2026-07-04',
+    titulo: 'Encontrá a los deudores crónicos de un vistazo',
+    resumen:
+      'El panel ahora te muestra cuántos clientes arrastran deuda de varios meses, y podés filtrar y ordenar la cartera por eso.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En el panel sumamos una tarjeta "Deuda +N meses" con la cantidad de clientes que vienen adeudando la cuota desde hace varios meses seguidos (el límite es el mismo que configurás en tus alertas). Tocala para ver sólo esos clientes.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'La lista de clientes tiene una columna nueva, "Meses adeud.", que podés ordenar para que los que más deben queden arriba. Los que superan tu límite se resaltan.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'El reporte imprimible del cliente ahora incluye de cuántos meses seguidos es la deuda, y la acción sugerida lo aclara cuando el atraso viene de arrastre.',
+      },
+    ],
+  },
+  {
+    id: '2026-07-04-montos-categorias-al-dia',
+    fecha: '2026-07-04',
+    titulo: 'Los montos de las categorías se mantienen al día solos',
+    resumen:
+      'Las cuotas y los topes de cada categoría del monotributo se actualizan automáticamente con la escala oficial vigente.',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'Cada vez que se actualiza la escala oficial del monotributo (cuotas, topes de facturación, alquileres y precio unitario por categoría), Órbita toma los valores nuevos automáticamente. Así los montos que ves en las fichas, el panel y los reportes quedan siempre alineados con lo vigente, sin que haya que cargarlos a mano.',
+      },
+    ],
+  },
+  {
     id: '2026-07-04-meses-adeudados',
     fecha: '2026-07-04',
     titulo: 'Cuántos meses seguidos adeuda cada cliente',
