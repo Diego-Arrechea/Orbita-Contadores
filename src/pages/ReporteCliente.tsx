@@ -192,10 +192,10 @@ export function ReporteCliente() {
               <Orbit className="h-6 w-6" />
             </div>
             <div className="leading-tight">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
-                Órbita para contadores
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-2xl font-bold tracking-tight text-foreground">Órbita</span>
+                <span className="text-sm font-medium text-muted-foreground">para contadores</span>
               </div>
-              <div className="text-2xl font-bold tracking-tight -mt-0.5">Órbita</div>
               <div className="text-xs text-muted-foreground">por Órbita.</div>
             </div>
           </div>
