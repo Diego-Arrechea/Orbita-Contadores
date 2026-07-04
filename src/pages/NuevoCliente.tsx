@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -13,6 +13,8 @@ import {
   XCircle,
   Users,
   Plus,
+  Settings2,
+  Wheat,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,6 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { cn, formatCuit } from '@/lib/utils';
 import {
   listarRepresentados,
@@ -42,6 +45,9 @@ export function NuevoCliente() {
   // Marca que el cliente representa a otros CUITs. Por defecto NO: el monotributista titular es su
   // propio representante, así que se saltea el paso (lento) de listar representados.
   const [representaOtros, setRepresentaOtros] = useState(false);
+  // El contador marcó que el cliente factura por el sector agropecuario (hacienda, etc.): se le traen
+  // sus liquidaciones desde el arranque (si no, el sistema lo detecta solo más adelante).
+  const [facturaAgro, setFacturaAgro] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [representados, setRepresentados] = useState<Representado[]>([]);
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
@@ -76,7 +82,12 @@ export function NuevoCliente() {
     setPaso('monitoreando');
     setError(null);
     try {
-      const { job_id } = await iniciarMonitoreo(cuit.replace(/\D/g, ''), clave, seleccionados);
+      const { job_id } = await iniciarMonitoreo(
+        cuit.replace(/\D/g, ''),
+        clave,
+        seleccionados,
+        facturaAgro,
+      );
       setJobId(job_id);
       // A partir de acá la carga la sigue el contexto global (sobrevive a la navegación).
       registrarCarga(job_id, seleccionados);
@@ -139,6 +150,7 @@ export function NuevoCliente() {
     setClave('');
     setMostrar(false);
     setRepresentaOtros(false);
+    setFacturaAgro(false);
     setError(null);
     setRepresentados([]);
     setSeleccionados(new Set());
@@ -170,13 +182,50 @@ export function NuevoCliente() {
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/12 text-primary shrink-0">
               <ShieldCheck className="h-5 w-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="font-semibold">Datos de tu cliente</div>
               <div className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                 Cargá el CUIT y la clave fiscal de tu cliente. Quedan guardados cifrados para
                 mantener sus datos al día automáticamente, sin que tengas que volver a cargarlos.
               </div>
             </div>
+            {/* Ruedita: opciones del alta (representa a otro CUIT + factura agropecuario) */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  disabled={paso === 'listando'}
+                  title="Opciones del alta"
+                  aria-label="Opciones del alta"
+                  className="relative shrink-0 -mt-1 -mr-1 ml-auto p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-50"
+                >
+                  <Settings2 className="h-[18px] w-[18px]" />
+                  {(representaOtros || facturaAgro) && (
+                    <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary ring-2 ring-card" />
+                  )}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-80">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                  Opciones del alta
+                </div>
+                <div className="space-y-3.5">
+                  <OpcionAlta
+                    activo={representaOtros}
+                    onToggle={() => setRepresentaOtros(v => !v)}
+                    titulo="Representa a otro CUIT"
+                    descripcion="Factura también por una sociedad, un familiar, etc. Vas a poder elegir a cuáles seguir."
+                  />
+                  <OpcionAlta
+                    activo={facturaAgro}
+                    onToggle={() => setFacturaAgro(v => !v)}
+                    icono={<Wheat className="h-3.5 w-3.5 text-primary" />}
+                    titulo="Factura agropecuario"
+                    descripcion="Cliente del sector agropecuario (hacienda, etc.): sumamos sus liquidaciones a su facturación."
+                  />
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <div className="space-y-3">
@@ -224,21 +273,21 @@ export function NuevoCliente() {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setRepresentaOtros(v => !v)}
-              className="flex items-start gap-2.5 text-left w-full pt-1"
-            >
-              {representaOtros ? (
-                <CheckCircle2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-              ) : (
-                <Circle className="h-5 w-5 text-muted-foreground/40 shrink-0 mt-0.5" />
-              )}
-              <span className="text-xs text-muted-foreground leading-relaxed">
-                Este cliente representa a otro CUIT (factura también por una sociedad, un familiar,
-                etc.). Marcalo sólo si es así: vas a poder elegir a cuáles seguir.
-              </span>
-            </button>
+            {/* Resumen de las opciones activas del alta (se configuran con la ruedita de arriba). */}
+            {(representaOtros || facturaAgro) && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {representaOtros && (
+                  <Badge variant="muted" className="gap-1 text-[11px]">
+                    <Users className="h-3 w-3" /> Representa a otro CUIT
+                  </Badge>
+                )}
+                {facturaAgro && (
+                  <Badge variant="muted" className="gap-1 text-[11px]">
+                    <Wheat className="h-3 w-3" /> Factura agropecuario
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
 
           {error && (
@@ -402,6 +451,40 @@ export function NuevoCliente() {
         </Card>
       )}
     </div>
+  );
+}
+
+/** Una opción del alta dentro del popover de la ruedita (toggle con título + descripción). */
+function OpcionAlta({
+  activo,
+  onToggle,
+  titulo,
+  descripcion,
+  icono,
+}: {
+  activo: boolean;
+  onToggle: () => void;
+  titulo: string;
+  descripcion: string;
+  icono?: ReactNode;
+}) {
+  return (
+    <button type="button" onClick={onToggle} className="flex items-start gap-2.5 text-left w-full">
+      {activo ? (
+        <CheckCircle2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+      ) : (
+        <Circle className="h-5 w-5 text-muted-foreground/40 shrink-0 mt-0.5" />
+      )}
+      <span className="min-w-0">
+        <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+          {icono}
+          {titulo}
+        </span>
+        <span className="block text-xs text-muted-foreground leading-relaxed mt-0.5">
+          {descripcion}
+        </span>
+      </span>
+    </button>
   );
 }
 

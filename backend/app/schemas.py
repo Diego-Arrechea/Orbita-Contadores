@@ -260,6 +260,10 @@ class MonitorearIn(BaseModel):
     cuit: str  # CUIT del contador (login)
     clave: str
     seleccionados: list[RepSel]
+    # El contador marcó en el alta que este cliente factura por el sector agropecuario: prende
+    # `factura_agro` para traerle sus liquidaciones ya desde el arranque (si no, el motor lo detecta
+    # solo más adelante). Ver services/agro.py.
+    factura_agro: bool = False
 
 
 class JobOut(BaseModel):
