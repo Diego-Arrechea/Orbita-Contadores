@@ -139,6 +139,21 @@ export function ReporteCliente() {
   // Métricas que aplican a este cliente (tienen valor): las que se pueden mostrar/ocultar.
   const metricasDisponibles = metricas.filter(m => m.valor !== null);
 
+  // Al "Guardar PDF", el navegador usa document.title como nombre del archivo. Lo seteamos con el
+  // cliente y la fecha antes de imprimir, y lo restauramos al cerrar el diálogo.
+  const imprimir = () => {
+    const original = document.title;
+    const h = new Date();
+    const fecha = `${String(h.getDate()).padStart(2, '0')}-${String(h.getMonth() + 1).padStart(2, '0')}-${h.getFullYear()}`;
+    document.title = `Reporte ${cliente.nombre} ${fecha}`;
+    const restore = () => {
+      document.title = original;
+      window.removeEventListener('afterprint', restore);
+    };
+    window.addEventListener('afterprint', restore);
+    window.print();
+  };
+
   return (
     <div className="min-h-full bg-muted/30 print:bg-white">
       {/* Barra de acciones: se oculta al imprimir */}
@@ -149,7 +164,7 @@ export function ReporteCliente() {
               <ArrowLeft className="h-4 w-4" /> Volver a la ficha
             </Link>
           </Button>
-          <Button size="sm" onClick={() => window.print()}>
+          <Button size="sm" onClick={imprimir}>
             <Printer className="h-4 w-4" /> Imprimir / Guardar PDF
           </Button>
         </div>
