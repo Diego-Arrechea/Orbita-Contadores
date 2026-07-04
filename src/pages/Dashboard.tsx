@@ -84,6 +84,8 @@ export function Dashboard() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroAlerta, setFiltroAlerta] = useState<EstadoAlerta | 'todos'>('todos');
   const [filtroActividad, setFiltroActividad] = useState<TipoActividad | 'todos'>('todos');
+  // Filtro por estado de monitoreo: todos, sólo activos o sólo desactivados por el contador.
+  const [filtroEstadoActivo, setFiltroEstadoActivo] = useState<'todos' | 'activos' | 'desactivados'>('todos');
   // Filtro "deudores crónicos": sólo clientes que arrastran deuda de al menos `umbralCronico` meses.
   const [soloCronicos, setSoloCronicos] = useState(false);
   // Orden por defecto: alfabético por nombre del cliente (A→Z).
@@ -129,6 +131,9 @@ export function Dashboard() {
       .filter(({ cliente, estado }) => {
         if (filtroAlerta !== 'todos' && estado !== filtroAlerta) return false;
         if (filtroActividad !== 'todos' && cliente.tipoActividad !== filtroActividad) return false;
+        const activo = cliente.activo !== false;
+        if (filtroEstadoActivo === 'activos' && !activo) return false;
+        if (filtroEstadoActivo === 'desactivados' && activo) return false;
         if (soloCronicos && (cliente.mesesAdeudados ?? 0) < umbralCronico) return false;
         if (busqueda) {
           const q = busqueda.toLowerCase();
@@ -154,7 +159,7 @@ export function Dashboard() {
         }
         return factor * (va - vb);
       });
-  }, [clientesConCalculo, busqueda, filtroAlerta, filtroActividad, soloCronicos, umbralCronico, ordenarPor, sentido]);
+  }, [clientesConCalculo, busqueda, filtroAlerta, filtroActividad, filtroEstadoActivo, soloCronicos, umbralCronico, ordenarPor, sentido]);
 
   // Clientes que se están cargando ahora mismo (alta = trayendo sus comprobantes). Cada uno se
   // muestra como una fila propia con borde animado + progreso, y se OCULTA su fila normal mientras
@@ -295,6 +300,19 @@ export function Dashboard() {
                 <SelectItem value="servicios">Servicios</SelectItem>
               </SelectContent>
             </Select>
+            <Select
+              value={filtroEstadoActivo}
+              onValueChange={(v) => setFiltroEstadoActivo(v as 'todos' | 'activos' | 'desactivados')}
+            >
+              <SelectTrigger className="flex-1 md:w-[150px] md:flex-none bg-card">
+                <SelectValue placeholder="Monitoreo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Activos y desactivados</SelectItem>
+                <SelectItem value="activos">Sólo activos</SelectItem>
+                <SelectItem value="desactivados">Sólo desactivados</SelectItem>
+              </SelectContent>
+            </Select>
             <Button
               variant="outline"
               size="icon"
@@ -336,8 +354,9 @@ export function Dashboard() {
             {filtrados.map(({ cliente, calc, estado }) => {
               if (cuitsCargando.has(cliente.cuit.replace(/\D/g, ''))) return null;
               const noMono = !esMonotributista(cliente);
+              const desactivado = cliente.activo === false;
               return (
-              <TableRow key={cliente.id} className="group">
+              <TableRow key={cliente.id} className={`group${desactivado ? ' opacity-55' : ''}`}>
                 <TableCell>
                   <Link
                     to={`/clientes/${cliente.id}`}
@@ -349,6 +368,11 @@ export function Dashboard() {
                       <div className="text-xs text-muted-foreground tabular-nums">
                         {formatCuit(cliente.cuit)}
                       </div>
+                      {desactivado && (
+                        <Badge variant="muted" className="mt-1 text-[10px] font-semibold text-muted-foreground">
+                          Desactivado
+                        </Badge>
+                      )}
                       {cliente.claveRequiereCambio && <AvisoClaveFiscal />}
                       {cliente.claveInvalida && <AvisoClaveInvalida />}
                     </div>
@@ -481,12 +505,13 @@ export function Dashboard() {
           {filtrados.map(({ cliente, calc, estado }) => {
             if (cuitsCargando.has(cliente.cuit.replace(/\D/g, ''))) return null;
             const noMono = !esMonotributista(cliente);
+            const desactivado = cliente.activo === false;
             const recategoriza = !noMono && calc.categoriaCorresponde.codigo !== cliente.categoria;
             return (
               <Link
                 key={cliente.id}
                 to={`/clientes/${cliente.id}`}
-                className="block rounded-xl border border-border/60 p-4 transition-colors hover:border-primary/40"
+                className={`block rounded-xl border border-border/60 p-4 transition-colors hover:border-primary/40${desactivado ? ' opacity-55' : ''}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-3">
@@ -496,6 +521,11 @@ export function Dashboard() {
                       <div className="text-xs text-muted-foreground tabular-nums">
                         {formatCuit(cliente.cuit)}
                       </div>
+                      {desactivado && (
+                        <Badge variant="muted" className="mt-1 text-[10px] font-semibold text-muted-foreground">
+                          Desactivado
+                        </Badge>
+                      )}
                       {cliente.claveRequiereCambio && <AvisoClaveFiscal />}
                       {cliente.claveInvalida && <AvisoClaveInvalida />}
                     </div>

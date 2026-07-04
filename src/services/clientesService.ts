@@ -46,6 +46,7 @@ interface ClienteBackend {
   factura_agro?: boolean | null; // factura por el sector agropecuario (Liquidaciones Electrónicas)
   facturacion_agro_12m?: number | null; // suma de liquidaciones agro de los últimos 12 meses
   facturacion_agro_total?: number | null; // histórico de liquidaciones agro
+  activo?: boolean | null; // ¿el contador tiene activo el monitoreo del cliente?
 }
 
 const CODIGOS: CategoriaCodigo[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
@@ -131,6 +132,7 @@ function construirCliente(
     facturaAgro: bk.factura_agro ?? false,
     facturacionAgro12m: bk.facturacion_agro_12m ?? 0,
     facturacionAgroTotal: bk.facturacion_agro_total ?? 0,
+    activo: bk.activo ?? true,
     causales: [],
     extracciones,
     fuente: 'arca',
@@ -192,4 +194,10 @@ export async function editarCliente(cuit: string, campos: CamposEdicion): Promis
  *  guarda cifrada en el backend; apaga el aviso de "debe cambiar la clave" del cliente. */
 export async function actualizarClaveFiscal(cuit: string, clave: string): Promise<void> {
   await apiPut(`/clientes/${cuit.replace(/\D/g, '')}/clave`, { clave });
+}
+
+/** Activa o desactiva el monitoreo de un cliente. Desactivado: deja de actualizarse su información
+ *  y en la lista aparece atenuado como "Desactivado". Los datos ya guardados se conservan. */
+export async function cambiarActivoCliente(cuit: string, activo: boolean): Promise<void> {
+  await apiPut(`/clientes/${cuit.replace(/\D/g, '')}/activo`, { activo });
 }

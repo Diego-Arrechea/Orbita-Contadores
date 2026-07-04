@@ -42,6 +42,25 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-04-activar-desactivar-cliente',
+    fecha: '2026-07-04',
+    titulo: 'Activá o desactivá el monitoreo de un cliente',
+    resumen:
+      'Podés pausar el seguimiento de un cliente cuando no lo necesites y volver a activarlo cuando quieras, sin perder sus datos.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Desde la ficha del cliente, en la ruedita de opciones, ahora podés desactivarlo: deja de actualizarse su información y en tu cartera aparece atenuado con la etiqueta "Desactivado". Cuando quieras, lo volvés a activar desde el mismo lugar.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'En la lista de clientes sumamos un filtro para ver todos, sólo los activos o sólo los desactivados.',
+      },
+    ],
+  },
+  {
     id: '2026-07-04-facturacion-agropecuaria',
     fecha: '2026-07-04',
     titulo: 'Facturación agropecuaria de tus clientes',

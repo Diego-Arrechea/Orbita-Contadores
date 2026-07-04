@@ -173,6 +173,9 @@ class ClienteOut(BaseModel):
     factura_agro: bool = False
     facturacion_agro_12m: float = 0
     facturacion_agro_total: float = 0
+    # ¿El contador tiene activo el monitoreo de este cliente? En false queda "pausado": no se le
+    # actualizan los datos y en la lista se muestra atenuado como "Desactivado".
+    activo: bool = True
 
 
 class NotificacionesIn(BaseModel):
@@ -221,6 +224,12 @@ class EdicionClienteIn(BaseModel):
     estadoCuotaMesActual: str | None = None  # noqa: N815 — al-dia | con-deuda
     notas: str | None = None
     relacionDependencia: bool | None = None  # noqa: N815 — el contador marca si tiene trabajo en blanco
+
+
+class EstadoClienteIn(BaseModel):
+    """Prende/apaga el monitoreo de un cliente (activo/desactivado)."""
+
+    activo: bool
 
 
 class ClaveClienteIn(BaseModel):

@@ -233,6 +233,13 @@ class ClienteARCA(Base):
     agro_chequeado_en: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # ¿El contador tiene activo el monitoreo de este cliente? En False el cliente queda "pausado": el
+    # motor de sincronización lo saltea (deja de traer sus datos) y en la lista del contador aparece
+    # atenuado como "Desactivado". Lo prende/apaga el propio contador desde la ficha. Default True
+    # (un alta nueva entra activa). Distinto de los flags de clave (que los maneja la sync sola).
+    activo: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="1", nullable=False
+    )
 
 
 class ComprobanteEmitido(Base):

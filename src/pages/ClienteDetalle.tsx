@@ -13,6 +13,7 @@ import {
   MoreVertical,
   KeyRound,
   Wheat,
+  Power,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -46,7 +47,9 @@ import { derivarAlertas } from '@/lib/alertas';
 import { descargarReporteExcel } from '@/lib/reporteExcel';
 import { puedeFacturar } from '@/lib/cuenta';
 import { getMovimientos } from '@/services/movimientosService';
-import { useClienteReal, useComunicaciones } from '@/lib/queries';
+import { useQueryClient } from '@tanstack/react-query';
+import { useClienteReal, useComunicaciones, qkClientes } from '@/lib/queries';
+import { cambiarActivoCliente } from '@/services/clientesService';
 import { EditarClienteDialog } from '@/components/cliente/EditarClienteDialog';
 import { CambiarClaveDialog } from '@/components/cliente/CambiarClaveDialog';
 import { EliminarClienteDialog } from '@/components/cliente/EliminarClienteDialog';
@@ -77,6 +80,8 @@ export function ClienteDetalle() {
   const [tab, setTab] = useState('situacion');
   const [generandoExcel, setGenerandoExcel] = useState(false);
   const [facturarOpen, setFacturarOpen] = useState(false);
+  const [cambiandoActivo, setCambiandoActivo] = useState(false);
+  const queryClient = useQueryClient();
   const { config, inflacionEfectiva } = useConfig();
 
   // El backend ya aplica las ediciones del contador sobre el dato de ARCA; el front sólo elige mock o
@@ -88,6 +93,21 @@ export function ClienteDetalle() {
 
   const esReal = cliente?.fuente === 'arca';
   const facturarHabilitado = esReal && puedeFacturar();
+  const clienteActivo = cliente?.activo !== false; // undefined (mock) = activo
+
+  // Prende/apaga el monitoreo del cliente. Al desactivarlo deja de actualizarse su información y en
+  // la lista aparece atenuado; los datos ya guardados se conservan. Reversible en cualquier momento.
+  const alternarActivo = async () => {
+    if (!cliente || !esReal) return;
+    setCambiandoActivo(true);
+    try {
+      await cambiarActivoCliente(cliente.cuit, !clienteActivo);
+      await queryClient.invalidateQueries({ queryKey: qkClientes });
+      void refetchCliente();
+    } finally {
+      setCambiandoActivo(false);
+    }
+  };
 
   if (!cliente) {
     return (
@@ -177,6 +197,11 @@ export function ClienteDetalle() {
                       {cliente.tipoActividad}
                     </Badge>
                     <AlertaBadge estado={cliente.estadoAlerta} />
+                    {!clienteActivo && (
+                      <Badge variant="muted" className="font-semibold text-muted-foreground">
+                        Desactivado
+                      </Badge>
+                    )}
                   </div>
                   <div className="mt-2.5 flex items-center gap-x-5 gap-y-1.5 text-sm text-muted-foreground flex-wrap">
                     <span className="tabular-nums">CUIT {formatCuit(cliente.cuit)}</span>
@@ -238,6 +263,14 @@ export function ClienteDetalle() {
                     {esReal && (
                       <DropdownMenuItem onSelect={() => setTimeout(() => setClaveOpen(true), 0)}>
                         <KeyRound /> Actualizar clave fiscal
+                      </DropdownMenuItem>
+                    )}
+                    {esReal && (
+                      <DropdownMenuItem
+                        disabled={cambiandoActivo}
+                        onSelect={() => void alternarActivo()}
+                      >
+                        <Power /> {clienteActivo ? 'Desactivar cliente' : 'Activar cliente'}
                       </DropdownMenuItem>
                     )}
                     {esReal && (

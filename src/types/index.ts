@@ -159,6 +159,9 @@ export interface Cliente {
    *  que no las trae de otra fuente). `facturacionAgroTotal` es el histórico. 0 si no factura agro. */
   facturacionAgro12m?: number;
   facturacionAgroTotal?: number;
+  /** ¿El contador tiene activo el monitoreo de este cliente? En false queda "pausado": no se le
+   *  actualizan los datos y en la lista aparece atenuado como "Desactivado". Default true. */
+  activo?: boolean;
   causales: EstadoCausalCliente[];
   extracciones: Extraccion[];
   /** 'arca' = los comprobantes se traen reales del backend (WSFEv1); 'mock'/undefined = datos de prueba. */
