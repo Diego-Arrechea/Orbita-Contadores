@@ -29,9 +29,13 @@ export const CONFIGURACION_INICIAL: Configuracion = {
     horaDesde: 9,
     horaHasta: 21,
   },
-  // Reporte imprimible: por defecto todas las secciones incluidas y 12 meses de historial.
+  // Reporte imprimible: por defecto todas las secciones y todas las métricas incluidas, 12m historial.
   reporte: {
     secciones: { situacion: true, historial: true, alertas: true, movimientos: true, acciones: true },
+    metricas: {
+      facturacion12m: true, topeCategoria: true, topeConsumido: true, cuotaMes: true,
+      estadoCuota: true, proximoVencimiento: true, deudaCuota: true, mesesAdeudados: true, saldoFavor: true,
+    },
     mesesHistorial: 12,
   },
 };

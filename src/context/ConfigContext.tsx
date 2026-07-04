@@ -80,6 +80,7 @@ function combinar(guardado: Partial<Configuracion> | null | undefined): Configur
   const rg = (limpio.reporte ?? {}) as Partial<Configuracion['reporte']>;
   const reporte: Configuracion['reporte'] = {
     secciones: { ...R.secciones, ...(rg.secciones ?? {}) },
+    metricas: { ...R.metricas, ...(rg.metricas ?? {}) },
     mesesHistorial: num(rg.mesesHistorial, R.mesesHistorial),
   };
 

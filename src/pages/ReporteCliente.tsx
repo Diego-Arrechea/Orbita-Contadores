@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Orbit, Printer, ArrowLeft, Building2, SlidersHorizontal } from 'lucide-react';
+import { Orbit, Printer, ArrowLeft, Building2, SlidersHorizontal, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -63,6 +63,8 @@ export function ReporteCliente() {
   };
   const toggleSeccion = (k: keyof ConfigReporte['secciones']) =>
     setReporte({ secciones: { ...rep.secciones, [k]: !rep.secciones[k] } });
+  const toggleMetrica = (k: keyof ConfigReporte['metricas']) =>
+    setReporte({ metricas: { ...rep.metricas, [k]: !rep.metricas[k] } });
 
   const cliente = clienteMock ?? clienteReal ?? undefined;
   const cuenta = cuentaActual();
@@ -102,6 +104,40 @@ export function ReporteCliente() {
   const alertas = ordenarPorSeveridad(derivarAlertas(cliente, calc, config));
   const pendientes = movimientos.filter(esPendienteRespaldo);
   const acciones = accionesSugeridas(cliente, calc, alertas, pendientes.length);
+
+  // Cards de la sección "Situación de monotributo", data-driven para poder sacar/poner cada una.
+  // `valor` null = la métrica no aplica a este cliente (no se ofrece ni se muestra). Sólo mono.
+  const meses = cliente.mesesAdeudados ?? 0;
+  const metricas: { key: keyof ConfigReporte['metricas']; label: string; valor: string | null }[] = noMono
+    ? []
+    : [
+        { key: 'facturacion12m', label: 'Facturación últimos 12 meses', valor: formatCurrency(calc.facturacionUltimos12) },
+        { key: 'topeCategoria', label: 'Tope de la categoría', valor: formatCurrency(cat.topeAnual) },
+        { key: 'topeConsumido', label: 'Tope consumido', valor: formatPercent(calc.porcentajeTopeActual, 1) },
+        {
+          key: 'cuotaMes',
+          label: 'Cuota del mes',
+          valor: formatCurrency(
+            cliente.proxVencImporte ??
+              (cliente.tipoActividad === 'servicios' ? cat.cuotaServicios : cat.cuotaComercio),
+          ),
+        },
+        { key: 'estadoCuota', label: 'Estado de la cuota', valor: cliente.estadoCuotaMesActual === 'con-deuda' ? 'Con deuda' : 'Al día' },
+        { key: 'proximoVencimiento', label: 'Próximo vencimiento', valor: cliente.proxVencFecha ?? '—' },
+        { key: 'deudaCuota', label: 'Deuda de cuota', valor: formatCurrency(cliente.cuotaDeuda ?? 0) },
+        {
+          key: 'mesesAdeudados',
+          label: 'Meses adeudados',
+          valor: meses >= 1 ? `${meses} ${meses === 1 ? 'mes' : 'meses'} seguido${meses === 1 ? '' : 's'}` : null,
+        },
+        {
+          key: 'saldoFavor',
+          label: 'Saldo a favor',
+          valor: cliente.cuotaSaldoFavor && cliente.cuotaSaldoFavor > 0 ? formatCurrency(cliente.cuotaSaldoFavor) : null,
+        },
+      ];
+  // Métricas que aplican a este cliente (tienen valor): las que se pueden mostrar/ocultar.
+  const metricasDisponibles = metricas.filter(m => m.valor !== null);
 
   return (
     <div className="min-h-full bg-muted/30 print:bg-white">
@@ -177,9 +213,38 @@ export function ReporteCliente() {
               </div>
             </div>
           </div>
+
+          {/* Cards de la situación de monotributo: sacar/poner cada una (también con la × en la card). */}
+          {rep.secciones.situacion && metricasDisponibles.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-border/60">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
+                Cards de la situación (tocá para sacar o poner)
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {metricasDisponibles.map(m => {
+                  const on = rep.metricas[m.key];
+                  return (
+                    <button
+                      key={m.key}
+                      type="button"
+                      onClick={() => toggleMetrica(m.key)}
+                      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                        on
+                          ? 'border-primary/40 bg-primary/10 text-primary'
+                          : 'border-border bg-muted text-muted-foreground line-through'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <p className="mt-3 text-xs text-muted-foreground">
-            Las secciones y el historial quedan guardados para tus próximos reportes. Las observaciones
-            son sólo de este reporte.
+            Las secciones, las cards y el historial quedan guardados para tus próximos reportes. Las
+            observaciones son sólo de este reporte.
           </p>
         </div>
       </div>
@@ -254,40 +319,11 @@ export function ReporteCliente() {
           <>
             <h2 className="text-base font-semibold mt-7 mb-3">Situación de monotributo</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <Metrica
-                label="Facturación últimos 12 meses"
-                valor={formatCurrency(calc.facturacionUltimos12)}
-              />
-              <Metrica label="Tope de la categoría" valor={formatCurrency(cat.topeAnual)} />
-              <Metrica
-                label="Tope consumido"
-                valor={formatPercent(calc.porcentajeTopeActual, 1)}
-              />
-              <Metrica
-                label="Cuota del mes"
-                valor={formatCurrency(
-                  cliente.proxVencImporte ??
-                    (cliente.tipoActividad === 'servicios' ? cat.cuotaServicios : cat.cuotaComercio),
-                )}
-              />
-              <Metrica
-                label="Estado de la cuota"
-                valor={cliente.estadoCuotaMesActual === 'con-deuda' ? 'Con deuda' : 'Al día'}
-              />
-              <Metrica
-                label="Próximo vencimiento"
-                valor={cliente.proxVencFecha ?? '—'}
-              />
-              <Metrica label="Deuda de cuota" valor={formatCurrency(cliente.cuotaDeuda ?? 0)} />
-              {!!cliente.mesesAdeudados && cliente.mesesAdeudados >= 1 && (
-                <Metrica
-                  label="Meses adeudados"
-                  valor={`${cliente.mesesAdeudados} ${cliente.mesesAdeudados === 1 ? 'mes' : 'meses'} seguido${cliente.mesesAdeudados === 1 ? '' : 's'}`}
-                />
-              )}
-              {!!cliente.cuotaSaldoFavor && cliente.cuotaSaldoFavor > 0 && (
-                <Metrica label="Saldo a favor" valor={formatCurrency(cliente.cuotaSaldoFavor)} />
-              )}
+              {metricasDisponibles
+                .filter(m => rep.metricas[m.key])
+                .map(m => (
+                  <Metrica key={m.key} label={m.label} valor={m.valor as string} onQuitar={() => toggleMetrica(m.key)} />
+                ))}
             </div>
 
             {debeRecategorizar && (
@@ -424,9 +460,20 @@ function Dato({ label, valor, capitalizar }: { label: string; valor: string; cap
   );
 }
 
-function Metrica({ label, valor }: { label: string; valor: string }) {
+function Metrica({ label, valor, onQuitar }: { label: string; valor: string; onQuitar?: () => void }) {
   return (
-    <div className="rounded-lg border border-border/60 p-3.5">
+    <div className="group relative rounded-lg border border-border/60 p-3.5">
+      {onQuitar && (
+        <button
+          type="button"
+          onClick={onQuitar}
+          title="Sacar esta card del reporte"
+          aria-label="Sacar esta card del reporte"
+          className="print:hidden absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-card text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-danger group-hover:opacity-100"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      )}
       <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="text-lg font-semibold tabular-nums mt-0.5">{valor}</div>
     </div>
