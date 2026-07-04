@@ -19,6 +19,7 @@ from ..schemas import (
     ComprobanteOut,
     ComunicacionOut,
     EdicionClienteIn,
+    EstadoClienteIn,
     ExtraccionOut,
     HistorialMesOut,
     JobOut,
@@ -191,6 +192,7 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
         factura_agro=bool(c.factura_agro),
         facturacion_agro_12m=agro_12m,
         facturacion_agro_total=agro_total,
+        activo=bool(c.activo),
     )
 
 
@@ -221,6 +223,23 @@ def editar_cliente(
     db.add(cliente)
     db.commit()
     return {"ok": True}
+
+
+@router.put("/clientes/{cuit}/activo")
+def cambiar_activo_cliente(
+    cuit: str,
+    datos: EstadoClienteIn,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_actual),
+):
+    """Prende/apaga el monitoreo del cliente. Desactivado (activo=false): el motor de sincronización
+    lo saltea (deja de actualizar sus datos) y en la lista aparece atenuado como "Desactivado". Los
+    datos ya guardados se conservan; volver a activarlo lo reincorpora al ciclo de actualización."""
+    cliente = _cliente_propio(db, cuit, usuario)
+    cliente.activo = datos.activo
+    db.add(cliente)
+    db.commit()
+    return {"ok": True, "activo": cliente.activo}
 
 
 @router.put("/clientes/{cuit}/clave")
@@ -336,7 +355,8 @@ def _correr_sync_todos(job_id: str, usuario_id: int) -> None:
     try:
         clientes = db.execute(
             select(models.ClienteARCA.cuit, models.ClienteARCA.nombre).where(
-                models.ClienteARCA.usuario_id == usuario_id
+                models.ClienteARCA.usuario_id == usuario_id,
+                models.ClienteARCA.activo.is_(True),  # los desactivados no se sincronizan
             )
         ).all()
         total = len(clientes)

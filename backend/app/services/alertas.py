@@ -246,7 +246,10 @@ def alertas_vigentes(db: Session, usuario: models.Usuario, hoy: dt.date | None =
     hoy = hoy or dt.date.today()
     _, alertas_cfg, ventanas, inflacion = _config_efectiva(usuario)
     clientes = db.scalars(
-        select(models.ClienteARCA).where(models.ClienteARCA.usuario_id == usuario.id)
+        select(models.ClienteARCA).where(
+            models.ClienteARCA.usuario_id == usuario.id,
+            models.ClienteARCA.activo.is_(True),  # los desactivados no generan alertas
+        )
     ).all()
     out: list[dict] = []
     for c in clientes:
@@ -296,7 +299,10 @@ def evaluar_y_notificar(db: Session, solo_usuario_id: int | None = None) -> dict
             continue  # canal apagado: no se baselinea ni se trackea (se hará al activar)
 
         clientes = db.scalars(
-            select(models.ClienteARCA).where(models.ClienteARCA.usuario_id == u.id)
+            select(models.ClienteARCA).where(
+                models.ClienteARCA.usuario_id == u.id,
+                models.ClienteARCA.activo.is_(True),  # los desactivados no disparan alertas ni WhatsApp
+            )
         ).all()
         activos = db.scalars(
             select(models.AlertaEnviada).where(

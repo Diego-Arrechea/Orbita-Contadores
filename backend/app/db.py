@@ -210,6 +210,12 @@ def _migrar_clientes_arca(conn) -> None:
     # en SQLite y Postgres; NULL = sin dato (no monotributista o sync sin CCMA).
     if "meses_adeudados" not in cols:
         conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN meses_adeudados INTEGER"))
+    # ¿El contador tiene activo el monitoreo del cliente? En False el motor de sync lo saltea y en la
+    # lista aparece como "Desactivado". DEFAULT TRUE → los clientes ya existentes quedan activos.
+    if "activo" not in cols:
+        conn.execute(
+            text("ALTER TABLE clientes_arca ADD COLUMN activo BOOLEAN DEFAULT TRUE")
+        )
 
 
 def _migrar_comprobantes_emitidos(conn) -> None:

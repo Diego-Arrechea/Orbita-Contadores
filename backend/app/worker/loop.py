@@ -88,6 +88,7 @@ def _clientes_vencidos(db, limite: dt.datetime, limite_fallidos: dt.datetime):
         .outerjoin(ult, ult.c.cuit == ClienteARCA.cuit)
         .outerjoin(fallos, fallos.c.cuit == ClienteARCA.cuit)
         .where(
+            ClienteARCA.activo.is_(True),  # los desactivados por el contador quedan fuera del ciclo
             or_(
                 ult.c.fecha.is_(None),                                            # nunca sincronizado
                 ult.c.fecha < limite,                                             # vencido normal
