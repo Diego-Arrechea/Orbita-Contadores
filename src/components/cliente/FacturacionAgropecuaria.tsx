@@ -17,6 +17,45 @@ interface Props {
   cliente: Cliente;
 }
 
+// Nombre AFIP de cada tipo de liquidación por código (incluye la CLASE A/B/C, que el `tipo_liq` de la
+// grilla no distingue: p.ej. 186 y 188 vienen ambos como "Liquidación Compra Directa"). Sector
+// Pecuario (hacienda) + Avícola. Fuente: el selector de tipos del propio sistema de AFIP.
+const NOMBRE_TIPO_LIQ: Record<number, string> = {
+  // Sector Avícola
+  157: 'Cuenta de Venta y Líquido Producto A',
+  158: 'Cuenta de Venta y Líquido Producto B',
+  159: 'Liquidación de Compra A',
+  160: 'Liquidación de Compra B',
+  161: 'Liquidación de Compra Directa A',
+  162: 'Liquidación de Compra Directa B',
+  163: 'Liquidación de Compra Directa C',
+  164: 'Liquidación de Venta Directa A',
+  165: 'Liquidación de Venta Directa B',
+  166: 'Contratación de Crianza Pollos Parrilleros A',
+  167: 'Contratación de Crianza Pollos Parrilleros B',
+  168: 'Contratación de Crianza Pollos Parrilleros C',
+  169: 'Crianza Pollos Parrilleros A',
+  170: 'Crianza Pollos Parrilleros B',
+  // Sector Pecuario (hacienda)
+  180: 'Cuenta de Venta y Líquido Producto A',
+  182: 'Cuenta de Venta y Líquido Producto B',
+  183: 'Liquidación de Compra A',
+  185: 'Liquidación de Compra B',
+  186: 'Liquidación de Compra Directa A',
+  188: 'Liquidación de Compra Directa B',
+  189: 'Liquidación de Compra Directa C',
+  190: 'Liquidación de Venta Directa A',
+  191: 'Liquidación de Venta Directa B',
+};
+
+/** Nombre preciso del tipo de la liquidación: el del código (con su clase A/B/C) y, si es un ajuste,
+ *  se conserva ese matiz. Cae al `tipo_liq` de la grilla si el código no está mapeado. */
+function nombreTipoLiquidacion(l: { cbteTipo: number; tipo: string }): string {
+  const base = NOMBRE_TIPO_LIQ[l.cbteTipo] ?? l.tipo ?? `Comprobante ${l.cbteTipo}`;
+  const esAjuste = /ajuste/i.test(l.tipo);
+  return esAjuste && !/ajuste/i.test(base) ? `${base} (Ajuste)` : base;
+}
+
 /** Apartado de Facturación Agropecuaria de la ficha: las liquidaciones del sector primario del
  *  cliente (venta de hacienda, etc.) + su total. Estas liquidaciones se suman a su facturación 12m. */
 export function FacturacionAgropecuaria({ cliente }: Props) {
@@ -99,10 +138,17 @@ export function FacturacionAgropecuaria({ cliente }: Props) {
                 {liquidaciones.map(l => (
                   <TableRow key={l.id}>
                     <TableCell>
-                      <div className="text-sm font-medium leading-tight">{l.tipo}</div>
-                      <div className="text-[11px] text-muted-foreground mt-0.5">
-                        {l.direccion === 'emisor' ? 'Emitida' : 'Recibida'}
-                        {l.sistema ? ` · ${l.sistema}` : ''}
+                      <div className="text-sm font-medium leading-tight">
+                        {nombreTipoLiquidacion(l)}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1.5">
+                        <Badge variant="muted" className="text-[10px] py-0 tabular-nums">
+                          Cód. {l.cbteTipo}
+                        </Badge>
+                        <span>
+                          {l.direccion === 'emisor' ? 'Emitida' : 'Recibida'}
+                          {l.sistema ? ` · ${l.sistema}` : ''}
+                        </span>
                       </div>
                     </TableCell>
                     <TableCell className="text-sm whitespace-nowrap">
@@ -129,10 +175,17 @@ export function FacturacionAgropecuaria({ cliente }: Props) {
               <Card key={l.id} className="space-y-2 p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium leading-tight">{l.tipo}</div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5">
-                      {l.direccion === 'emisor' ? 'Emitida' : 'Recibida'}
-                      {l.sistema ? ` · ${l.sistema}` : ''}
+                    <div className="text-sm font-medium leading-tight">
+                      {nombreTipoLiquidacion(l)}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1.5">
+                      <Badge variant="muted" className="text-[10px] py-0 tabular-nums">
+                        Cód. {l.cbteTipo}
+                      </Badge>
+                      <span>
+                        {l.direccion === 'emisor' ? 'Emitida' : 'Recibida'}
+                        {l.sistema ? ` · ${l.sistema}` : ''}
+                      </span>
                     </div>
                   </div>
                   <div className="text-sm font-semibold tabular-nums whitespace-nowrap">
