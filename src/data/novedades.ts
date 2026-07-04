@@ -51,7 +51,7 @@ export const NOVEDADES: Novedad[] = [
       {
         tipo: 'nuevo',
         texto:
-          'Para los clientes del sector agropecuario traemos sus liquidaciones (venta de hacienda, etc.) y las sumamos a su facturación, igual que con el resto de sus comprobantes.',
+          'Para los clientes del sector agropecuario traemos sus liquidaciones (venta de hacienda, etc.): las ves en su propio apartado "Facturación agropecuaria" dentro de la ficha, y se suman a su facturación de los últimos 12 meses.',
       },
       {
         tipo: 'nuevo',

@@ -12,6 +12,7 @@ import {
   UserPlus,
   MoreVertical,
   KeyRound,
+  Wheat,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ import { SituacionActual } from '@/components/cliente/SituacionActual';
 import { EstadoCuenta } from '@/components/cliente/EstadoCuenta';
 import { HistoricoMensual } from '@/components/cliente/HistoricoMensual';
 import { FacturacionDetalle } from '@/components/cliente/FacturacionDetalle';
+import { FacturacionAgropecuaria } from '@/components/cliente/FacturacionAgropecuaria';
 import { ReconciliacionBancaria } from '@/components/cliente/ReconciliacionBancaria';
 import { ListaComprobantes } from '@/components/cliente/ListaComprobantes';
 // import { CausalesList } from '@/components/cliente/CausalesList'; // oculto por ahora (ver tab "causales")
@@ -308,6 +310,14 @@ export function ClienteDetalle() {
               <TabsTrigger value="estado-cuenta" className={tabTriggerClass}>Estado de cuenta</TabsTrigger>
               <TabsTrigger value="historico" className={tabTriggerClass}>Histórico mensual</TabsTrigger>
               <TabsTrigger value="facturacion" className={tabTriggerClass}>Facturación 12m</TabsTrigger>
+              {cliente.facturaAgro && (
+                <TabsTrigger
+                  value="agro"
+                  className={cn(tabTriggerClass, 'inline-flex items-center gap-1.5')}
+                >
+                  <Wheat className="h-3.5 w-3.5" /> Facturación agropecuaria
+                </TabsTrigger>
+              )}
               <TabsTrigger value="reconciliacion" className={tabTriggerClass}>Reconciliación bancaria</TabsTrigger>
               <TabsTrigger value="comprobantes" className={tabTriggerClass}>Comprobantes</TabsTrigger>
               <TabsTrigger value="dfe" className={cn(tabTriggerClass, 'inline-flex items-center gap-1.5')}>
@@ -342,6 +352,11 @@ export function ClienteDetalle() {
         <TabsContent value="facturacion" className="mt-0">
           <FacturacionDetalle cliente={cliente} />
         </TabsContent>
+        {cliente.facturaAgro && (
+          <TabsContent value="agro" className="mt-0">
+            <FacturacionAgropecuaria cliente={cliente} />
+          </TabsContent>
+        )}
         <TabsContent value="reconciliacion" className="mt-0">
           <ReconciliacionBancaria cliente={cliente} />
         </TabsContent>

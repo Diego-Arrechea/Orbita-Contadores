@@ -153,6 +153,12 @@ export interface Cliente {
   /** La Clave Fiscal guardada del cliente no es válida (ARCA la rechaza o el acceso falla repetido).
    *  Se resuelve cargando la clave correcta desde la ficha. Distinto de claveRequiereCambio. */
   claveInvalida?: boolean;
+  /** El cliente factura por el sector agropecuario (Liquidaciones Electrónicas: hacienda, etc.). */
+  facturaAgro?: boolean;
+  /** Suma de las liquidaciones agropecuarias de los últimos 12 meses (se SUMA a la facturación 12m,
+   *  que no las trae de otra fuente). `facturacionAgroTotal` es el histórico. 0 si no factura agro. */
+  facturacionAgro12m?: number;
+  facturacionAgroTotal?: number;
   causales: EstadoCausalCliente[];
   extracciones: Extraccion[];
   /** 'arca' = los comprobantes se traen reales del backend (WSFEv1); 'mock'/undefined = datos de prueba. */

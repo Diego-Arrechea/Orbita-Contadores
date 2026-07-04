@@ -34,6 +34,8 @@ export function ventana12Meses(historial: HistorialMes[], hasta: Date = HOY): Hi
 
 export interface CalculoCliente {
   facturacionUltimos12: number;
+  /** Parte de `facturacionUltimos12` que viene de liquidaciones agropecuarias (0 si no aplica). */
+  facturacionAgro12m: number;
   facturacionUltimos12Anualizada: number;
   mesesConActividad: number;
   porcentajeTopeActual: number;
@@ -73,10 +75,15 @@ export function calcularCliente(
   inflacionMensual: number,
 ): CalculoCliente {
   const ultimos12 = ventana12Meses(cliente.historialMensual);
-  const facturacion12 = ultimos12.reduce(
-    (acc, m) => acc + m.emitidasNetas + m.ingresosNoFacturados,
-    0,
-  );
+  // Facturación agropecuaria (Liquidaciones Electrónicas del agro): NO viene de los comprobantes de
+  // 'Mis Comprobantes', así que la sumamos acá para que la facturación 12m del cliente sea completa.
+  // 0 para los que no facturan agropecuario → no cambia nada. Ojo doble-conteo: cuando ARCA sí trae
+  // el facturómetro oficial, ese ya incluye el agro; por eso el nivelTope usa el oficial (que gana) y
+  // sólo cae a esta suma-con-agro cuando el oficial no está (el caso de los clientes agropecuarios).
+  const facturacionAgro12m = cliente.facturacionAgro12m ?? 0;
+  const facturacion12 =
+    ultimos12.reduce((acc, m) => acc + m.emitidasNetas + m.ingresosNoFacturados, 0) +
+    facturacionAgro12m;
   const compras12 = ultimos12.reduce((acc, m) => acc + m.recibidasComputables, 0);
 
   const fechaInicio = parseISO(cliente.fechaInicio);
@@ -155,6 +162,7 @@ export function calcularCliente(
 
   return {
     facturacionUltimos12: facturacion12,
+    facturacionAgro12m,
     facturacionUltimos12Anualizada: facturacionAnualizada,
     mesesConActividad: mesesActividad,
     porcentajeTopeActual,
