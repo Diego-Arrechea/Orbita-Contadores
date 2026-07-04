@@ -28,18 +28,20 @@ def _parse_fecha(f: str | None) -> dt.date | None:
         return None
 
 
-def _upsert(db: Session, cuit: str, crudos: list[dict]) -> tuple[int, int, int]:
-    """Inserta/actualiza las liquidaciones (dedup por liq_id). Devuelve
-    (procesadas, nuevas, sin_importe)."""
+def _upsert(db: Session, cuit: str, crudos: list[dict], con_importe: bool) -> tuple[int, int, int]:
+    """Inserta/actualiza las liquidaciones (dedup por liq_id). Devuelve (procesadas, nuevas,
+    sin_importe). En modo DETECCIÓN (`con_importe=False`) el importe viene en None: NO se pisa el
+    importe ya guardado (una fila existente conserva su valor) y una fila nueva arranca en 0 (se
+    llena después con la sync que sí baja el PDF)."""
     ahora = dt.datetime.now(dt.timezone.utc)
     procesadas = nuevas = sin_importe = 0
     for c in crudos:
         liq_id = str(c.get("liq_id") or "")
         if not liq_id:
             continue
-        bruto = c.get("importe_bruto")
-        if bruto is None:
-            sin_importe += 1
+        bruto = c.get("importe_bruto")  # None = no se descargó (detección) o el PDF falló
+        if con_importe and bruto is None:
+            sin_importe += 1  # se pidió el importe pero el PDF no se pudo leer
         existe = db.scalar(
             select(models.LiquidacionAgro).where(
                 models.LiquidacionAgro.cuit == cuit,
@@ -57,14 +59,20 @@ def _upsert(db: Session, cuit: str, crudos: list[dict]) -> tuple[int, int, int]:
             fecha_comprobante=_parse_fecha(c.get("fecha_comprobante")),
             fecha_emision=_parse_fecha(c.get("fecha_emision")),
             sistema=(c.get("sistema") or "")[:4],
-            importe_bruto=bruto if bruto is not None else 0,
             sincronizado_en=ahora,
         )
         if existe:
             for k, v in campos.items():
                 setattr(existe, k, v)
+            if bruto is not None:  # sólo pisamos el importe si esta corrida lo trajo
+                existe.importe_bruto = bruto
         else:
-            db.add(models.LiquidacionAgro(cuit=cuit, liq_id=liq_id, **campos))
+            db.add(
+                models.LiquidacionAgro(
+                    cuit=cuit, liq_id=liq_id,
+                    importe_bruto=bruto if bruto is not None else 0, **campos,
+                )
+            )
             nuevas += 1
         procesadas += 1
     return procesadas, nuevas, sin_importe
@@ -76,13 +84,16 @@ def sincronizar_agro(
     *,
     sector: str = "hacienda",
     marcar_flag: bool = True,
+    con_importe: bool = True,
     on_progress=None,
 ) -> dict:
     """Trae y cachea las liquidaciones del agro del cliente. Devuelve
     {tiene, procesadas, nuevas, sin_importe, total_bruto}.
 
     `marcar_flag`: si hay liquidaciones, prende `cliente.factura_agro` (útil en la barrida inicial
-    de detección; NUNCA lo apaga: un flag puesto a mano por el contador se respeta)."""
+    de detección; NUNCA lo apaga: un flag puesto a mano por el contador se respeta).
+    `con_importe=False`: modo DETECCIÓN (sólo grilla, sin bajar PDFs) → mucho más liviano para no
+    gatillar el rate-limit; el importe se llena después con una corrida `con_importe=True`."""
     cliente = db.get(models.ClienteARCA, cuit)
     if cliente is None:
         raise ValueError(f"Cliente {cuit} no registrado")
@@ -92,9 +103,9 @@ def sincronizar_agro(
     clave = descifrar(credencial.clave_cifrada).decode()
 
     crudos = motor.liquidaciones_agro(
-        credencial.cuit, clave, cuit, sector=sector, on_progress=on_progress
+        credencial.cuit, clave, cuit, sector=sector, con_importe=con_importe, on_progress=on_progress
     )
-    procesadas, nuevas, sin_importe = _upsert(db, cuit, crudos)
+    procesadas, nuevas, sin_importe = _upsert(db, cuit, crudos, con_importe)
     tiene = procesadas > 0
     if tiene and marcar_flag and not cliente.factura_agro:
         cliente.factura_agro = True
@@ -117,25 +128,63 @@ def sincronizar_agro(
     }
 
 
+def _total_bruto(db: Session, cuit: str) -> float:
+    return float(
+        db.scalar(
+            select(func.coalesce(func.sum(models.LiquidacionAgro.importe_bruto), 0)).where(
+                models.LiquidacionAgro.cuit == cuit
+            )
+        )
+        or 0
+    )
+
+
 def sincronizar_agro_si_corresponde(
     db: Session, cuit: str, *, sector: str = "hacienda", dias: int = 7
 ) -> dict | None:
-    """Corre la sync del agro SÓLO si el cliente está marcado (`factura_agro`) y no se sincronizó en
-    los últimos `dias`. Pensado para el motor 24/7: visita cada cliente cada ~12h, pero estas
-    liquidaciones aparecen rara vez, así que alcanza con una pasada SEMANAL. Devuelve el resultado
-    de `sincronizar_agro`, o None si no correspondía (no marcado o ya sincronizado hace poco)."""
+    """Mantenimiento SEMANAL de un cliente YA marcado (`factura_agro`): re-sincroniza CON importe si
+    pasó `dias` desde la última, o si todavía le faltan los importes (total 0 → recién detectado en
+    modo liviano). Devuelve None si no correspondía (no marcado, o ya al día). Estas liquidaciones
+    aparecen rara vez, así que la pasada normal es semanal."""
     cliente = db.get(models.ClienteARCA, cuit)
     if cliente is None or not cliente.factura_agro:
         return None
-    ultima = db.scalar(
-        select(func.max(models.LiquidacionAgro.sincronizado_en)).where(
-            models.LiquidacionAgro.cuit == cuit
+    pendiente_importe = _total_bruto(db, cuit) == 0  # detectado liviano pero sin importes aún
+    if not pendiente_importe:
+        ultima = db.scalar(
+            select(func.max(models.LiquidacionAgro.sincronizado_en)).where(
+                models.LiquidacionAgro.cuit == cuit
+            )
         )
-    )
-    if ultima is not None:
-        if ultima.tzinfo is None:  # Postgres devuelve aware; SQLite naive → normalizamos a UTC
-            ultima = ultima.replace(tzinfo=dt.timezone.utc)
-        if ultima > dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=dias):
-            return None  # todavía dentro de la ventana semanal
-    # Ya está marcado: no re-evaluamos el flag (marcar_flag=False).
-    return sincronizar_agro(db, cuit, sector=sector, marcar_flag=False)
+        if ultima is not None:
+            if ultima.tzinfo is None:  # Postgres aware; SQLite naive → normalizamos a UTC
+                ultima = ultima.replace(tzinfo=dt.timezone.utc)
+            if ultima > dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=dias):
+                return None  # al día y dentro de la ventana semanal
+    # Ya está marcado: no re-evaluamos el flag. CON importe (baja los PDFs, ráfaga aislada).
+    return sincronizar_agro(db, cuit, sector=sector, marcar_flag=False, con_importe=True)
+
+
+def paso_worker(db: Session, cuit: str, *, sector: str = "hacienda") -> dict | None:
+    """Entrada del motor 24/7 para el agro: DETECCIÓN GRADUAL + mantenimiento, repartido en el ciclo
+    normal (reemplaza la barrida masiva, que gatillaba el rate-limit del WAF de ARCA).
+
+    - Cliente marcado (`factura_agro`) → mantenimiento semanal (sincronizar_agro_si_corresponde).
+    - Nunca chequeado (`agro_chequeado_en` NULL) → DETECCIÓN una vez, LIVIANA (sólo grilla, sin PDFs
+      → no gatilla el WAF). Marca la fecha SÓLO si la consulta salió bien; si falla (bloqueo/ARCA),
+      queda NULL y se reintenta en la próxima pasada (auto-sanador). Si detecta liquidaciones, prende
+      el flag y sus importes se llenan en la próxima visita (gate `pendiente_importe`).
+    - Ya chequeado y sin liquidaciones → no hace nada (no vuelve a chequear).
+    """
+    cliente = db.get(models.ClienteARCA, cuit)
+    if cliente is None:
+        return None
+    if cliente.factura_agro:
+        return sincronizar_agro_si_corresponde(db, cuit, sector=sector)
+    if cliente.agro_chequeado_en is not None:
+        return None  # ya se chequeó y no es agropecuario
+    # Detección liviana. Si sincronizar_agro levanta (bloqueo/ARCA), NO marcamos la fecha → reintenta.
+    res = sincronizar_agro(db, cuit, sector=sector, marcar_flag=True, con_importe=False)
+    cliente.agro_chequeado_en = dt.datetime.now(dt.timezone.utc)
+    db.commit()
+    return res
