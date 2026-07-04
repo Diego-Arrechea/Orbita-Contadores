@@ -140,14 +140,16 @@ def liquidaciones_agro(
     sector: str = "hacienda",
     desde=None,
     hasta=None,
+    con_importe: bool = True,
     on_progress=None,
 ) -> list[dict]:
-    """Liquidaciones del agro (receptor + emisor) con su Importe Bruto. Sólo HTTP: el motor browser
-    nunca hizo el sector primario (LSP)."""
+    """Liquidaciones del agro (receptor + emisor). `con_importe=False` = sólo grilla (detección
+    liviana, sin PDFs). Sólo HTTP: el motor browser nunca hizo el sector primario (LSP)."""
     from . import motor_http
 
     return motor_http.liquidaciones_agro(
-        cuit_login, clave, cuit_cliente, sector=sector, desde=desde, hasta=hasta, on_progress=on_progress
+        cuit_login, clave, cuit_cliente, sector=sector, desde=desde, hasta=hasta,
+        con_importe=con_importe, on_progress=on_progress,
     )
 
 

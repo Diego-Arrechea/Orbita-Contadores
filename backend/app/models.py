@@ -225,6 +225,14 @@ class ClienteARCA(Base):
     factura_agro: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False
     )
+    # Cuándo el motor chequeó por ÚLTIMA vez si este cliente tiene liquidaciones del agro. NULL =
+    # nunca chequeado → en su próxima sync el worker hace la DETECCIÓN una sola vez (liviana, sólo
+    # grilla) y setea esta fecha; si no tiene, no vuelve a chequear. Los que SÍ tienen (factura_agro=
+    # True) se re-sincronizan semanalmente (ver services/agro.py::paso_worker). Reemplaza la barrida
+    # masiva (que gatillaba el rate-limit de ARCA) por detección gradual repartida en el ciclo del motor.
+    agro_chequeado_en: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class ComprobanteEmitido(Base):

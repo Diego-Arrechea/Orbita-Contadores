@@ -201,6 +201,11 @@ def _migrar_clientes_arca(conn) -> None:
         conn.execute(
             text("ALTER TABLE clientes_arca ADD COLUMN factura_agro BOOLEAN DEFAULT FALSE")
         )
+    # Cuándo se chequeó por última vez si el cliente tiene liquidaciones del agro (NULL = nunca →
+    # el motor lo detecta en su próxima sync, una sola vez). TIMESTAMP portable SQLite + Postgres.
+    if "agro_chequeado_en" not in cols:
+        tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
+        conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN agro_chequeado_en {tipo}"))
     # Meses seguidos de monotributo que adeuda hoy (Consulta de Saldos de la CCMA). INTEGER anda igual
     # en SQLite y Postgres; NULL = sin dato (no monotributista o sync sin CCMA).
     if "meses_adeudados" not in cols:
