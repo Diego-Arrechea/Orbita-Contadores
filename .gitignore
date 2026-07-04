@@ -24,3 +24,7 @@ categorias.html
 serviciosarca.html
 serviciosarca2.html
 *_files/
+
+# Spikes de exploración que NO son parte del sistema (su lógica ya vive en el motor) — quedan local
+backend/explorar_saldos_ccma.py
+backend/explorar_p08_montos.py

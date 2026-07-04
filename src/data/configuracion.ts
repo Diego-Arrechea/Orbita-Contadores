@@ -29,6 +29,11 @@ export const CONFIGURACION_INICIAL: Configuracion = {
     horaDesde: 9,
     horaHasta: 21,
   },
+  // Reporte imprimible: por defecto todas las secciones incluidas y 12 meses de historial.
+  reporte: {
+    secciones: { situacion: true, historial: true, alertas: true, movimientos: true, acciones: true },
+    mesesHistorial: 12,
+  },
 };
 // La config del contador se guarda EN LA CUENTA (backend), no en localStorage. La carga/guardado
 // vive en src/context/ConfigContext.tsx (useConfig). Acá quedan sólo los defaults.

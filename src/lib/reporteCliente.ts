@@ -33,10 +33,12 @@ export function accionesSugeridas(
   }
   if (mono && cliente.estadoCuotaMesActual === 'con-deuda') {
     const deuda = cliente.cuotaDeuda ?? 0;
+    const meses = cliente.mesesAdeudados ?? 0;
+    const arrastre = meses >= 2 ? ` — arrastra ${meses} meses seguidos` : '';
     acciones.push(
       deuda > 0
-        ? `Regularizar la cuota del mes (adeuda ${formatCurrency(deuda)}).`
-        : 'Regularizar la cuota del mes impaga.',
+        ? `Regularizar la cuota del mes (adeuda ${formatCurrency(deuda)}${arrastre}).`
+        : `Regularizar la cuota del mes impaga${arrastre}.`,
     );
   }
   if (mono && calc.ratioSuperadoLegal) {

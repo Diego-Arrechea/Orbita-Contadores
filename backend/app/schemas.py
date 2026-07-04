@@ -188,6 +188,9 @@ class ConfiguracionIn(BaseModel):
     alertas: dict | None = None
     ventanas: list[dict] | None = None
     notificaciones: NotificacionesIn | None = None
+    # Personalización del reporte imprimible (secciones on/off, meses de historial, observaciones).
+    # Dict tolerante (forma = ReporteConfig del front). Se pisa entero en cada guardado.
+    reporte: dict | None = None
     # --- Back-compat: umbrales globales VIEJOS. El front ya no los manda (usa `alertas`), pero se
     # conservan acá para que un config_json viejo sobreviva el round-trip y el front los mapee. ---
     umbralAmarilloPorcentaje: float | None = None  # noqa: N815
@@ -682,3 +685,16 @@ class InflacionEsperadaOut(BaseModel):
     interanual: float    # variación i.a. esperada (ej 0.233)
     fecha: str           # fecha del dato (ISO)
     fuente: str          # "REM"
+
+
+class CategoriaOficialOut(BaseModel):
+    """Una categoría de la escala oficial de Monotributo (tabla pública de ARCA). Mismos campos que
+    la `Categoria` del front, para pisar la tabla local con los montos vigentes."""
+    codigo: str
+    topeAnual: float
+    cuotaServicios: float
+    cuotaComercio: float
+    superficieMax: int
+    energiaMaxKwh: int
+    alquilerMaxAnual: float
+    topePrecioUnitario: float

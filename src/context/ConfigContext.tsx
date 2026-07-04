@@ -17,8 +17,9 @@ import {
 } from 'react';
 import { apiGet, apiPut } from '@/services/apiClient';
 import { CONFIGURACION_INICIAL } from '@/data/configuracion';
+import { aplicarMontosOficiales } from '@/data/categorias';
 import { ventanasRecategorizacion } from '@/lib/recategorizacion';
-import type { Configuracion, ConfigAlertas, InflacionMercado } from '@/types';
+import type { Categoria, Configuracion, ConfigAlertas, InflacionMercado } from '@/types';
 
 interface ConfigContextValue {
   config: Configuracion; // SIEMPRE presente (arranca en defaults)
@@ -73,6 +74,15 @@ function combinar(guardado: Partial<Configuracion> | null | undefined): Configur
   const nb = (x: unknown, def: boolean) => (typeof x === 'boolean' ? x : def);
   const ng = (limpio.notificaciones ?? {}) as Record<string, unknown>;
   const N = CONFIGURACION_INICIAL.notificaciones;
+
+  // Reporte imprimible: defaults + lo guardado (tolerante a configs viejas sin `reporte`).
+  const R = CONFIGURACION_INICIAL.reporte;
+  const rg = (limpio.reporte ?? {}) as Partial<Configuracion['reporte']>;
+  const reporte: Configuracion['reporte'] = {
+    secciones: { ...R.secciones, ...(rg.secciones ?? {}) },
+    mesesHistorial: num(rg.mesesHistorial, R.mesesHistorial),
+  };
+
   return {
     ...CONFIGURACION_INICIAL,
     inflacionMensualProyeccion: num(viejo.inflacionMensualProyeccion, CONFIGURACION_INICIAL.inflacionMensualProyeccion),
@@ -84,6 +94,7 @@ function combinar(guardado: Partial<Configuracion> | null | undefined): Configur
       horaDesde: num(ng.horaDesde, N.horaDesde),
       horaHasta: num(ng.horaHasta, N.horaHasta),
     },
+    reporte,
   };
 }
 
@@ -106,6 +117,17 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     apiGet<InflacionMercado | null>('/indicadores/inflacion')
       .then(dato => {
         if (vivo && dato && typeof dato.mensual === 'number') setInflacionMercado(dato);
+      })
+      .catch(() => {});
+    // Escala oficial de Monotributo vigente (tabla pública de ARCA): pisa la tabla local con los montos
+    // al día. Si la fuente no responde, quedan los valores hardcodeados (fallback). Tras aplicarla,
+    // forzamos un nuevo objeto config para que los cálculos (useMemo con dep `config`) se recomputen.
+    apiGet<Categoria[] | null>('/indicadores/categorias')
+      .then(cats => {
+        if (vivo && Array.isArray(cats) && cats.length) {
+          aplicarMontosOficiales(cats);
+          setConfig(c => ({ ...c }));
+        }
       })
       .catch(() => {});
     return () => {
