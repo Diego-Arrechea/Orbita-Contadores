@@ -308,9 +308,9 @@ export function Dashboard() {
                 <SelectValue placeholder="Monitoreo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Activos y desactivados</SelectItem>
-                <SelectItem value="activos">Sólo activos</SelectItem>
-                <SelectItem value="desactivados">Sólo desactivados</SelectItem>
+                <SelectItem value="todos">Todos</SelectItem>
+                <SelectItem value="activos">Activos</SelectItem>
+                <SelectItem value="desactivados">Desactivados</SelectItem>
               </SelectContent>
             </Select>
             <Button
