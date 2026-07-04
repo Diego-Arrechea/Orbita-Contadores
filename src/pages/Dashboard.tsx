@@ -304,13 +304,13 @@ export function Dashboard() {
               value={filtroEstadoActivo}
               onValueChange={(v) => setFiltroEstadoActivo(v as 'todos' | 'activos' | 'desactivados')}
             >
-              <SelectTrigger className="flex-1 md:w-[150px] md:flex-none bg-card">
+              <SelectTrigger className="flex-1 md:w-[185px] md:flex-none bg-card">
                 <SelectValue placeholder="Monitoreo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos</SelectItem>
-                <SelectItem value="activos">Activos</SelectItem>
-                <SelectItem value="desactivados">Desactivados</SelectItem>
+                <SelectItem value="todos">Todos los clientes</SelectItem>
+                <SelectItem value="activos">Sólo activos</SelectItem>
+                <SelectItem value="desactivados">Sólo desactivados</SelectItem>
               </SelectContent>
             </Select>
             <Button
