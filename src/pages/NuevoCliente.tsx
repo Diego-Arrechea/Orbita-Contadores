@@ -15,6 +15,7 @@ import {
   Plus,
   Settings2,
   Wheat,
+  X,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -53,6 +54,23 @@ export function NuevoCliente() {
   const [seleccionados, setSeleccionados] = useState<Set<string>>(new Set());
   const [jobId, setJobId] = useState<string | null>(null);
   const [cancelandoAlta, setCancelandoAlta] = useState(false);
+  // Globo de novedad sobre la ruedita de opciones del alta: se muestra hasta que el contador la
+  // descubre (abre la ruedita) o cierra el globo. Se recuerda en localStorage para no repetirlo.
+  const [hintOpciones, setHintOpciones] = useState(() => {
+    try {
+      return !localStorage.getItem('orbita_hint_opciones_alta');
+    } catch {
+      return false;
+    }
+  });
+  const cerrarHintOpciones = () => {
+    setHintOpciones(false);
+    try {
+      localStorage.setItem('orbita_hint_opciones_alta', '1');
+    } catch {
+      /* localStorage no disponible: igual lo ocultamos en esta sesión */
+    }
+  };
   const { cargas, registrarCarga, cancelar } = useCargas();
   // El progreso se lee del contexto global: así sigue corriendo aunque el contador navegue.
   const progreso = jobId ? cargas.find(c => c.jobId === jobId) ?? null : null;
@@ -189,7 +207,8 @@ export function NuevoCliente() {
                 mantener sus datos al día automáticamente, sin que tengas que volver a cargarlos.
               </div>
             </div>
-            {/* Ruedita: opciones del alta (representa a otro CUIT + factura agropecuario) */}
+            {/* Ruedita: opciones del alta (representa a otro CUIT + factura agropecuario) + globo de novedad */}
+            <div className="relative shrink-0 -mt-1 -mr-1 ml-auto">
             <Popover>
               <PopoverTrigger asChild>
                 <button
@@ -197,7 +216,8 @@ export function NuevoCliente() {
                   disabled={paso === 'listando'}
                   title="Opciones del alta"
                   aria-label="Opciones del alta"
-                  className="relative shrink-0 -mt-1 -mr-1 ml-auto p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-50"
+                  onClick={cerrarHintOpciones}
+                  className="relative p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-50"
                 >
                   <Settings2 className="h-[18px] w-[18px]" />
                   {(representaOtros || facturaAgro) && (
@@ -226,6 +246,27 @@ export function NuevoCliente() {
                 </div>
               </PopoverContent>
             </Popover>
+            {/* Globo de novedad: sale de la ruedita y se cierra al abrirla o al tocar la ×. */}
+            {hintOpciones && (
+              <div className="absolute right-0 top-full z-20 mt-2 w-60">
+                <div className="absolute -top-1.5 right-3.5 h-3 w-3 rotate-45 rounded-[2px] bg-primary" />
+                <div className="relative rounded-xl bg-primary px-3.5 py-3 text-primary-foreground shadow-lg">
+                  <button
+                    type="button"
+                    onClick={cerrarHintOpciones}
+                    aria-label="Entendido"
+                    className="absolute right-1.5 top-1.5 rounded-md p-0.5 text-primary-foreground/70 transition-colors hover:bg-white/15 hover:text-primary-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                  <div className="pr-4 text-xs font-semibold">Nuevo acá 👆</div>
+                  <p className="mt-0.5 text-xs leading-relaxed text-primary-foreground/90">
+                    Desde esta ruedita marcás si el cliente factura agropecuario o si representa a otro CUIT.
+                  </p>
+                </div>
+              </div>
+            )}
+            </div>
           </div>
 
           <div className="space-y-3">
