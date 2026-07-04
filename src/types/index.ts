@@ -243,6 +243,18 @@ export interface ConfigReporte {
     movimientos: boolean;  // movimientos pendientes de respaldo fiscal
     acciones: boolean;     // acciones sugeridas
   };
+  /** Cada card (métrica) de la sección "Situación de monotributo" se puede sacar/poner por separado. */
+  metricas: {
+    facturacion12m: boolean;
+    topeCategoria: boolean;
+    topeConsumido: boolean;
+    cuotaMes: boolean;
+    estadoCuota: boolean;
+    proximoVencimiento: boolean;
+    deudaCuota: boolean;
+    mesesAdeudados: boolean;
+    saldoFavor: boolean;
+  };
   /** Cuántos meses de historial mostrar (hay hasta 12 disponibles). */
   mesesHistorial: number;
 }
