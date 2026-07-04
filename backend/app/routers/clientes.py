@@ -143,6 +143,7 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
         prox_venc_fecha=c.prox_venc_fecha,
         prox_venc_importe=float(c.prox_venc_importe) if c.prox_venc_importe is not None else None,
         debito_automatico=c.debito_automatico,
+        meses_adeudados=c.meses_adeudados,
         facturacion_12m=float(c.facturacion_12m) if c.facturacion_12m is not None else None,
         tope_categoria=float(c.tope_categoria) if c.tope_categoria is not None else None,
         facturometro_actualizado=c.facturometro_actualizado,

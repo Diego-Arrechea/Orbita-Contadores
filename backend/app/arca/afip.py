@@ -2221,6 +2221,71 @@ class AFIP:
         ]
         return out
 
+    # --- CCMA: Consulta de Saldos (P05) -> meses seguidos que adeuda ---------
+    # P05 da, YA RESUELTO por ARCA, el estado por período (DEUDOR/SALDADO/ACREEDOR) y el tipo
+    # (MONOTRIBUTO/AUTONOMO). No hay que derivar obligación/pago (el ledger de P04 viene flaky).
+    # Requiere que ANTES se haya hecho el Cálculo de Deuda (P02->P04) en la MISMA sesión: sin eso
+    # P05 responde "Sesión caducada". Reabrir ccam borra ese estado, así que no se reabre acá.
+    @classmethod
+    def _parse_saldos_p05(cls, html: str) -> list[dict]:
+        """Filas de 'Consulta de Saldos' (P05): [{periodo, saldo, tipo, estado}], más nuevo primero.
+        `estado` ∈ {'DEUDOR','SALDADO','ACREEDOR'}; `saldo` en pesos (negativo = deuda)."""
+        try:
+            import lxml.html
+            doc = lxml.html.fromstring(html)
+        except Exception:  # noqa: BLE001 — sin lxml o HTML roto
+            return []
+        filas: list[dict] = []
+        for tr in doc.xpath("//tr[td]"):
+            cel = [" ".join((td.text_content() or "").split()) for td in tr.xpath("./td")]
+            if len(cel) != 4:
+                continue
+            periodo, saldo, tipo, estado = cel
+            if not re.fullmatch(r"\d{2}/\d{4}", periodo):
+                continue
+            estado = estado.upper()
+            if estado not in ("DEUDOR", "SALDADO", "ACREEDOR"):
+                continue
+            filas.append({"periodo": periodo, "saldo": cls._ccam_num(saldo),
+                          "tipo": tipo.upper(), "estado": estado})
+        # Más reciente primero (año, mes) desc, para contar la racha desde hoy hacia atrás.
+        filas.sort(key=lambda f: (int(f["periodo"][3:]), int(f["periodo"][:2])), reverse=True)
+        return filas
+
+    @staticmethod
+    def _contar_meses_deudor(filas: list[dict]) -> int:
+        """Meses de MONOTRIBUTO en estado DEUDOR SEGUIDOS desde el período más reciente. Corta en el
+        primer mes SALDADO/ACREEDOR. 0 si el más reciente no es deudor (hoy el cliente no adeuda)."""
+        racha = 0
+        for f in (x for x in filas if x["tipo"] == "MONOTRIBUTO"):  # sólo deudas de monotributo
+            if f["estado"] == "DEUDOR":
+                racha += 1
+            else:
+                break
+        return racha
+
+    def saldos_ccma(self, *, asegurar_calculo: bool = True) -> list[dict]:
+        """Tabla 'Consulta de Saldos' (P05) de la CCMA (estado por período). `asegurar_calculo`
+        dispara antes el Cálculo de Deuda (P02->P04) que P05 requiere; pasá False si ya lo hiciste
+        en esta sesión (así es +1 request, no +4). Levanta AFIPError si la sesión caducó."""
+        if asegurar_calculo:
+            self.calcular_deuda()
+        r = self.session.post(
+            f"{CCAM_BASE}/P05_ctacte.asp",
+            data="",
+            headers={"Content-Type": "application/x-www-form-urlencoded",
+                     "Referer": f"{CCAM_BASE}/P08_ctacte.asp"},
+        )
+        r.raise_for_status()
+        if "caducada" in r.text.lower():
+            raise AFIPError("CCMA: Consulta de Saldos (P05) sin resultado (sesión caducada).")
+        return self._parse_saldos_p05(r.text)
+
+    def meses_adeudados(self, *, asegurar_calculo: bool = True) -> int:
+        """Cuántos meses SEGUIDOS de monotributo adeuda el cliente hoy (de la Consulta de Saldos P05).
+        0 si hoy no adeuda. Ver saldos_ccma() para el costo/estado de sesión."""
+        return self._contar_meses_deudor(self.saldos_ccma(asegurar_calculo=asegurar_calculo))
+
     # --- Domicilio Fiscal Electrónico / e-ventanilla (notificaciones) -------
     # Servicio e-ventanilla en ve.cloud.afip.gob.ar (API REST JSON).
     #   GET /api/v1/communications?cuit=&fechaPublicacionSince=&fechaPublicacionTo=

@@ -20,6 +20,7 @@ const TIPO_LABEL: Record<TipoAlerta, string> = {
   ventana: 'Ventana',
   exclusion: 'Exclusión',
   cuota: 'Cuota',
+  meses_adeudados: 'Meses adeudados',
   sync: 'Sincronización',
 };
 

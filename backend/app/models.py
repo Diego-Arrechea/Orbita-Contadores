@@ -148,6 +148,9 @@ class ClienteARCA(Base):
     prox_venc_fecha: Mapped[str | None] = mapped_column(String(20), nullable=True)
     prox_venc_importe: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
     debito_automatico: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Cuántos meses SEGUIDOS de monotributo adeuda hoy (de la Consulta de Saldos de la CCMA). 0 = al
+    # día; None = no se sabe / no aplica (no monotributista). Alimenta la alerta de deuda por meses.
+    meses_adeudados: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # ¿El cliente tiene relación de dependencia (trabajo en blanco)? Dato relevante para el contador:
     # parte de las compras a "consumidor final" pueden quedar justificadas por el haber percibido.
     # Esta columna guarda el valor DETECTADO automáticamente (de momento sin completar por la sync;
@@ -330,7 +333,7 @@ class AlertaEnviada(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     usuario_id: Mapped[int] = mapped_column(Integer, ForeignKey("usuarios.id"), index=True)
     cuit: Mapped[str] = mapped_column(String(11), index=True)
-    tipo: Mapped[str] = mapped_column(String(20))  # tope | recategorizacion | ventana | exclusion | cuota | vencimiento | sync
+    tipo: Mapped[str] = mapped_column(String(20))  # tope | recategorizacion | ventana | exclusion | cuota | vencimiento | sync | meses_adeudados
     # Severidad con la que se avisó (urgente | aviso | datos). Forma parte de la clave: si una alerta
     # escala (aviso → urgente) cuenta como nueva y se vuelve a avisar.
     severidad: Mapped[str] = mapped_column(String(10), default="urgente", server_default="urgente")

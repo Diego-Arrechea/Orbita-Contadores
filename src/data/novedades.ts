@@ -42,6 +42,25 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-04-meses-adeudados',
+    fecha: '2026-07-04',
+    titulo: 'Cuántos meses seguidos adeuda cada cliente',
+    resumen:
+      'En la ficha del cliente, junto a la cuota del mes, ahora ves cuántos meses seguidos acumula de deuda, y podés recibir una alerta cuando pasa cierto límite.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Si un cliente tiene la cuota con deuda, al lado te mostramos de cuántos meses seguidos es esa deuda. Así distinguís de un vistazo al que se atrasó un mes del que viene arrastrando la cuota desde hace tiempo.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Es también un nuevo tipo de alerta: te avisamos cuando un cliente supera cierta cantidad de meses seguidos adeudando. Viene configurada en 8 meses por defecto, pero podés cambiar ese número (y cada cuántos meses más querés que te recordemos) desde Configuración › Alertas.',
+      },
+    ],
+  },
+  {
     id: '2026-07-03-aviso-clave-fiscal-a-revisar',
     fecha: '2026-07-03',
     titulo: 'Te avisamos cuando la clave fiscal de un cliente hay que revisarla',
