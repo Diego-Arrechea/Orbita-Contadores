@@ -120,9 +120,9 @@ export function derivarAlertas(
     add('aviso', 'exclusion', 'Gastos altos', `Sus compras son el ${formatPercent(calc.ratioGastosTopeCatK, 0)} del tope K.`);
   }
 
-  // Cuota del mes impaga. Una deuda chica (resto de intereses/redondeo) NO es urgente: sólo lo es si
-  // supera cierta fracción de la cuota del mes (umbralDeudaCuotaUrgente). Por debajo, va como aviso.
-  // Sin el importe de la cuota no podemos juzgar la proporción → la tratamos como urgente (conservador).
+  // Cuota del mes impaga. Siempre AVISO (amarillo): deber la cuota del mes —o un monto— es un
+  // heads-up, no una urgencia. El ROJO (acción urgente) por deuda lo da SÓLO cruzar los X meses
+  // seguidos (alerta meses_adeudados, abajo), no el monto adeudado.
   if (cliente.estadoCuotaMesActual === 'con-deuda') {
     const deuda = cliente.cuotaDeuda ?? 0;
     const cuotaMes = cliente.proxVencImporte ?? 0;
@@ -136,7 +136,7 @@ export function derivarAlertas(
       );
     } else {
       add(
-        'urgente',
+        'aviso',
         'cuota',
         'Cuota del mes impaga',
         deuda ? `Adeuda ${formatCurrency(deuda)}.` : 'Tiene la cuota del mes con deuda.',

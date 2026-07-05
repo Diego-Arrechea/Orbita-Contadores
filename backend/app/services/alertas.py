@@ -197,7 +197,9 @@ def derivar_alertas(cliente, calc: monotributo.CalculoCliente, a: dict, hoy: dt.
     elif ratio >= a["exclusion"]["avisarRatioPct"]:
         add("aviso", "exclusion", f"gastos altos ({_pct(ratio)} del tope K)", ratio)
 
-    # Cuota impaga.
+    # Cuota impaga. Siempre AVISO (amarillo): deber la cuota del mes —o un monto— es un heads-up, no
+    # una urgencia. El ROJO (acción urgente) por deuda lo da SÓLO cruzar los X meses seguidos
+    # (alerta meses_adeudados), no el monto adeudado.
     if cliente.cuota_estado == "con-deuda":
         deuda = float(cliente.cuota_deuda) if cliente.cuota_deuda is not None else 0.0
         cuota_mes = float(cliente.prox_venc_importe) if cliente.prox_venc_importe is not None else 0.0
@@ -206,7 +208,7 @@ def derivar_alertas(cliente, calc: monotributo.CalculoCliente, a: dict, hoy: dt.
         if es_chica:
             add("aviso", "cuota", f"saldo pendiente en la cuota ({_money(deuda)}, {_pct(ratio_cuota)} de la cuota del mes)", ratio_cuota)
         else:
-            add("urgente", "cuota", f"cuota del mes impaga{f' (debe {_money(deuda)})' if deuda else ''}", ratio_cuota)
+            add("aviso", "cuota", f"cuota del mes impaga{f' (debe {_money(deuda)})' if deuda else ''}", ratio_cuota)
 
     # Deuda de varios meses seguidos (de la Consulta de Saldos de la CCMA). `valor` = cantidad de
     # meses, para el re-aviso cuando la racha crece (ver _reaviso_step con reavisarSubidaMeses).
