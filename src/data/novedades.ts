@@ -42,6 +42,25 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-06-aviso-claves-a-actualizar',
+    fecha: '2026-07-06',
+    titulo: 'Aviso al entrar: clientes con la Clave Fiscal a actualizar',
+    resumen:
+      'Ni bien abrís tu cartera ves, en un aviso destacado, cuántos clientes necesitan que actualices su Clave Fiscal.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Arriba de tu cartera aparece un aviso con la cantidad de clientes cuya Clave Fiscal hay que actualizar. Tocándolo, la lista se filtra para mostrarte sólo esos clientes; volvés a tocarlo para ver todos otra vez.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Mientras un cliente tenga la Clave Fiscal pendiente de actualizar, su información deja de intentar ponerse al día hasta que cargues la clave correcta desde su ficha. Así el aviso siempre refleja lo que hay que resolver.',
+      },
+    ],
+  },
+  {
     id: '2026-07-04-activar-desactivar-cliente',
     fecha: '2026-07-04',
     titulo: 'Activá o desactivá el monitoreo de un cliente',

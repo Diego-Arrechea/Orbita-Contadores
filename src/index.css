@@ -103,6 +103,21 @@
   }
 }
 
+/* Latido (pulso tipo corazón) para llamar la atención sobre un aviso importante sin ser molesto. */
+@keyframes latido {
+  0%, 55%, 100% { transform: scale(1); }
+  15% { transform: scale(1.28); }
+  30% { transform: scale(1); }
+  42% { transform: scale(1.18); }
+}
+.animar-latido {
+  animation: latido 1.8s ease-in-out infinite;
+  transform-origin: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animar-latido { animation: none; }
+}
+
 .borde-cargando {
   position: absolute;
   inset: 0;

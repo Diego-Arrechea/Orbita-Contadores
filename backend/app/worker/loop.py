@@ -89,6 +89,13 @@ def _clientes_vencidos(db, limite: dt.datetime, limite_fallidos: dt.datetime):
         .outerjoin(fallos, fallos.c.cuit == ClienteARCA.cuit)
         .where(
             ClienteARCA.activo.is_(True),  # los desactivados por el contador quedan fuera del ciclo
+            # Si la clave fiscal no sirve (mal cargada / el cliente la cambió) o AFIP fuerza cambiarla,
+            # NO tiene sentido reintentar: cada login vuelve a fallar igual. Sale del ciclo hasta que el
+            # contador cargue la clave correcta desde la ficha (PUT /clientes/{cuit}/clave apaga ambos
+            # flags y el cliente vuelve a entrar al ciclo). Evita martillar un fallo que solo el contador
+            # puede resolver (p. ej. Blanco Omar José reintentando en vano).
+            ClienteARCA.clave_invalida.is_(False),
+            ClienteARCA.clave_requiere_cambio.is_(False),
             or_(
                 ult.c.fecha.is_(None),                                            # nunca sincronizado
                 ult.c.fecha < limite,                                             # vencido normal

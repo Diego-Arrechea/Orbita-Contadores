@@ -88,6 +88,9 @@ export function Dashboard() {
   const [filtroEstadoActivo, setFiltroEstadoActivo] = useState<'todos' | 'activos' | 'desactivados'>('todos');
   // Filtro "deudores crónicos": sólo clientes que arrastran deuda de al menos `umbralCronico` meses.
   const [soloCronicos, setSoloCronicos] = useState(false);
+  // Filtro "claves a revisar": sólo clientes cuya Clave Fiscal hay que actualizar (mal cargada, el
+  // cliente la cambió, o AFIP le pide cambiarla). Lo activa el banner de arriba.
+  const [soloClaves, setSoloClaves] = useState(false);
   // Orden por defecto: alfabético por nombre del cliente (A→Z).
   const [ordenarPor, setOrdenarPor] = useState<ColumnaOrden>('nombre');
   const [sentido, setSentido] = useState<Sentido>('asc');
@@ -135,6 +138,7 @@ export function Dashboard() {
         if (filtroEstadoActivo === 'activos' && !activo) return false;
         if (filtroEstadoActivo === 'desactivados' && activo) return false;
         if (soloCronicos && (cliente.mesesAdeudados ?? 0) < umbralCronico) return false;
+        if (soloClaves && !(cliente.claveInvalida || cliente.claveRequiereCambio)) return false;
         if (busqueda) {
           const q = busqueda.toLowerCase();
           const digitos = busqueda.replace(/\D/g, '');
@@ -159,7 +163,7 @@ export function Dashboard() {
         }
         return factor * (va - vb);
       });
-  }, [clientesConCalculo, busqueda, filtroAlerta, filtroActividad, filtroEstadoActivo, soloCronicos, umbralCronico, ordenarPor, sentido]);
+  }, [clientesConCalculo, busqueda, filtroAlerta, filtroActividad, filtroEstadoActivo, soloCronicos, soloClaves, umbralCronico, ordenarPor, sentido]);
 
   // Clientes que se están cargando ahora mismo (alta = trayendo sus comprobantes). Cada uno se
   // muestra como una fila propia con borde animado + progreso, y se OCULTA su fila normal mientras
@@ -199,6 +203,17 @@ export function Dashboard() {
     [clientesConCalculo, umbralCronico],
   );
 
+  // Clientes cuya Clave Fiscal hay que actualizar (mal cargada, cambiada por el cliente, o AFIP la
+  // fuerza). Sólo cuentan los que están bajo monitoreo: en los desactivados el aviso no aplica.
+  const clavesARevisar = useMemo(
+    () =>
+      clientesConCalculo.filter(
+        ({ cliente }) =>
+          cliente.activo !== false && (cliente.claveInvalida || cliente.claveRequiereCambio),
+      ).length,
+    [clientesConCalculo],
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -216,6 +231,44 @@ export function Dashboard() {
           </Button>
         </div>
       </div>
+
+      {/* Aviso global de claves a actualizar: el contador lo ve apenas entra, con el ícono latiendo.
+          Al tocarlo, la lista se filtra para mostrar sólo esos clientes (y se apaga tocándolo de
+          nuevo). Desaparece solo cuando no queda ninguno. */}
+      {clavesARevisar > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            setFiltroAlerta('todos');
+            setSoloCronicos(false);
+            setSoloClaves(v => !v);
+          }}
+          aria-pressed={soloClaves}
+          className={`group flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
+            soloClaves
+              ? 'border-danger bg-danger/15'
+              : 'border-danger/40 bg-danger/10 hover:bg-danger/15'
+          }`}
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-danger/15 text-danger">
+            <KeyRound className="h-4 w-4 animar-latido" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-danger">
+              {clavesARevisar}{' '}
+              {clavesARevisar === 1
+                ? 'cliente necesita que actualices su Clave Fiscal'
+                : 'clientes necesitan que actualices su Clave Fiscal'}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              {soloClaves
+                ? 'Mostrando sólo estos clientes · tocá para ver todos'
+                : 'Hasta que la actualices, su información no se pone al día. Tocá para verlos.'}
+            </div>
+          </div>
+          <ChevronRight className="h-5 w-5 shrink-0 text-danger transition-transform group-hover:translate-x-0.5" />
+        </button>
+      )}
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
         <ResumenCard
