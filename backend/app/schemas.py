@@ -224,6 +224,7 @@ class EdicionClienteIn(BaseModel):
     estadoCuotaMesActual: str | None = None  # noqa: N815 — al-dia | con-deuda
     notas: str | None = None
     relacionDependencia: bool | None = None  # noqa: N815 — el contador marca si tiene trabajo en blanco
+    facturaAgro: bool | None = None  # noqa: N815 — el contador marca/desmarca la facturación agropecuaria
 
 
 class EstadoClienteIn(BaseModel):

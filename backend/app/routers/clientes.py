@@ -217,8 +217,18 @@ def editar_cliente(
     campos que vinieron; el resto del override —y el dato crudo de ARCA— queda intacto. El override
     se re-aplica en listar_clientes (gana sobre ARCA)."""
     cliente = _cliente_propio(db, cuit, usuario)
+    payload = datos.model_dump(exclude_none=True)
+    # `factura_agro` es una columna real que lee el motor (no un override en edicion_json), así que
+    # la seteamos aparte. Encenderla: el mantenimiento del motor le baja las liquidaciones en la
+    # próxima pasada. Apagarla a mano: además marcamos `agro_chequeado_en` para que la detección
+    # automática no la vuelva a prender (respetamos la decisión del contador).
+    factura_agro = payload.pop("facturaAgro", None)
+    if factura_agro is not None:
+        cliente.factura_agro = bool(factura_agro)
+        if not factura_agro and cliente.agro_chequeado_en is None:
+            cliente.agro_chequeado_en = dt.datetime.now(dt.timezone.utc)
     actual: dict = json.loads(cliente.edicion_json) if cliente.edicion_json else {}
-    actual.update(datos.model_dump(exclude_none=True))
+    actual.update(payload)
     cliente.edicion_json = json.dumps(actual, ensure_ascii=False)
     db.add(cliente)
     db.commit()

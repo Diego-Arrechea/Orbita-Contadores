@@ -42,6 +42,19 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-07-facturacion-agropecuaria-editar',
+    fecha: '2026-07-07',
+    titulo: 'Marcá la facturación agropecuaria desde la ficha del cliente',
+    resumen: 'Ahora podés activarla en un cliente ya cargado, sin tener que darlo de alta de nuevo.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En "Editar cliente" sumamos la opción de facturación agropecuaria: activala en los clientes que venden hacienda u otra producción del agro y su facturación del sector se suma a la del cliente.',
+      },
+    ],
+  },
+  {
     id: '2026-07-06-aviso-claves-a-actualizar',
     fecha: '2026-07-06',
     titulo: 'Aviso al entrar: clientes con la Clave Fiscal a actualizar',
