@@ -230,6 +230,23 @@ _RE_JWT = re.compile(r'name="jwt"\s+value="([^"]*)"', re.IGNORECASE)
 _RE_ASPNET_VS = re.compile(
     r'name="__VIEWSTATE"\s+value="([^"]*)"', re.IGNORECASE
 )
+_RE_SCRIPT_STYLE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
+_RE_TAG = re.compile(r"<[^>]+>")
+_RE_WS = re.compile(r"\s+")
+
+
+def _pista_pantalla(html: str, limite: int = 160) -> str:
+    """Resumen legible de una pantalla inesperada de ARCA (título + texto visible), para diagnóstico.
+    Saca scripts/estilos/tags y colapsa espacios. Se usa en el motivo del fallo y en el log, así ante
+    una respuesta desconocida queda registrado QUÉ devolvió ARCA (para saber cómo proceder)."""
+    mt = re.search(r"<title[^>]*>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    titulo = _RE_WS.sub(" ", mt.group(1)).strip() if mt else ""
+    cuerpo = _RE_SCRIPT_STYLE.sub(" ", html)
+    cuerpo = _RE_WS.sub(" ", _RE_TAG.sub(" ", cuerpo)).strip()
+    if titulo and titulo in cuerpo:
+        cuerpo = cuerpo.replace(titulo, "", 1).strip()
+    texto = (f"{titulo} — {cuerpo}" if titulo else cuerpo).strip()
+    return texto[:limite].strip() or "sin contenido legible"
 
 
 class AFIPError(Exception):
@@ -251,10 +268,19 @@ class ClaveInvalidaError(AFIPError):
     propia para que el caller marque el cliente y avise al contador."""
 
 
+class LoginDesafiadoError(AFIPError):
+    """ARCA le pidió a la cuenta una verificación de seguridad adicional (captcha) al ingresar: el
+    POST de la clave vuelve a la pantalla de clave con el captcha visible ("El captcha ingresado es
+    incorrecto"). Se dispara tras varios accesos seguidos (motor de riesgo anti-automatización de
+    ARCA) y NO se puede resolver automáticamente ni sabemos si la clave es correcta. Subclase propia
+    para NO marcar la clave como inválida (podría estar bien) y avisar al contador con un motivo claro."""
+
+
 class LoginSinJWTError(AFIPError):
     """El login envió la clave pero ARCA no devolvió el JWT (ni la pantalla de clave, ni la de cambio
-    forzado): respuesta inesperada (WAF/captcha/pantalla intermedia). Puede ser transitorio, así que
-    el caller sólo marca la clave a revisar si esto se repite varias veces seguidas."""
+    forzado, ni el captcha): respuesta inesperada (WAF/pantalla intermedia). Puede ser transitorio, así
+    que el caller sólo marca la clave a revisar si esto se repite varias veces seguidas. El mensaje
+    incluye una pista de lo que ARCA devolvió (para diagnosticar cómo proceder)."""
 
 
 class AFIP:
@@ -398,17 +424,41 @@ class AFIP:
 
         m = _RE_JWT.search(r.text)
         if not m:
+            low = r.text.lower()
             # ARCA fuerza el cambio de clave (campaña de seguridad): responde la pantalla
             # cambioClaveForzado.xhtml ("Por medidas de seguridad tenés que cambiar tu contraseña").
             # No se recupera reintentando: el cliente tiene que cambiar la clave en ARCA.
-            if "cambioClaveForzado" in r.text or "cambiar tu contrase" in r.text:
+            if "cambioclaveforzado" in low or "cambiar tu contrase" in low:
                 raise ClaveVencidaError(
                     "ARCA le pide al cliente cambiar su Clave Fiscal (por seguridad) antes de continuar."
                 )
-            # Si vuelve a aparecer el form de clave, la contraseña es incorrecta.
-            if "F1:password" in r.text:
+            # ARCA pide un captcha (desafío de seguridad tras varios accesos seguidos). El POST manda
+            # el captcha vacío, así que vuelve la pantalla con "El captcha ingresado es incorrecto".
+            # OJO: este chequeo va ANTES del de F1:password, porque la pantalla del captcha también
+            # trae el form de clave (si no, se confundiría con "clave incorrecta").
+            if (
+                "captcha ingresado es incorrecto" in low
+                or "captcha es incorrecto" in low
+                or "resolvé el captcha" in low
+                or "código de seguridad" in low
+            ):
+                raise LoginDesafiadoError(
+                    "No se pudo validar el acceso a los datos de este cliente: ARCA está aplicando "
+                    "una verificación de seguridad adicional en esta cuenta (suele ocurrir tras "
+                    "varios accesos seguidos). Reintentá más tarde; si continúa, confirmá que la "
+                    "Clave Fiscal del cliente sea correcta y esté vigente."
+                )
+            # Si vuelve a aparecer el form de clave (sin captcha), la contraseña es incorrecta.
+            if "f1:password" in low:
                 raise ClaveInvalidaError("Clave incorrecta o login rechazado.")
-            raise LoginSinJWTError("No se encontró el JWT tras enviar la clave.")
+            # Pantalla desconocida: dejamos rastro de lo que ARCA devolvió (título + texto visible) en
+            # el log y en el mensaje, para saber cómo proceder la próxima vez.
+            pista = _pista_pantalla(r.text)
+            self.log.warning("Login sin JWT — pantalla inesperada de ARCA: %s", pista)
+            raise LoginSinJWTError(
+                "No se pudo acceder a los datos de este cliente: ARCA devolvió una respuesta "
+                f"inesperada al validar la Clave Fiscal ({pista})."
+            )
         return m.group(1)
 
     def _paso4_post_jwt(self, jwt: str) -> None:

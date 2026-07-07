@@ -17,7 +17,12 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..arca import motor
-from ..arca.afip import ClaveInvalidaError, ClaveVencidaError, LoginSinJWTError
+from ..arca.afip import (
+    ClaveInvalidaError,
+    ClaveVencidaError,
+    LoginDesafiadoError,
+    LoginSinJWTError,
+)
 from ..config import settings
 from ..crypto import descifrar
 from ..scraping import miscomprobantes  # sólo helpers motor-agnósticos: ventanas() + PLAN_*
@@ -259,8 +264,16 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
         db.commit()
         _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
         raise
+    except LoginDesafiadoError as e:
+        # ARCA pide una verificación de seguridad (captcha) para esta cuenta: no lo resolvemos y NO
+        # sabemos si la clave está bien, así que NO marcamos clave_invalida (sería un aviso engañoso).
+        # Registramos el fallo con el motivo claro; el circuit breaker del motor lo saca del reintento
+        # rápido tras unos fallos y el aviso queda en la bitácora para que el contador sepa qué pasó.
+        db.rollback()
+        _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
+        raise
     except LoginSinJWTError as e:
-        # El login no devolvió el JWT: puede ser un hipo puntual de ARCA (WAF/captcha/pantalla rara).
+        # El login no devolvió el JWT: puede ser un hipo puntual de ARCA (WAF/pantalla rara).
         # Registramos el fallo y SÓLO marcamos la clave a revisar si viene fallando así 2 veces seguidas
         # (evita marcar clientes sanos por una caída momentánea).
         db.rollback()
