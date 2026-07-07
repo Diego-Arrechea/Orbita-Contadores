@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { CheckCircle2, Circle, Wheat } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -206,24 +207,28 @@ export function EditarClienteDialog({
             </p>
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Facturación agropecuaria</Label>
-            <Select
-              value={facturaAgro ? 'si' : 'no'}
-              onValueChange={v => setFacturaAgro(v === 'si')}
+          <div className="rounded-lg border border-border/60 p-3">
+            <button
+              type="button"
+              onClick={() => setFacturaAgro(v => !v)}
+              className="flex items-start gap-2.5 text-left w-full"
             >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="no">No factura por el sector agropecuario</SelectItem>
-                <SelectItem value="si">Sí, factura por el sector agropecuario</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Activalo si el cliente vende hacienda u otra producción del agro: su facturación del
-              sector se suma a la del cliente. Se actualiza sola.
-            </p>
+              {facturaAgro ? (
+                <CheckCircle2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+              ) : (
+                <Circle className="h-5 w-5 text-muted-foreground/40 shrink-0 mt-0.5" />
+              )}
+              <span className="min-w-0">
+                <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                  <Wheat className="h-3.5 w-3.5 text-primary" />
+                  Es del sector agropecuario
+                </span>
+                <span className="block text-xs text-muted-foreground leading-relaxed mt-0.5">
+                  Productor del agro (hacienda, campo, etc.): sumamos su facturación del sector a la
+                  del cliente. Se actualiza sola.
+                </span>
+              </span>
+            </button>
           </div>
 
           <div className="space-y-1.5">
