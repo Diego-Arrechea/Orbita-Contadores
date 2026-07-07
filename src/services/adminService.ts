@@ -98,6 +98,31 @@ export function obtenerMetricas(): Promise<AdminMetricas> {
   return apiGet<AdminMetricas>('/admin/metricas');
 }
 
+export interface AdminCaptchaPorCuit {
+  cuit: string;
+  nombre?: string | null;
+  eventos: number;
+  resueltos: number;
+  ultima?: string | null;
+}
+
+export interface AdminCaptchaMetricas {
+  total_eventos: number; // veces que apareció el captcha (en general)
+  cuentas_distintas: number; // en cuántas cuentas distintas apareció
+  total_clientes: number;
+  pct_cuentas_afectadas: number;
+  eventos_resueltos: number;
+  eventos_no_resueltos: number;
+  dias_ventana: number;
+  eventos_en_ventana: number;
+  cuentas_en_ventana: number;
+  por_cuit: AdminCaptchaPorCuit[];
+}
+
+export function obtenerMetricasCaptcha(): Promise<AdminCaptchaMetricas> {
+  return apiGet<AdminCaptchaMetricas>('/admin/metricas/captcha');
+}
+
 export function editarUsuario(
   id: number,
   cambios: { activo?: boolean; rol?: string }
