@@ -50,7 +50,12 @@ export const NOVEDADES: Novedad[] = [
       {
         tipo: 'nuevo',
         texto:
-          'En "Editar cliente" sumamos la opción de facturación agropecuaria: activala en los clientes que venden hacienda u otra producción del agro y su facturación del sector se suma a la del cliente.',
+          'En "Editar cliente" sumamos la opción de facturación agropecuaria: activala en los clientes del sector (hacienda, campo, etc.) y su facturación del sector se suma a la del cliente.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'En la lista de clientes ahora aparece un ícono junto al nombre de los que son del sector agropecuario, para identificarlos de un vistazo.',
       },
     ],
   },

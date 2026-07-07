@@ -17,6 +17,7 @@ import {
   Loader2,
   KeyRound,
   CalendarClock,
+  Wheat,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -417,7 +418,17 @@ export function Dashboard() {
                   >
                     <SemaforoDot estado={estado} />
                     <div>
-                      <div className="font-medium leading-tight">{cliente.nombre}</div>
+                      <div className="font-medium leading-tight flex items-center gap-1.5">
+                        {cliente.nombre}
+                        {cliente.facturaAgro && (
+                          <Wheat
+                            className="h-3.5 w-3.5 shrink-0 text-emerald-600"
+                            aria-label="Factura agropecuario"
+                          >
+                            <title>Factura agropecuario</title>
+                          </Wheat>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground tabular-nums">
                         {formatCuit(cliente.cuit)}
                       </div>
@@ -570,7 +581,17 @@ export function Dashboard() {
                   <div className="flex min-w-0 items-center gap-3">
                     <SemaforoDot estado={estado} />
                     <div className="min-w-0">
-                      <div className="font-medium leading-tight truncate">{cliente.nombre}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium leading-tight truncate">{cliente.nombre}</span>
+                        {cliente.facturaAgro && (
+                          <Wheat
+                            className="h-3.5 w-3.5 shrink-0 text-emerald-600"
+                            aria-label="Factura agropecuario"
+                          >
+                            <title>Factura agropecuario</title>
+                          </Wheat>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground tabular-nums">
                         {formatCuit(cliente.cuit)}
                       </div>
