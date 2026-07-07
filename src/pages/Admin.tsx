@@ -36,6 +36,7 @@ import {
   ArrowDown,
   ArrowUpDown,
   MessageCircle,
+  ShieldAlert,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -70,6 +71,7 @@ import {
 import {
   listarUsuarios,
   obtenerMetricas,
+  obtenerMetricasCaptcha,
   editarUsuario,
   impersonar,
   listarAuditoria,
@@ -1200,8 +1202,78 @@ function TabMetricas() {
         />
       </div>
 
+      <SeccionCaptcha />
       <SyncsFallidas fallidas={fallidas} />
       <AvisosNombre avisos={avisosNombre} />
+    </div>
+  );
+}
+
+// Métrica del captcha en el acceso a ARCA: en cuántas cuentas distintas aparece y con qué frecuencia,
+// para ver si es algo puntual o generalizado. Se llena solo cuando un acceso topa con el desafío.
+function SeccionCaptcha() {
+  const { data: c } = useQuery({
+    queryKey: ['admin', 'metricas-captcha'],
+    queryFn: obtenerMetricasCaptcha,
+    staleTime: 10_000,
+  });
+  if (!c) return null;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <ShieldAlert className="h-4 w-4 text-muted-foreground" />
+        <h3 className="text-sm font-semibold">Verificación de seguridad en el acceso (captcha)</h3>
+      </div>
+      {c.total_eventos === 0 ? (
+        <Card className="p-5 text-sm text-muted-foreground">
+          Todavía no se registró ninguna verificación de seguridad en el acceso a datos de clientes.
+        </Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricaCard
+              icon={ShieldAlert}
+              label="Cuentas afectadas"
+              valor={c.cuentas_distintas}
+              hint={`de ${c.total_clientes} (${c.pct_cuentas_afectadas}%)`}
+            />
+            <MetricaCard icon={Activity} label="Veces en total" valor={c.total_eventos} />
+            <MetricaCard
+              icon={CheckCircle2}
+              label="Resueltas solas"
+              valor={c.eventos_resueltos}
+              hint={c.eventos_no_resueltos > 0 ? `${c.eventos_no_resueltos} sin resolver` : 'todas'}
+            />
+            <MetricaCard
+              icon={Clock}
+              label={`Últimos ${c.dias_ventana} días`}
+              valor={c.eventos_en_ventana}
+              hint={`${c.cuentas_en_ventana} cuentas`}
+            />
+          </div>
+          {c.por_cuit.length > 0 && (
+            <Card className="divide-y divide-border/60 overflow-hidden">
+              {c.por_cuit.map(r => (
+                <div
+                  key={r.cuit}
+                  className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm"
+                >
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{r.nombre || 'Sin nombre'}</div>
+                    <div className="text-xs text-muted-foreground tabular-nums">{r.cuit}</div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-4 text-xs">
+                    <span>
+                      <span className="font-semibold text-foreground tabular-nums">{r.eventos}</span> veces
+                    </span>
+                    <span className="text-muted-foreground tabular-nums">{r.resueltos} resueltas</span>
+                  </div>
+                </div>
+              ))}
+            </Card>
+          )}
+        </>
+      )}
     </div>
   );
 }
