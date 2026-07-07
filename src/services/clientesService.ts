@@ -181,6 +181,7 @@ export type CamposEdicion = Partial<
     | 'estadoCuotaMesActual'
     | 'notas'
     | 'relacionDependencia'
+    | 'facturaAgro'
   >
 >;
 

@@ -55,6 +55,7 @@ export function EditarClienteDialog({
   );
   const [notas, setNotas] = useState(cliente.notas ?? '');
   const [relacionDependencia, setRelacionDependencia] = useState(cliente.relacionDependencia);
+  const [facturaAgro, setFacturaAgro] = useState(cliente.facturaAgro ?? false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
 
@@ -70,6 +71,7 @@ export function EditarClienteDialog({
       estadoCuotaMesActual: estadoCuota,
       notas,
       relacionDependencia,
+      facturaAgro,
     };
     // Los clientes de ejemplo no se persisten en la cuenta (no existen en el backend).
     if (!esReal) {
@@ -201,6 +203,26 @@ export function EditarClienteDialog({
             <p className="text-xs text-muted-foreground">
               Si además trabaja en relación de dependencia, parte de sus compras pueden quedar
               justificadas por el sueldo percibido.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Facturación agropecuaria</Label>
+            <Select
+              value={facturaAgro ? 'si' : 'no'}
+              onValueChange={v => setFacturaAgro(v === 'si')}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="no">No factura por el sector agropecuario</SelectItem>
+                <SelectItem value="si">Sí, factura por el sector agropecuario</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Activalo si el cliente vende hacienda u otra producción del agro: su facturación del
+              sector se suma a la del cliente. Se actualiza sola.
             </p>
           </div>
 
