@@ -90,6 +90,8 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.ssl_ import create_urllib3_context
 
+from ..config import settings
+
 
 class _LegacyTLSAdapter(HTTPAdapter):
     """Adapter TLS para servidores AFIP viejos (servicios2) con DH key de 512 bits.
@@ -115,6 +117,8 @@ class _LegacyTLSAdapter(HTTPAdapter):
 BASE_AUTH = "https://auth.afip.gob.ar"
 URL_LOGIN = f"{BASE_AUTH}/contribuyente_/login.xhtml"
 URL_LOGIN_CLAVE = f"{BASE_AUTH}/contribuyente_/loginClave.xhtml"
+# Endpoint al que se postea la clave cuando ARCA exige captcha (distinto de loginClave.xhtml).
+URL_LOGIN_CAPTCHA = f"{BASE_AUTH}/contribuyente_/loginCaptchaAfip.xhtml"
 URL_PORTAL_LOGIN = "https://portalcf.cloud.afip.gob.ar/portal/login"
 URL_PORTAL_APP = "https://portalcf.cloud.afip.gob.ar/portal/app/"
 URL_PORTAL_API_BASE = "https://portalcf.cloud.afip.gob.ar/portal/api"
@@ -247,6 +251,45 @@ def _pista_pantalla(html: str, limite: int = 160) -> str:
         cuerpo = cuerpo.replace(titulo, "", 1).strip()
     texto = (f"{titulo} — {cuerpo}" if titulo else cuerpo).strip()
     return texto[:limite].strip() or "sin contenido legible"
+
+
+# La imagen del captcha de ARCA viaja EMBEBIDA como data-URI base64 en la pantalla de clave, dentro
+# de <div id="captcha">…<img src="data:image/jpeg;base64,…">. NO es una request aparte.
+_RE_CAPTCHA_IMG = re.compile(
+    r'<div id="captcha"[^>]*>.*?<img[^>]+src="data:image/[^;]+;base64,\s*([^"]+)"', re.S | re.I
+)
+
+
+def _extraer_captcha(html: str) -> str | None:
+    """Base64 de la imagen del captcha si la pantalla lo trae, o None si no hay captcha."""
+    m = _RE_CAPTCHA_IMG.search(html)
+    return m.group(1).strip() if m else None
+
+
+def _resolver_captcha(imagen_b64: str) -> str | None:
+    """Resuelve el captcha de imagen con CapSolver (ImageToTextTask, respuesta sincrónica). Devuelve
+    el texto, o None si no hay key configurada o CapSolver falla (el caller decide cómo seguir)."""
+    if not settings.capsolver_key:
+        return None
+    log = logging.getLogger("afip.captcha")
+    try:
+        r = requests.post(
+            settings.capsolver_url,
+            json={
+                "clientKey": settings.capsolver_key,
+                "task": {"type": "ImageToTextTask", "body": imagen_b64, "module": "common"},
+            },
+            timeout=40,
+        )
+        j = r.json()
+        if j.get("errorId") == 0:
+            texto = (j.get("solution") or {}).get("text") or None
+            log.info("CapSolver resolvió el captcha (conf %s)", (j.get("solution") or {}).get("confidence"))
+            return texto
+        log.warning("CapSolver error: %s", j.get("errorDescription") or j.get("errorCode") or j)
+    except Exception as e:  # noqa: BLE001 — red/timeout/JSON: tratamos como "no resuelto"
+        log.warning("CapSolver falló: %s", e)
+    return None
 
 
 class AFIPError(Exception):
@@ -399,67 +442,84 @@ class AFIP:
         return r.text
 
     def _paso3_post_clave(self, html_clave: str) -> str:
-        """POST de la clave. Devuelve el JWT para canjear en el portal."""
-        self.log.info("Paso 3: POST clave")
-        vs = self._viewstate(html_clave)
-        self.log.info("  ViewState #2: %s", vs)
-        data = {
-            "F1": "F1",
-            "F1:captcha": "",
-            "F1:username": self.cuit,
-            "F1:password": self.password,
-            "F1:btnIngresar": "Ingresar",
-            "javax.faces.ViewState": vs,
-        }
-        r = self.session.post(
-            URL_LOGIN_CLAVE,
-            data=data,
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Origin": BASE_AUTH,
-                "Referer": URL_LOGIN,
-            },
-        )
-        r.raise_for_status()
+        """POST de la clave. Devuelve el JWT para canjear en el portal.
 
-        m = _RE_JWT.search(r.text)
-        if not m:
+        Si ARCA exige un captcha de imagen (desafío que aparece tras varios accesos seguidos), la
+        pantalla trae la imagen embebida: la resolvemos con CapSolver y posteamos a loginCaptchaAfip
+        (endpoint distinto de loginClave) con `F1:captchaSolutionInput`. Si CapSolver la erra, ARCA
+        devuelve un captcha NUEVO → reintentamos hasta `capsolver_max_reintentos`. Sin key de CapSolver
+        (o si se agotan los reintentos), se levanta LoginDesafiadoError."""
+        html = html_clave  # pantalla actual (cambia en cada reintento si ARCA sirve un captcha nuevo)
+        for intento in range(1 + max(0, settings.capsolver_max_reintentos)):
+            vs = self._viewstate(html)
+            captcha_b64 = _extraer_captcha(html)
+            data = {
+                "F1": "F1",
+                "F1:username": self.cuit,
+                "F1:password": self.password,  # SIEMPRE va: un rechazo de captcha borra la clave
+                "F1:btnIngresar": "Ingresar",
+                "javax.faces.ViewState": vs,
+            }
+            if captcha_b64:
+                solucion = _resolver_captcha(captcha_b64)
+                if not solucion:
+                    # sin key configurada o CapSolver no pudo: no hay forma de pasar el captcha
+                    raise LoginDesafiadoError(
+                        "No se pudo validar el acceso a los datos de este cliente: ARCA está "
+                        "aplicando una verificación de seguridad adicional en esta cuenta (suele "
+                        "ocurrir tras varios accesos seguidos). Reintentá más tarde."
+                    )
+                data["F1:captchaSolutionInput"] = solucion
+                url = URL_LOGIN_CAPTCHA
+                self.log.info("Paso 3: POST clave + captcha (intento %d)", intento + 1)
+            else:
+                data["F1:captcha"] = ""  # campo oculto del flujo sin captcha
+                url = URL_LOGIN_CLAVE
+                self.log.info("Paso 3: POST clave")
+            r = self.session.post(
+                url,
+                data=data,
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Origin": BASE_AUTH,
+                    "Referer": URL_LOGIN,
+                },
+            )
+            r.raise_for_status()
+
+            m = _RE_JWT.search(r.text)
+            if m:
+                return m.group(1)
+
             low = r.text.lower()
-            # ARCA fuerza el cambio de clave (campaña de seguridad): responde la pantalla
-            # cambioClaveForzado.xhtml ("Por medidas de seguridad tenés que cambiar tu contraseña").
+            # ARCA fuerza el cambio de clave (campaña de seguridad): responde cambioClaveForzado.xhtml.
             # No se recupera reintentando: el cliente tiene que cambiar la clave en ARCA.
             if "cambioclaveforzado" in low or "cambiar tu contrase" in low:
                 raise ClaveVencidaError(
                     "ARCA le pide al cliente cambiar su Clave Fiscal (por seguridad) antes de continuar."
                 )
-            # ARCA pide un captcha (desafío de seguridad tras varios accesos seguidos). El POST manda
-            # el captcha vacío, así que vuelve la pantalla con "El captcha ingresado es incorrecto".
-            # OJO: este chequeo va ANTES del de F1:password, porque la pantalla del captcha también
-            # trae el form de clave (si no, se confundiría con "clave incorrecta").
-            if (
-                "captcha ingresado es incorrecto" in low
-                or "captcha es incorrecto" in low
-                or "resolvé el captcha" in low
-                or "código de seguridad" in low
-            ):
-                raise LoginDesafiadoError(
-                    "No se pudo validar el acceso a los datos de este cliente: ARCA está aplicando "
-                    "una verificación de seguridad adicional en esta cuenta (suele ocurrir tras "
-                    "varios accesos seguidos). Reintentá más tarde; si continúa, confirmá que la "
-                    "Clave Fiscal del cliente sea correcta y esté vigente."
-                )
-            # Si vuelve a aparecer el form de clave (sin captcha), la contraseña es incorrecta.
+            # ¿ARCA (re)sirvió un captcha? Puede ser porque erramos el anterior o porque recién ahora
+            # lo exige. Reintentamos con la imagen nueva. OJO: va ANTES del chequeo de F1:password,
+            # porque la pantalla del captcha también trae el form de clave.
+            if _extraer_captcha(r.text):
+                self.log.warning("ARCA pide/rechaza captcha; reintento con imagen nueva")
+                html = r.text
+                continue
+            # Sin captcha y vuelve el form de clave → la contraseña es incorrecta.
             if "f1:password" in low:
                 raise ClaveInvalidaError("Clave incorrecta o login rechazado.")
-            # Pantalla desconocida: dejamos rastro de lo que ARCA devolvió (título + texto visible) en
-            # el log y en el mensaje, para saber cómo proceder la próxima vez.
+            # Pantalla desconocida: dejamos rastro de lo que ARCA devolvió, para saber cómo proceder.
             pista = _pista_pantalla(r.text)
             self.log.warning("Login sin JWT — pantalla inesperada de ARCA: %s", pista)
             raise LoginSinJWTError(
                 "No se pudo acceder a los datos de este cliente: ARCA devolvió una respuesta "
                 f"inesperada al validar la Clave Fiscal ({pista})."
             )
-        return m.group(1)
+        # Se agotaron los reintentos y ARCA seguía pidiendo captcha (CapSolver no acertó a tiempo).
+        raise LoginDesafiadoError(
+            "No se pudo validar el acceso a los datos de este cliente: la verificación de seguridad "
+            "de ARCA no se pudo completar tras varios intentos. Reintentá más tarde."
+        )
 
     def _paso4_post_jwt(self, jwt: str) -> None:
         """Canjea el JWT (vida ~10s) por la sesión del portal (AFIPSID)."""
