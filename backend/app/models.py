@@ -336,6 +336,23 @@ class Extraccion(Base):
     motivo: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
 
+class CaptchaEvento(Base):
+    """Métrica: cada vez que ARCA muestra un captcha de imagen en el login de un CUIT. Sirve para
+    saber en CUÁNTAS cuentas distintas (y con qué frecuencia) aparece el desafío — si pasa en cuentas
+    puntuales o es generalizado. Sin FK a propósito (es dato de métrica; no se borra en cascada con el
+    cliente y sobrevive para el histórico)."""
+
+    __tablename__ = "captcha_eventos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cuit: Mapped[str] = mapped_column(String(11), index=True)  # CUIT con el que se logueó (credencial)
+    fecha: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    resuelto: Mapped[bool] = mapped_column(Boolean, default=False)  # CapSolver lo pasó y el login entró
+    intentos: Mapped[int] = mapped_column(Integer, default=0)  # imágenes resueltas en ese login
+
+
 class AlertaEnviada(Base):
     """ESTADO de cada alerta notificada por contador, para mandar SÓLO lo nuevo y no reenviar lo ya
     avisado. Clave lógica = (usuario_id, cuit, tipo, severidad). Una alerta vigente con `activa=True`
