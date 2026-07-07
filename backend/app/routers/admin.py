@@ -8,7 +8,7 @@ import json
 import threading
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -184,6 +184,74 @@ def metricas(db: Session = Depends(get_db)):
         syncs_fallidas_hoy=syncs_fallidas,
         nuevas_cuentas_semana=nuevas_semana,
     )
+
+
+@router.get("/metricas/captcha")
+def metricas_captcha(db: Session = Depends(get_db), dias: int = 30, limite: int = 100):
+    """Métrica del captcha de ARCA en el login: cada vez que ARCA muestra el desafío de imagen a un
+    CUIT se registra un evento (services/afip.py). Devuelve en cuántas CUENTAS DISTINTAS aparece y
+    con qué frecuencia (para saber si pasa en cuentas puntuales o generalizado), cuántos resolvió
+    CapSolver, y el desglose por cuenta."""
+    ce = models.CaptchaEvento
+    total_eventos = db.scalar(select(func.count()).select_from(ce)) or 0
+    cuentas_distintas = db.scalar(select(func.count(func.distinct(ce.cuit)))) or 0
+    resueltos = db.scalar(select(func.count()).where(ce.resuelto.is_(True))) or 0
+    total_clientes = db.scalar(select(func.count()).select_from(models.ClienteARCA)) or 0
+
+    desde = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=dias)
+    eventos_periodo = db.scalar(select(func.count()).where(ce.fecha >= desde)) or 0
+    cuentas_periodo = (
+        db.scalar(select(func.count(func.distinct(ce.cuit))).where(ce.fecha >= desde)) or 0
+    )
+
+    # Desglose por cuenta: cuántas veces vio captcha, cuántas se resolvieron y la última fecha.
+    filas = db.execute(
+        select(
+            ce.cuit,
+            func.count().label("eventos"),
+            func.sum(case((ce.resuelto.is_(True), 1), else_=0)).label("resueltos"),
+            func.max(ce.fecha).label("ultima"),
+        )
+        .group_by(ce.cuit)
+        .order_by(func.count().desc())
+        .limit(limite)
+    ).all()
+    cuits = [f.cuit for f in filas]
+    nombres = (
+        dict(
+            db.execute(
+                select(models.ClienteARCA.cuit, models.ClienteARCA.nombre).where(
+                    models.ClienteARCA.cuit.in_(cuits)
+                )
+            ).all()
+        )
+        if cuits
+        else {}
+    )
+    por_cuit = [
+        {
+            "cuit": f.cuit,
+            "nombre": nombres.get(f.cuit),
+            "eventos": f.eventos,
+            "resueltos": int(f.resueltos or 0),
+            "ultima": f.ultima.isoformat() if f.ultima else None,
+        }
+        for f in filas
+    ]
+    return {
+        "total_eventos": total_eventos,               # cuántas veces apareció el captcha (en general)
+        "cuentas_distintas": cuentas_distintas,       # en cuántas cuentas DISTINTAS apareció
+        "total_clientes": total_clientes,
+        "pct_cuentas_afectadas": (
+            round(100 * cuentas_distintas / total_clientes, 2) if total_clientes else 0.0
+        ),
+        "eventos_resueltos": resueltos,               # los que CapSolver pasó y el login entró
+        "eventos_no_resueltos": total_eventos - resueltos,
+        "dias_ventana": dias,
+        "eventos_en_ventana": eventos_periodo,
+        "cuentas_en_ventana": cuentas_periodo,
+        "por_cuit": por_cuit,
+    }
 
 
 @router.get("/sincronizaciones/fallidas", response_model=list[AdminSyncFallidaOut])
