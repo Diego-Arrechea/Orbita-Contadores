@@ -93,6 +93,17 @@ class Settings(BaseSettings):
     # Navegador del scraping. True = headless (sin ventana; server/VPS y default).
     scraping_headless: bool = True
 
+    # --- CapSolver: resolución automática del captcha de imagen de ARCA en el login ---
+    # ARCA a veces exige un captcha de imagen al ingresar (desafío anti-automatización que aparece
+    # tras varios accesos seguidos y se enfría solo). Sin key, ese login falla con LoginDesafiadoError;
+    # con key, el motor extrae la imagen (data-URI en la pantalla), la manda a CapSolver
+    # (ImageToTextTask) y reintenta. La KEY es SECRETA → va en .env (NO en código). Vacía = deshabilitado.
+    capsolver_key: str = ""
+    capsolver_url: str = "https://api.capsolver.com/createTask"
+    # Cuántas veces se reintenta resolviendo un captcha nuevo si ARCA rechaza el anterior (CapSolver
+    # acierta ~90%, así que un par de reintentos sube mucho la tasa de éxito sin martillar).
+    capsolver_max_reintentos: int = 3
+
     # Trazabilidad del scraping: al fallar una sincronización, guardar en data/diag/ la traza de
     # pasos (traza_<cuit>.json), screenshot + HTML de la pantalla donde quedó (fallo_<cuit>_*) y la
     # traza visual de Patchright (trace_<cuit>.zip, se abre con `playwright show-trace`). Los nombres
