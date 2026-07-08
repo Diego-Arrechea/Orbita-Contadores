@@ -704,6 +704,25 @@ class AFIP:
         except Exception:
             return 0.0
 
+    def sso_login_info(self) -> tuple[str | None, list[str]]:
+        """Del SESSION_TOKEN de mcmp (SSO de ARCA): (uid, [CUITs representados]).
+
+        El token trae `<login ... uid="CUIT"><relations>CUIT</relations>…`: `uid` = el CUIT que se
+        logueó; `relations` = a quién representa. Sirve para detectar 'titular que representa a otros'
+        de forma confiable, sin scrapear. Devuelve (None, []) si no hay token o no se pudo leer."""
+        import base64
+
+        tok = self.session.cookies.get("SESSION_TOKEN", domain=".fes.afip.gob.ar")
+        if not tok:
+            return None, []
+        try:
+            xml = base64.b64decode(tok).decode("utf-8", "replace")
+            muid = re.search(r'uid="(\d+)"', xml)
+            rels = re.findall(r"<relations>(\d+)</relations>", xml)
+            return (muid.group(1) if muid else None), rels
+        except Exception:  # noqa: BLE001
+            return None, []
+
     @property
     def fes_vigente(self) -> bool:
         """True si la sesión de fes sigue válida (con 30s de margen)."""

@@ -13,10 +13,13 @@ Comprobantes exige elegir contribuyente y afip.py fija el índice del titular
 from __future__ import annotations
 
 import functools
+import logging
 import threading
 import time as _time
 
 from .afip import AFIP, AFIPError
+
+_log = logging.getLogger("afip.mcmp")
 
 # Mensaje (en términos del dominio, sin exponer el mecanismo) cuando el cliente no
 # tiene cuenta corriente CCMA (no es monotributista ni autónomo). Espeja scraping/ccma.
@@ -155,25 +158,45 @@ def descargar(
     total = sum(len(p.get("rangos") or []) for p in plan)
     paso = 0
     out: dict[str, list[dict]] = {}
-    for p in plan:
-        direccion = p["direccion"]
-        tipo = "E" if direccion == "emitido" else "R"
-        rangos = p.get("rangos") or []
-        vistos: set[tuple] = set()
-        comps: list[dict] = []
-        for desde, hasta in rangos:
-            if on_progress:
-                paso += 1
-                on_progress(paso, total, f"{direccion}s {desde} a {hasta}")
-            for crudo in afip.consultar_comprobantes(desde, hasta, tipo=tipo):
-                m = _map_comprobante(crudo)
-                if not m:
-                    continue
-                k = (m["punto_venta"], m["cbte_tipo"], m["numero"])
-                if k not in vistos:
-                    vistos.add(k)
-                    comps.append(m)
-        out[direccion] = comps
+    try:
+        for p in plan:
+            direccion = p["direccion"]
+            tipo = "E" if direccion == "emitido" else "R"
+            rangos = p.get("rangos") or []
+            vistos: set[tuple] = set()
+            comps: list[dict] = []
+            for desde, hasta in rangos:
+                if on_progress:
+                    paso += 1
+                    on_progress(paso, total, f"{direccion}s {desde} a {hasta}")
+                for crudo in afip.consultar_comprobantes(desde, hasta, tipo=tipo):
+                    m = _map_comprobante(crudo)
+                    if not m:
+                        continue
+                    k = (m["punto_venta"], m["cbte_tipo"], m["numero"])
+                    if k not in vistos:
+                        vistos.add(k)
+                        comps.append(m)
+            out[direccion] = comps
+    except AFIPError as e:
+        # FALLBACK — titular que representa a otros y cuyo CUIT PROPIO no tiene comprobantes.
+        # Caso: la clave es de una persona (uid) que administra p. ej. una sucesión (relations); su
+        # CUIT personal no tiene comprobantes propios, así que ARCA auto-opera como el representado y
+        # devuelve 'Error DB' al pedir los del CUIT propio (y su pantalla de "cambiar contribuyente"
+        # viene vacía). Lo confirmamos con el SSO token (uid + relations). En ese caso NO es un fallo:
+        # el cliente simplemente no tiene comprobantes comunes → devolvemos 0 y seguimos, SIN error y
+        # SIN caer al browser (que traería los del representado, ajenos a este cliente). Su actividad
+        # real (si es agropecuaria) llega por las liquidaciones (LSP), aparte de Mis Comprobantes.
+        uid, rels = afip.sso_login_info()
+        if "Error DB" in str(e) and cuit_cliente == uid and rels:
+            _log.warning(
+                "mcmp: %s es titular que representa a %s y su CUIT propio no tiene comprobantes "
+                "comunes -> 0 (sin error, sin browser)",
+                cuit_cliente,
+                rels,
+            )
+            return afip.nombre_contribuyente(cuit_cliente), {p["direccion"]: [] for p in plan}
+        raise
     # Nombre real del contribuyente (lo que el browser leía del navbar de Mis Comprobantes).
     return afip.nombre_contribuyente(cuit_cliente), out
 
