@@ -527,8 +527,17 @@ class AFIP:
                     self.log.warning("ARCA pide/rechaza captcha; reintento con imagen nueva")
                     html = r.text
                     continue
-                # Sin captcha y vuelve el form de clave → la contraseña es incorrecta.
-                if "f1:password" in low:
+                # Clave incorrecta. ARCA lo señala de dos formas: (a) vuelve a la pantalla de clave
+                # (F1:password), o (b) REBOTA a la pantalla del CUIT con el aviso "Clave o usuario
+                # incorrecto" (sin F1:password → antes caía en el cajón de sastre). Ambas = clave
+                # inválida: el cliente cambió la clave o está mal cargada; el contador debe cargar la
+                # correcta. Marca clave_invalida y dispara el aviso en la lista.
+                if (
+                    "f1:password" in low
+                    or "clave o usuario incorrecto" in low
+                    or "usuario o clave incorrecto" in low
+                    or "clave incorrecta" in low
+                ):
                     raise ClaveInvalidaError("Clave incorrecta o login rechazado.")
                 # Pantalla desconocida: dejamos rastro de lo que ARCA devolvió, para saber cómo proceder.
                 pista = _pista_pantalla(r.text)
