@@ -47,7 +47,7 @@ import { esMonotributista, etiquetaRegimenCorta } from '@/lib/regimen';
 import { derivarAlertas, estadoDesdeAlertas } from '@/lib/alertas';
 import { useClientesReales } from '@/lib/queries';
 import { useCargas } from '@/context/CargasContext';
-import { cuentaActual } from '@/lib/cuenta';
+import { cuentaActual, tienePermiso } from '@/lib/cuenta';
 import { formatCuit, formatPercent, formatDate } from '@/lib/utils';
 import type { EstadoAlerta, TipoActividad } from '@/types';
 
@@ -224,13 +224,15 @@ export function Dashboard() {
             {clientesConCalculo.length} clientes bajo monitoreo automático.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button asChild>
-            <Link to="/clientes/nuevo">
-              <Plus className="h-4 w-4" /> Nuevo cliente
-            </Link>
-          </Button>
-        </div>
+        {tienePermiso('nuevo_cliente') && (
+          <div className="flex gap-2">
+            <Button asChild>
+              <Link to="/clientes/nuevo">
+                <Plus className="h-4 w-4" /> Nuevo cliente
+              </Link>
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Aviso global de claves a actualizar: el contador lo ve apenas entra, con el ícono latiendo.
@@ -432,6 +434,12 @@ export function Dashboard() {
                       <div className="text-xs text-muted-foreground tabular-nums">
                         {formatCuit(cliente.cuit)}
                       </div>
+                      {/* Responsable dentro del estudio: sólo viene para un titular con equipo. */}
+                      {cliente.responsable && (
+                        <div className="text-[11px] text-muted-foreground">
+                          A cargo de {cliente.responsable}
+                        </div>
+                      )}
                       {desactivado && (
                         <Badge variant="muted" className="mt-1 text-[10px] font-semibold text-muted-foreground">
                           Desactivado
@@ -595,6 +603,12 @@ export function Dashboard() {
                       <div className="text-xs text-muted-foreground tabular-nums">
                         {formatCuit(cliente.cuit)}
                       </div>
+                      {/* Responsable dentro del estudio: sólo viene para un titular con equipo. */}
+                      {cliente.responsable && (
+                        <div className="text-[11px] text-muted-foreground">
+                          A cargo de {cliente.responsable}
+                        </div>
+                      )}
                       {desactivado && (
                         <Badge variant="muted" className="mt-1 text-[10px] font-semibold text-muted-foreground">
                           Desactivado

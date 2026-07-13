@@ -26,11 +26,13 @@ from ..schemas import (
 )
 from ..security import (
     crear_token,
+    es_empleado,
     generar_email_token,
     generar_reset_token,
     hashear_email_token,
     hashear_password,
     hashear_reset_token,
+    permisos_efectivos,
     usuario_actual,
     usuario_puede_facturar,
     verificar_password,
@@ -41,6 +43,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def _usuario_out(u: models.Usuario) -> UsuarioOut:
+    empleado = es_empleado(u)
     return UsuarioOut(
         id=u.id,
         nombre=u.nombre,
@@ -55,6 +58,9 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         email_confirmado=bool(u.email_confirmado),
         aviso_alertas_pendiente=u.aviso_alertas_pendiente or 0,
         facturacion_habilitada=usuario_puede_facturar(u),
+        es_empleado=empleado,
+        # Sólo para empleados: el front esconde las acciones sin permiso (el backend igual enforca).
+        permisos=permisos_efectivos(u) if empleado else None,
     )
 
 
@@ -202,6 +208,18 @@ def borrar_cuenta(
     (a diferencia de SQLite en dev). Ver el mismo criterio en routers/clientes.py::eliminar_cliente."""
     if not verificar_password(datos.password, usuario.password_hash):
         raise HTTPException(status_code=401, detail="La contraseña no es correcta.")
+
+    # Titular con equipo: primero tiene que eliminar (o quedarse sin) sus usuarios, si no quedarían
+    # cuentas colgando de un titular inexistente (titular_id roto) con clientes invisibles.
+    tiene_equipo = db.scalar(
+        select(models.Usuario.id).where(models.Usuario.titular_id == usuario.id).limit(1)
+    )
+    if tiene_equipo is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Tu cuenta tiene usuarios del estudio a cargo. Eliminalos desde Gestión de "
+            "usuarios antes de borrar la cuenta.",
+        )
 
     cuits = list(
         db.scalars(

@@ -17,6 +17,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { tienePermiso } from '@/lib/cuenta';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -302,9 +303,11 @@ export function Conciliacion() {
           <div className="text-sm text-muted-foreground mt-1.5 max-w-md mx-auto">
             Para conciliar extractos necesitás al menos un cliente con sus comprobantes de ARCA.
           </div>
-          <Button asChild className="mt-5">
-            <Link to="/clientes/nuevo">Agregar un cliente</Link>
-          </Button>
+          {tienePermiso('nuevo_cliente') && (
+            <Button asChild className="mt-5">
+              <Link to="/clientes/nuevo">Agregar un cliente</Link>
+            </Button>
+          )}
         </Card>
       ) : (
         <>

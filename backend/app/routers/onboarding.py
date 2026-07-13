@@ -10,7 +10,7 @@ from .. import models
 from ..crypto import cifrar
 from ..db import SessionLocal
 from ..schemas import JobOut, MonitorearIn, OnboardingIn, RepresentadoOut
-from ..security import usuario_actual
+from ..security import requiere_permiso, usuario_actual
 from ..arca import motor
 from ..scraping import jobs
 from ..services import sincronizacion
@@ -24,7 +24,10 @@ class _CargaCancelada(Exception):
 
 # def (no async): el scraping usa Playwright sync, que debe correr fuera del event loop.
 @router.post("/representados", response_model=list[RepresentadoOut])
-def listar_representados(datos: OnboardingIn, _usuario: models.Usuario = Depends(usuario_actual)):
+def listar_representados(
+    datos: OnboardingIn,
+    _usuario: models.Usuario = Depends(requiere_permiso("nuevo_cliente")),
+):
     """Loguea con la clave del contador y devuelve sus CUITs operables (él + representados)."""
     try:
         return motor.listar_representados(datos.cuit, datos.clave)
@@ -35,9 +38,14 @@ def listar_representados(datos: OnboardingIn, _usuario: models.Usuario = Depends
 
 
 @router.post("/monitorear")
-def monitorear(datos: MonitorearIn, usuario: models.Usuario = Depends(usuario_actual)):
+def monitorear(
+    datos: MonitorearIn,
+    usuario: models.Usuario = Depends(requiere_permiso("nuevo_cliente")),
+):
     """Guarda la clave del contador (cifrada), registra los clientes elegidos y dispara, en un
-    thread, la PRIMERA sincronización (histórico) de cada uno. Devuelve job_id para el progreso."""
+    thread, la PRIMERA sincronización (histórico) de cada uno. Devuelve job_id para el progreso.
+    Los clientes quedan asignados a quien hace el alta (usuario_id): si la hace un empleado con el
+    permiso 'nuevo_cliente', el cliente entra automáticamente a su cartera."""
     if not datos.seleccionados:
         raise HTTPException(status_code=400, detail="No hay clientes seleccionados.")
 

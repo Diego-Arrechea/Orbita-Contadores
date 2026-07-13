@@ -32,11 +32,13 @@ from ..scraping import jobs
 from ..security import (
     admin_actual,
     crear_token,
+    es_empleado,
     generar_password_temporal,
     hashear_password,
+    permisos_efectivos,
     usuario_puede_facturar,
 )
-from .clientes import _correr_sync, construir_cliente_out
+from .clientes import _correr_sync, construir_cliente_out, datos_cartera
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(admin_actual)])
 
@@ -46,6 +48,7 @@ def _iso(d: dt.datetime | None) -> str | None:
 
 
 def _usuario_out(u: models.Usuario) -> UsuarioOut:
+    empleado = es_empleado(u)
     return UsuarioOut(
         id=u.id,
         nombre=u.nombre,
@@ -59,6 +62,10 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         rol=u.rol,
         email_confirmado=bool(u.email_confirmado),
         facturacion_habilitada=usuario_puede_facturar(u),
+        # Al impersonar a un empleado, el front necesita saberlo para restringirle la navegación
+        # igual que en una sesión real del empleado.
+        es_empleado=empleado,
+        permisos=permisos_efectivos(u) if empleado else None,
     )
 
 
@@ -357,9 +364,10 @@ def todos_los_clientes(db: Session = Depends(get_db)):
         .outerjoin(models.Usuario, models.Usuario.id == models.ClienteARCA.usuario_id)
         .order_by(models.Usuario.email, models.ClienteARCA.nombre)
     ).all()
+    datos = datos_cartera(db, [c for c, _ in filas])
     out: list[AdminClienteOut] = []
     for c, u in filas:
-        base = construir_cliente_out(db, c)
+        base = construir_cliente_out(db, c, datos[c.cuit])
         out.append(
             AdminClienteOut(
                 **base.model_dump(),
@@ -399,8 +407,9 @@ def ficha_contador(usuario_id: int, db: Session = Depends(get_db)):
     facturado_total = 0.0
     con_comps = 0
     problemas = 0
+    datos = datos_cartera(db, clientes_arca)
     for c in clientes_arca:
-        base = construir_cliente_out(db, c)
+        base = construir_cliente_out(db, c, datos[c.cuit])
         facturado_total += sum(m.emitidasNetas for m in base.historial_mensual)
         if base.tiene_comprobantes:
             con_comps += 1

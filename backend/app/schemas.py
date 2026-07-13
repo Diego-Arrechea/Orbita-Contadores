@@ -207,6 +207,11 @@ class ClienteOut(BaseModel):
     # ¿El contador tiene activo el monitoreo de este cliente? En false queda "pausado": no se le
     # actualizan los datos y en la lista se muestra atenuado como "Desactivado".
     activo: bool = True
+    # Responsable asignado (equipo del estudio): SÓLO se completa cuando la lista la pide un titular
+    # con equipo (para la columna "A cargo de" y "Gestión de usuarios"). Para un contador sin equipo
+    # o un empleado quedan en None (todos los clientes de la respuesta son suyos).
+    responsable_id: int | None = None
+    responsable: str | None = None
 
 
 class NotificacionesIn(BaseModel):
@@ -475,7 +480,7 @@ class UsuarioOut(BaseModel):
     email: EmailStr
     telefono: str
     dni: str
-    cuit: str
+    cuit: str | None = None  # las cuentas de EMPLEADO no cargan CUIT
     estudio: str
     matricula: str | None = None
     rol: str = "contador"  # contador | admin (el front muestra el panel sólo si admin)
@@ -485,6 +490,11 @@ class UsuarioOut(BaseModel):
     aviso_alertas_pendiente: int = 0
     # Rollout gateado de facturación electrónica: el front muestra "Emitir comprobante" sólo si True.
     facturacion_habilitada: bool = False
+    # Equipo del estudio: True = cuenta de EMPLEADO (creada desde "Gestión de usuarios"); el front
+    # le restringe la navegación (sin Novedades/Configuración/Gestión) y esconde las acciones sin
+    # permiso. `permisos` trae los efectivos ({clave: bool}); None para cuentas plenas (pueden todo).
+    es_empleado: bool = False
+    permisos: dict[str, bool] | None = None
 
 
 class AuthOut(BaseModel):
@@ -565,6 +575,49 @@ class ComunicacionOut(BaseModel):
     vista: bool = False  # el contador la abrió en Órbita (drive del punto rojo)
 
 
+# --- Equipo del estudio ("Gestión de usuarios"; ver routers/equipo.py) ---
+
+
+class MiembroIn(BaseModel):
+    """Alta de un usuario del equipo (empleado). El titular fija la contraseña inicial y los
+    permisos; no se pide CUIT/DNI (la cuenta es interna del estudio)."""
+
+    nombre: str = Field(min_length=1, max_length=80)
+    apellido: str = Field(min_length=1, max_length=80)
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=72)  # bcrypt opera sobre <= 72 bytes
+    permisos: dict[str, bool] | None = None  # ausente = todos habilitados
+
+
+class MiembroPatch(BaseModel):
+    """Cambios del titular sobre un miembro (todos opcionales; PATCH parcial). `password` fija una
+    contraseña nueva (para cuando el empleado la olvida: el reset por email no aplica acá)."""
+
+    activo: bool | None = None
+    permisos: dict[str, bool] | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=72)
+
+
+class MiembroOut(BaseModel):
+    """Un usuario del equipo, visto desde "Gestión de usuarios"."""
+
+    id: int
+    nombre: str
+    apellido: str
+    email: EmailStr
+    activo: bool
+    permisos: dict[str, bool]
+    clientes: int = 0  # cuántos clientes tiene asignados
+    creado_en: str | None = None  # ISO
+    ultimo_acceso: str | None = None  # ISO; None = nunca inició sesión
+
+
+class AsignarClienteIn(BaseModel):
+    """Cambia el responsable de un cliente dentro del equipo (id del titular o de un empleado)."""
+
+    usuario_id: int
+
+
 # --- Panel superadmin (sólo rol=admin; ver routers/admin.py) ---
 
 
@@ -576,7 +629,7 @@ class AdminUsuarioOut(BaseModel):
     apellido: str
     email: EmailStr
     telefono: str
-    cuit: str
+    cuit: str | None = None  # las cuentas de EMPLEADO no cargan CUIT
     estudio: str
     matricula: str | None = None
     rol: str

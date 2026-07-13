@@ -9,7 +9,15 @@ import { Registro } from '@/pages/Registro';
 import { Recuperar } from '@/pages/Recuperar';
 import { ConfirmarEmail } from '@/pages/ConfirmarEmail';
 import { Terminos, Privacidad } from '@/pages/Legal';
-import { cuentaActual, esAdmin, tokenActual, actualizarUsuarioGuardado, impersonando } from '@/lib/cuenta';
+import {
+  cuentaActual,
+  esAdmin,
+  esEmpleado,
+  tienePermiso,
+  tokenActual,
+  actualizarUsuarioGuardado,
+  impersonando,
+} from '@/lib/cuenta';
 import { getMe, registrarLogout } from '@/services/authService';
 import { InvalidadorCache } from '@/components/shared/InvalidadorCache';
 import { CargasToasts } from '@/components/shared/CargasToasts';
@@ -30,6 +38,19 @@ function RequireAdmin({ children }: { children: ReactNode }) {
   if (!cuentaActual()) return <Navigate to="/login" replace />;
   return esAdmin() ? <>{children}</> : <Navigate to="/" replace />;
 }
+
+/** Sólo cuentas plenas: los usuarios del estudio (empleados) van al dashboard. Protege Gestión de
+ *  usuarios, Configuración y Novedades (el backend valida además lo que corresponde). */
+function RequireCuentaPlena({ children }: { children: ReactNode }) {
+  if (!cuentaActual()) return <Navigate to="/login" replace />;
+  return esEmpleado() ? <Navigate to="/" replace /> : <>{children}</>;
+}
+
+/** Alta de clientes: para usuarios del estudio, sólo con el permiso que da el titular. */
+function RequireNuevoCliente({ children }: { children: ReactNode }) {
+  if (!cuentaActual()) return <Navigate to="/login" replace />;
+  return tienePermiso('nuevo_cliente') ? <>{children}</> : <Navigate to="/" replace />;
+}
 import { Dashboard } from '@/pages/Dashboard';
 import { Alertas } from '@/pages/Alertas';
 import { ClienteDetalle } from '@/pages/ClienteDetalle';
@@ -39,6 +60,7 @@ import { Conciliacion } from '@/pages/Conciliacion';
 import { Configuracion } from '@/pages/Configuracion';
 import { Novedades } from '@/pages/Novedades';
 import { Admin } from '@/pages/Admin';
+import { GestionUsuarios } from '@/pages/GestionUsuarios';
 
 export default function App() {
   // Al cargar la app con sesión, refresca los datos del usuario (rol, estado) desde el backend y los
@@ -83,10 +105,39 @@ export default function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/alertas" element={<Alertas />} />
         <Route path="/conciliacion" element={<Conciliacion />} />
-        <Route path="/clientes/nuevo" element={<NuevoCliente />} />
+        <Route
+          path="/clientes/nuevo"
+          element={
+            <RequireNuevoCliente>
+              <NuevoCliente />
+            </RequireNuevoCliente>
+          }
+        />
         <Route path="/clientes/:id" element={<ClienteDetalle />} />
-        <Route path="/novedades" element={<Novedades />} />
-        <Route path="/configuracion" element={<Configuracion />} />
+        <Route
+          path="/usuarios"
+          element={
+            <RequireCuentaPlena>
+              <GestionUsuarios />
+            </RequireCuentaPlena>
+          }
+        />
+        <Route
+          path="/novedades"
+          element={
+            <RequireCuentaPlena>
+              <Novedades />
+            </RequireCuentaPlena>
+          }
+        />
+        <Route
+          path="/configuracion"
+          element={
+            <RequireCuentaPlena>
+              <Configuracion />
+            </RequireCuentaPlena>
+          }
+        />
         <Route
           path="/admin"
           element={

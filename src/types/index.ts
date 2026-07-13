@@ -202,6 +202,10 @@ export interface Cliente {
   extracciones: Extraccion[];
   /** 'arca' = los comprobantes se traen reales del backend (WSFEv1); 'mock'/undefined = datos de prueba. */
   fuente?: 'mock' | 'arca';
+  /** Responsable asignado dentro del estudio (sólo viene cuando la lista la pide un titular con
+   *  equipo, para la columna "A cargo de" y Gestión de usuarios). */
+  responsableId?: number;
+  responsable?: string;
 }
 
 export interface VentanaRecategorizacion {

@@ -6,7 +6,7 @@ import json
 import threading
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import delete, distinct, func, select, update
+from sqlalchemy import case, delete, distinct, func, select, update
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -32,7 +32,7 @@ from ..schemas import (
     resolver_regimen,
 )
 from ..scraping import jobs
-from ..security import usuario_actual
+from ..security import ids_cartera, requiere_permiso, usuario_actual
 from ..services import comunicaciones as comunicaciones_svc
 from ..services import sincronizacion
 from ..services.scheduler import estado_scheduler
@@ -49,84 +49,113 @@ def _iso_utc(d: dt.datetime) -> str:
     return d.isoformat()
 
 
-def _historial_12m(db: Session, cuit: str) -> tuple[list[HistorialMesOut], bool]:
-    """Agrega los comprobantes del cliente en los últimos 12 meses calendario (cronológico) para
-    alimentar % tope, ratio de gastos y proyección del dashboard sin bajar el detalle.
-    Devuelve (historial, tiene_algun_comprobante). El front lo consume con la misma forma que
-    derivarHistorial(). Notas de Crédito se RESTAN del mes (idéntico criterio al front)."""
+def _inicio_ventana_12m() -> dt.date:
+    """Primer día del primer mes de la ventana de 12 meses calendario (la misma que usa el front)."""
     hoy = dt.date.today()
     primer_mes_idx = hoy.year * 12 + (hoy.month - 1) - 11  # primer mes de la ventana de 12
-    desde = dt.date(primer_mes_idx // 12, primer_mes_idx % 12 + 1, 1)
+    return dt.date(primer_mes_idx // 12, primer_mes_idx % 12 + 1, 1)
+
+
+def _mes_expr(db: Session):
+    """Expresión SQL que agrupa la fecha del comprobante como 'YYYY-MM', según el motor de la
+    conexión (Postgres en prod, SQLite en dev): no hay una función de fecha portable entre ambos."""
+    col = models.ComprobanteEmitido.fecha
+    if db.get_bind().dialect.name == "postgresql":
+        return func.to_char(col, "YYYY-MM")
+    return func.strftime("%Y-%m", col)
+
+
+def datos_cartera(db: Session, clientes: list[models.ClienteARCA]) -> dict[str, dict]:
+    """Precalcula, en ~5 queries para TODA la lista, lo que construir_cliente_out necesita por
+    cliente: historial 12m agregado por mes, si tiene comprobantes, los tipos emitidos, la última
+    extracción y la facturación agro. Antes esto eran 4-5 queries POR cliente (y los comprobantes
+    crudos del año viajaban a Python para sumarse acá): la lista tardaba proporcional a
+    clientes × comprobantes. Las Notas de Crédito se RESTAN del mes (idéntico criterio al front)."""
+    datos: dict[str, dict] = {
+        c.cuit: {"historial": [], "tiene": False, "tipos": set(), "ult": None, "agro": (0.0, 0.0)}
+        for c in clientes
+    }
+    cuits = list(datos)
+    if not cuits:
+        return datos
+    desde = _inicio_ventana_12m()
+    comp = models.ComprobanteEmitido
+    mes = _mes_expr(db).label("mes")
+    es_nc = comp.cbte_tipo.in_(TIPOS_NOTA_CREDITO)
+    # Historial 12m: la DB devuelve a lo sumo 12 meses × 2 direcciones por cliente, ya sumados.
     filas = db.execute(
         select(
-            models.ComprobanteEmitido.fecha,
-            models.ComprobanteEmitido.direccion,
-            models.ComprobanteEmitido.cbte_tipo,
-            models.ComprobanteEmitido.imp_total,
-        ).where(
-            models.ComprobanteEmitido.cuit == cuit,
-            models.ComprobanteEmitido.fecha >= desde,
+            comp.cuit,
+            mes,
+            comp.direccion,
+            func.sum(case((es_nc, comp.imp_total), else_=0)).label("nc"),
+            func.sum(case((es_nc, 0), else_=comp.imp_total)).label("resto"),
         )
+        .where(comp.cuit.in_(cuits), comp.fecha >= desde)
+        .group_by(comp.cuit, mes, comp.direccion)
     ).all()
-    # ¿Hay AL MENOS un comprobante? (independiente de la ventana, para el semáforo 'sin datos').
-    tiene = db.scalar(
-        select(models.ComprobanteEmitido.id)
-        .where(models.ComprobanteEmitido.cuit == cuit)
-        .limit(1)
-    ) is not None
-    por_mes: dict[str, dict[str, float]] = {}
-    for fecha, direccion, cbte_tipo, imp_total in filas:
-        mes = f"{fecha.year:04d}-{fecha.month:02d}"
-        e = por_mes.setdefault(
-            mes, {"brutas": 0.0, "nc": 0.0, "recibidas": 0.0, "ncRecibidas": 0.0}
+    por_cliente: dict[str, dict[str, dict[str, float]]] = {}
+    for cuit, mes_s, direccion, nc, resto in filas:
+        e = por_cliente.setdefault(cuit, {}).setdefault(
+            mes_s, {"brutas": 0.0, "nc": 0.0, "recibidas": 0.0, "ncRecibidas": 0.0}
         )
-        es_nc = cbte_tipo in TIPOS_NOTA_CREDITO
-        monto = float(imp_total)
         if direccion == "emitido":
-            if es_nc:
-                e["nc"] += monto
-            else:
-                e["brutas"] += monto
+            e["nc"] += float(nc or 0)
+            e["brutas"] += float(resto or 0)
         elif direccion == "recibido":
-            if es_nc:
-                e["ncRecibidas"] += monto
-            else:
-                e["recibidas"] += monto
-    historial = [
-        HistorialMesOut(
-            mes=mes,
-            emitidasBrutas=e["brutas"],
-            notasCredito=e["nc"],
-            emitidasNetas=e["brutas"] - e["nc"],
-            recibidas=e["recibidas"] - e["ncRecibidas"],
-            recibidasComputables=e["recibidas"] - e["ncRecibidas"],
-        )
-        for mes, e in sorted(por_mes.items())
-    ]
-    return historial, tiene
-
-
-def _agro_facturacion(db: Session, cuit: str, factura_agro: bool) -> tuple[float, float]:
-    """(total, 12m) de las Liquidaciones Electrónicas del agro del cliente (suma de Importe Bruto). El
-    12m usa la MISMA ventana de 12 meses calendario que el historial. Devuelve (0, 0) si el cliente no
-    factura agropecuario (evita la query para el 99% de la cartera)."""
-    if not factura_agro:
-        return 0.0, 0.0
-    hoy = dt.date.today()
-    primer_mes_idx = hoy.year * 12 + (hoy.month - 1) - 11
-    desde = dt.date(primer_mes_idx // 12, primer_mes_idx % 12 + 1, 1)
-    filas = db.execute(
-        select(models.LiquidacionAgro.fecha_comprobante, models.LiquidacionAgro.importe_bruto).where(
-            models.LiquidacionAgro.cuit == cuit
-        )
-    ).all()
-    total = doce = 0.0
-    for fecha, imp in filas:
-        v = float(imp or 0)
-        total += v
-        if fecha and fecha >= desde:
-            doce += v
-    return total, doce
+            e["ncRecibidas"] += float(nc or 0)
+            e["recibidas"] += float(resto or 0)
+    for cuit, meses in por_cliente.items():
+        datos[cuit]["historial"] = [
+            HistorialMesOut(
+                mes=m,
+                emitidasBrutas=e["brutas"],
+                notasCredito=e["nc"],
+                emitidasNetas=e["brutas"] - e["nc"],
+                recibidas=e["recibidas"] - e["ncRecibidas"],
+                recibidasComputables=e["recibidas"] - e["ncRecibidas"],
+            )
+            for m, e in sorted(meses.items())
+        ]
+    # ¿Hay AL MENOS un comprobante? (independiente de la ventana, para el semáforo 'sin datos').
+    for cuit in db.scalars(select(distinct(comp.cuit)).where(comp.cuit.in_(cuits))):
+        datos[cuit]["tiene"] = True
+    # Tipos de comprobante emitidos (alimenta la inferencia de régimen).
+    for cuit, tipo in db.execute(
+        select(comp.cuit, comp.cbte_tipo)
+        .where(comp.cuit.in_(cuits), comp.direccion == "emitido")
+        .distinct()
+    ):
+        datos[cuit]["tipos"].add(tipo)
+    # Última extracción de cada cliente: una sola query con función de ventana (Postgres y
+    # SQLite ≥3.25) en vez de un ORDER BY ... LIMIT 1 por cliente.
+    ext = models.Extraccion
+    rn = (
+        func.row_number()
+        .over(partition_by=ext.cuit, order_by=(ext.fecha.desc(), ext.id.desc()))
+        .label("rn")
+    )
+    sub = select(ext.cuit, ext.fecha, ext.resultado, ext.motivo, rn).where(ext.cuit.in_(cuits)).subquery()
+    for cuit, fecha, resultado, motivo in db.execute(
+        select(sub.c.cuit, sub.c.fecha, sub.c.resultado, sub.c.motivo).where(sub.c.rn == 1)
+    ):
+        datos[cuit]["ult"] = (fecha, resultado, motivo)
+    # Facturación agro (total, 12m): sólo de los que facturan agropecuario (el 99% de la cartera se
+    # saltea la query). Fecha NULL: cuenta en el total pero no en los 12m (mismo criterio de siempre).
+    agro_cuits = [c.cuit for c in clientes if c.factura_agro]
+    if agro_cuits:
+        liq = models.LiquidacionAgro
+        for cuit, total, doce in db.execute(
+            select(
+                liq.cuit,
+                func.sum(liq.importe_bruto),
+                func.sum(case((liq.fecha_comprobante >= desde, liq.importe_bruto), else_=0)),
+            )
+            .where(liq.cuit.in_(agro_cuits))
+            .group_by(liq.cuit)
+        ):
+            datos[cuit]["agro"] = (float(total or 0), float(doce or 0))
+    return datos
 
 
 def _remuneracion(c: models.ClienteARCA) -> RemuneracionOut | None:
@@ -154,31 +183,30 @@ def _remuneracion(c: models.ClienteARCA) -> RemuneracionOut | None:
 
 
 def _cliente_propio(db: Session, cuit: str, usuario: models.Usuario) -> models.ClienteARCA:
-    """Devuelve el cliente sólo si pertenece al usuario logueado; si no, 404 (sin revelar que existe)."""
+    """Devuelve el cliente sólo si está en la cartera visible del usuario logueado (los propios y,
+    para un titular con equipo, los de sus empleados); si no, 404 (sin revelar que existe)."""
     cliente = db.get(models.ClienteARCA, cuit)
-    if cliente is None or cliente.usuario_id != usuario.id:
+    if cliente is None or cliente.usuario_id not in ids_cartera(db, usuario):
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     return cliente
 
 
-def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
+def construir_cliente_out(db: Session, c: models.ClienteARCA, datos: dict | None = None) -> ClienteOut:
     """Arma el ClienteOut de un cliente: combina el dato crudo de ARCA con el override manual del
     contador (edicion_json), el régimen resuelto, el historial 12m y la última extracción. Lo usan
-    tanto la lista del contador (listar_clientes) como la vista global del panel superadmin."""
-    ult = sincronizacion.ultima_extraccion(db, c.cuit)
-    tipos_emit = set(
-        db.scalars(
-            select(distinct(models.ComprobanteEmitido.cbte_tipo)).where(
-                models.ComprobanteEmitido.cuit == c.cuit,
-                models.ComprobanteEmitido.direccion == "emitido",
-            )
-        ).all()
-    )
+    tanto la lista del contador (listar_clientes) como la vista global del panel superadmin.
+
+    `datos` es la entrada de este cliente en `datos_cartera()`: al armar una LISTA, calculala una
+    vez para todos y pasala acá (sin eso, cada cliente dispara sus propias queries)."""
+    if datos is None:
+        datos = datos_cartera(db, [c])[c.cuit]
+    ult = datos["ult"]  # (fecha, resultado, motivo) | None
+    tipos_emit = datos["tipos"]
     # Ediciones manuales del contador (override): ganan sobre el dato crudo de ARCA. Viven en
     # edicion_json (separado), así sobreviven a la sincronización que pisa las columnas crudas.
     edic = json.loads(c.edicion_json) if c.edicion_json else {}
-    historial, tiene_comps = _historial_12m(db, c.cuit)
-    agro_total, agro_12m = _agro_facturacion(db, c.cuit, c.factura_agro)
+    historial, tiene_comps = datos["historial"], datos["tiene"]
+    agro_total, agro_12m = datos["agro"]
     return ClienteOut(
         cuit=c.cuit,
         nombre=edic.get("nombre") or c.nombre,
@@ -201,9 +229,9 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
         facturacion_12m=float(c.facturacion_12m) if c.facturacion_12m is not None else None,
         tope_categoria=float(c.tope_categoria) if c.tope_categoria is not None else None,
         facturometro_actualizado=c.facturometro_actualizado,
-        ultima_extraccion=_iso_utc(ult.fecha) if ult else None,
-        resultado_ultima_extraccion=ult.resultado if ult else None,
-        motivo_ultima_extraccion=ult.motivo if ult else None,
+        ultima_extraccion=_iso_utc(ult[0]) if ult else None,
+        resultado_ultima_extraccion=ult[1] if ult else None,
+        motivo_ultima_extraccion=ult[2] if ult else None,
         notas=edic.get("notas"),
         fecha_inicio=edic.get("fechaInicio"),
         # Relación de dependencia: el override manual del contador (True/False) gana; si no lo marcó
@@ -230,10 +258,39 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
 def listar_clientes(
     db: Session = Depends(get_db), usuario: models.Usuario = Depends(usuario_actual)
 ):
+    """La cartera visible del usuario: sus clientes y, si es titular con equipo, también los de sus
+    empleados (con el responsable anotado, para "Gestión de usuarios" y la columna de la lista)."""
+    ids = ids_cartera(db, usuario)
     clientes = db.scalars(
-        select(models.ClienteARCA).where(models.ClienteARCA.usuario_id == usuario.id)
+        select(models.ClienteARCA).where(models.ClienteARCA.usuario_id.in_(ids))
     ).all()
-    return [construir_cliente_out(db, c) for c in clientes]
+    datos = datos_cartera(db, clientes)
+    out = [construir_cliente_out(db, c, datos[c.cuit]) for c in clientes]
+    if len(ids) > 1:  # titular con equipo: anotar quién es el responsable de cada cliente
+        nombres = {
+            u.id: (f"{u.nombre} {u.apellido}".strip() or u.email)
+            for u in db.scalars(select(models.Usuario).where(models.Usuario.id.in_(ids)))
+        }
+        for o, c in zip(out, clientes):
+            o.responsable_id = c.usuario_id
+            o.responsable = nombres.get(c.usuario_id)
+    return out
+
+
+@router.get("/clientes/{cuit}", response_model=ClienteOut)
+def detalle_cliente(
+    cuit: str, db: Session = Depends(get_db), usuario: models.Usuario = Depends(usuario_actual)
+):
+    """Un cliente puntual con el MISMO dato que la lista. Lo usa la ficha: antes bajaba la cartera
+    completa (con todo su costo) sólo para quedarse con uno."""
+    cliente = _cliente_propio(db, cuit, usuario)
+    out = construir_cliente_out(db, cliente)
+    ids = ids_cartera(db, usuario)
+    if len(ids) > 1:  # titular con equipo: anotar el responsable, igual que en la lista
+        u = db.get(models.Usuario, cliente.usuario_id)
+        out.responsable_id = cliente.usuario_id
+        out.responsable = (f"{u.nombre} {u.apellido}".strip() or u.email) if u else None
+    return out
 
 
 @router.put("/clientes/{cuit}/edicion")
@@ -241,7 +298,7 @@ def editar_cliente(
     cuit: str,
     datos: EdicionClienteIn,
     db: Session = Depends(get_db),
-    usuario: models.Usuario = Depends(usuario_actual),
+    usuario: models.Usuario = Depends(requiere_permiso("editar_cliente")),
 ):
     """Guarda (merge parcial) las ediciones manuales del contador sobre un cliente. Sólo pisa los
     campos que vinieron; el resto del override —y el dato crudo de ARCA— queda intacto. El override
@@ -270,7 +327,7 @@ def cambiar_activo_cliente(
     cuit: str,
     datos: EstadoClienteIn,
     db: Session = Depends(get_db),
-    usuario: models.Usuario = Depends(usuario_actual),
+    usuario: models.Usuario = Depends(requiere_permiso("editar_cliente")),
 ):
     """Prende/apaga el monitoreo del cliente. Desactivado (activo=false): el motor de sincronización
     lo saltea (deja de actualizar sus datos) y en la lista aparece atenuado como "Desactivado". Los
@@ -287,7 +344,7 @@ def actualizar_clave_cliente(
     cuit: str,
     datos: ClaveClienteIn,
     db: Session = Depends(get_db),
-    usuario: models.Usuario = Depends(usuario_actual),
+    usuario: models.Usuario = Depends(requiere_permiso("actualizar_clave")),
 ):
     """Reemplaza la clave fiscal con la que se sincroniza este cliente (para cuando el cliente la
     cambia en ARCA). La clave vive cifrada en la `CredencialARCA` de su `cuit_credencial` —el CUIT
@@ -308,7 +365,7 @@ def actualizar_clave_cliente(
     db.execute(
         update(models.ClienteARCA)
         .where(
-            models.ClienteARCA.usuario_id == usuario.id,
+            models.ClienteARCA.usuario_id.in_(ids_cartera(db, usuario)),
             models.ClienteARCA.cuit_credencial == cuit_cred,
         )
         .values(clave_requiere_cambio=False, clave_invalida=False)
@@ -326,7 +383,9 @@ def actualizar_clave_cliente(
 
 @router.delete("/clientes/{cuit}")
 def eliminar_cliente(
-    cuit: str, db: Session = Depends(get_db), usuario: models.Usuario = Depends(usuario_actual)
+    cuit: str,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(requiere_permiso("eliminar_cliente")),
 ):
     """Borra el cliente y TODO su cache de comprobantes (emitidos + recibidos) en una sola
     transacción. Los datos en ARCA no se tocan: se vuelven a traer si se carga de nuevo. El
@@ -394,15 +453,16 @@ def progreso_sincronizacion(job_id: str, _usuario: models.Usuario = Depends(usua
     return job
 
 
-def _correr_sync_todos(job_id: str, usuario_id: int) -> None:
+def _correr_sync_todos(job_id: str, usuario_ids: list[int]) -> None:
     """Worker en thread: sincroniza SECUENCIALMENTE (uno por uno, para no abrir N navegadores a la
-    vez) todos los clientes del contador, reportando progreso en el job. Un cliente que falla no
-    frena al resto. Usa su propia sesión de DB porque la del request ya se cerró."""
+    vez) todos los clientes de la cartera (para un titular con equipo, la de todo el equipo),
+    reportando progreso en el job. Un cliente que falla no frena al resto. Usa su propia sesión de
+    DB porque la del request ya se cerró."""
     db = SessionLocal()
     try:
         clientes = db.execute(
             select(models.ClienteARCA.cuit, models.ClienteARCA.nombre).where(
-                models.ClienteARCA.usuario_id == usuario_id,
+                models.ClienteARCA.usuario_id.in_(usuario_ids),
                 models.ClienteARCA.activo.is_(True),  # los desactivados no se sincronizan
             )
         ).all()
@@ -460,13 +520,14 @@ def sincronizar_todos_endpoint(
     """Dispara, en un thread, la sincronización SECUENCIAL de TODOS los clientes del contador y
     devuelve un job_id para seguir el progreso (mismo registro de jobs que el sync por-cliente).
     Corre en background: sigue aunque el front navegue o recargue la página."""
+    ids = ids_cartera(db, usuario)
     total = db.scalar(
         select(func.count())
         .select_from(models.ClienteARCA)
-        .where(models.ClienteARCA.usuario_id == usuario.id)
+        .where(models.ClienteARCA.usuario_id.in_(ids))
     )
     job_id = jobs.crear_job()
-    threading.Thread(target=_correr_sync_todos, args=(job_id, usuario.id), daemon=True).start()
+    threading.Thread(target=_correr_sync_todos, args=(job_id, ids), daemon=True).start()
     return {"job_id": job_id, "total": total or 0}
 
 
@@ -641,7 +702,7 @@ def marcar_comunicacion_vista(
     cuit: str,
     id_com: str,
     db: Session = Depends(get_db),
-    usuario: models.Usuario = Depends(usuario_actual),
+    usuario: models.Usuario = Depends(requiere_permiso("comunicaciones")),
 ):
     """El contador abrió la comunicación: baja el detalle completo (ARCA la marca leída al pedirlo) y
     la marca vista en Órbita (apaga el punto rojo). Devuelve la comunicación ya con el detalle."""

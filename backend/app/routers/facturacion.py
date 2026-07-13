@@ -26,7 +26,7 @@ from ..config import settings
 from ..db import SessionLocal, get_db
 from ..schemas import JobOut
 from ..scraping import jobs
-from ..security import admin_actual, usuario_actual, usuario_puede_facturar
+from ..security import admin_actual, requiere_permiso, usuario_actual, usuario_puede_facturar
 from ..services import comprobante_pdf
 from ..services import facturacion as facturacion_svc
 from .clientes import _cliente_propio
@@ -149,7 +149,7 @@ def facturar(
     cuit: str,
     body: FacturarIn,
     db: Session = Depends(get_db),
-    usuario: models.Usuario = Depends(usuario_actual),
+    usuario: models.Usuario = Depends(requiere_permiso("facturar")),
 ):
     """Emite una Factura C / Nota de Crédito C a nombre del cliente (emisión REAL en producción).
     Genera el certificado del cliente la primera vez (puede tardar ~1 min)."""
@@ -273,7 +273,7 @@ def _correr_preparacion(job_id: str, cuit: str) -> None:
 def preparar_facturacion(
     cuit: str,
     db: Session = Depends(get_db),
-    usuario: models.Usuario = Depends(usuario_actual),
+    usuario: models.Usuario = Depends(requiere_permiso("facturar")),
 ):
     """Arranca, en segundo plano, la generación del certificado del cliente. Devuelve job_id para
     seguir el progreso (el bootstrap es scraping y tarda ~1 min)."""

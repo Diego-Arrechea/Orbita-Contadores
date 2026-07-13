@@ -12,13 +12,19 @@ export interface Usuario {
   email: string;
   telefono: string;
   dni: string;
-  cuit: string;
+  cuit: string | null; // las cuentas de usuario del estudio (empleados) no cargan CUIT
   estudio: string;
   matricula?: string | null;
   rol?: string; // 'contador' | 'admin' — el front muestra el panel superadmin sólo si 'admin'
   email_confirmado?: boolean; // false → mostramos el banner "confirmá tu correo"
   aviso_alertas_pendiente?: number; // ingresos que faltan para dejar de mostrar el modal de alertas (0 = no)
   facturacion_habilitada?: boolean; // rollout gateado: el front muestra "Emitir comprobante" sólo si true
+  /** true = cuenta de usuario del estudio (la creó el titular en Gestión de usuarios): navegación
+   *  restringida (sin Novedades/Configuración/Gestión) y acciones acotadas por `permisos`. */
+  es_empleado?: boolean;
+  /** Permisos efectivos del usuario del estudio ({clave: bool}); null/ausente en cuentas plenas.
+   *  El front sólo ESCONDE botones: la puerta real está en el backend. */
+  permisos?: Record<string, boolean> | null;
 }
 
 export interface AuthResp {

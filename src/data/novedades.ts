@@ -42,6 +42,55 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-13-carga-mas-rapida',
+    fecha: '2026-07-13',
+    titulo: 'La app carga mucho más rápido',
+    resumen: 'Optimizamos cómo se arma tu cartera: la lista de clientes y la ficha abren al toque.',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'La lista de clientes (Dashboard, Alertas, Conciliación) carga mucho más rápido, ' +
+          'incluso con carteras grandes.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'La ficha del cliente abre al instante con los datos de la lista y completa el ' +
+          'detalle de comprobantes enseguida.',
+      },
+    ],
+  },
+  {
+    id: '2026-07-13-gestion-de-usuarios',
+    fecha: '2026-07-13',
+    titulo: 'Gestión de usuarios: sumá a tu equipo y repartí la cartera',
+    resumen:
+      'Creá cuentas para las personas de tu estudio, asignales clientes y decidí qué puede ' +
+      'hacer cada una.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Nueva sección "Gestión de usuarios": cada persona de tu equipo entra con su propia ' +
+          'cuenta y ve únicamente los clientes que le asignes.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Permisos por usuario: habilitá o bloqueá dar de alta clientes, editarlos, eliminarlos, ' +
+          'actualizar claves fiscales, emitir comprobantes, conciliar extractos y abrir ' +
+          'comunicaciones fiscales.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Elegí el responsable de cada monotributista y vélo en tu cartera ("A cargo de"); vos ' +
+          'seguís viendo los clientes de todo el estudio.',
+      },
+    ],
+  },
+  {
     id: '2026-07-13-relacion-dependencia-remuneracion',
     fecha: '2026-07-13',
     titulo: 'Clientes en relación de dependencia: ahora traemos su remuneración',

@@ -1,14 +1,17 @@
-"""Seguridad de la sesión de contadores: hashing de contraseñas (bcrypt) y tokens JWT (PyJWT)."""
+"""Seguridad de la sesión de contadores: hashing de contraseñas (bcrypt), tokens JWT (PyJWT) y
+equipo del estudio (visibilidad por responsable + permisos de empleados)."""
 from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import json
 import secrets
 
 import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models
@@ -137,3 +140,84 @@ def admin_actual(usuario: models.Usuario = Depends(usuario_actual)) -> models.Us
             detail="No tenés permisos para acceder a esta sección.",
         )
     return usuario
+
+
+# --- Equipo del estudio ("Gestión de usuarios") --------------------------------------------------
+# El titular crea cuentas de EMPLEADO (Usuario.titular_id = su id) y les asigna clientes: cada
+# cliente sigue teniendo UN responsable (ClienteARCA.usuario_id). El empleado ve/opera sólo sus
+# asignados; el titular ve toda la cartera del equipo. Los permisos acotan qué ACCIONES puede hacer
+# el empleado sobre sus asignados (se enforcan acá, no sólo en el front).
+
+# Permisos disponibles para empleados (clave → descripción para devs; los labels de UI viven en el
+# front). Default: TODOS habilitados; el titular los apaga por empleado (Usuario.permisos_json).
+PERMISOS_EQUIPO = (
+    "nuevo_cliente",      # dar de alta clientes (quedan asignados a él)
+    "editar_cliente",     # editar la ficha (notas, categoría manual, pausar/reactivar)
+    "eliminar_cliente",   # borrar un cliente y su historial
+    "actualizar_clave",   # reemplazar la clave con la que se consultan los datos del cliente
+    "facturar",           # emitir comprobantes (se suma al gate general de facturación)
+    "conciliacion",       # importar extractos y clasificar movimientos
+    "comunicaciones",     # abrir el detalle de comunicaciones fiscales (las marca leídas en ARCA)
+)
+
+
+def es_empleado(usuario: models.Usuario) -> bool:
+    """¿La cuenta es un empleado creado desde "Gestión de usuarios"? (ve sólo sus asignados)."""
+    return usuario.titular_id is not None
+
+
+def permisos_efectivos(usuario: models.Usuario) -> dict[str, bool]:
+    """Permisos del usuario con los defaults aplicados (clave ausente = habilitado). Para cuentas
+    plenas (no-empleado) devuelve todo en True."""
+    guardado: dict = {}
+    if es_empleado(usuario) and usuario.permisos_json:
+        try:
+            guardado = json.loads(usuario.permisos_json)
+        except ValueError:
+            guardado = {}
+    return {clave: bool(guardado.get(clave, True)) for clave in PERMISOS_EQUIPO}
+
+
+def tiene_permiso(usuario: models.Usuario, clave: str) -> bool:
+    if not es_empleado(usuario):
+        return True
+    return permisos_efectivos(usuario).get(clave, True)
+
+
+def requiere_permiso(clave: str):
+    """Fábrica de dependencias FastAPI: como `usuario_actual`, pero además exige el permiso `clave`
+    (403 si el titular se lo apagó al empleado). Para cuentas plenas es transparente."""
+
+    def _dep(usuario: models.Usuario = Depends(usuario_actual)) -> models.Usuario:
+        if not tiene_permiso(usuario, clave):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tu cuenta no tiene habilitada esta función. Pedile al titular del "
+                "estudio que la active.",
+            )
+        return usuario
+
+    return _dep
+
+
+def titular_actual(usuario: models.Usuario = Depends(usuario_actual)) -> models.Usuario:
+    """Dependencia FastAPI: exige una cuenta PLENA (no empleado) para administrar el equipo
+    ("Gestión de usuarios"). Cualquier contador puede crear su equipo; un empleado no."""
+    if es_empleado(usuario):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenés permisos para acceder a esta sección.",
+        )
+    return usuario
+
+
+def ids_cartera(db: Session, usuario: models.Usuario) -> list[int]:
+    """Los `usuario_id` cuyos clientes puede ver esta cuenta: los propios y, si tiene equipo, los de
+    todos sus empleados (incluidos los desactivados: sus clientes no desaparecen de la vista del
+    titular). Para un empleado o un contador sin equipo devuelve sólo su id."""
+    ids = [usuario.id]
+    if not es_empleado(usuario):
+        ids += list(
+            db.scalars(select(models.Usuario.id).where(models.Usuario.titular_id == usuario.id))
+        )
+    return ids

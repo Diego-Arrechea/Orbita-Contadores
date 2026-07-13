@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..db import get_db
 from ..schemas import ClasificarIn, ImportarMovimientosIn, ImportarResumenOut, MovimientoOut
-from ..security import usuario_actual
+from ..security import requiere_permiso, usuario_actual
 from ..services import conciliacion
 from .clientes import _cliente_propio
 
@@ -38,7 +38,7 @@ def importar_movimientos(
     cuit: str,
     datos: ImportarMovimientosIn,
     db: Session = Depends(get_db),
-    usuario: models.Usuario = Depends(usuario_actual),
+    usuario: models.Usuario = Depends(requiere_permiso("conciliacion")),
 ):
     """Importa las acreditaciones de un extracto (filas ya parseadas por el front) y las cruza con
     los comprobantes emitidos reales del cliente. Idempotente: re-subir el mismo archivo no duplica."""
@@ -69,7 +69,7 @@ def listar_movimientos(
 def reconciliar_movimientos(
     cuit: str,
     db: Session = Depends(get_db),
-    usuario: models.Usuario = Depends(usuario_actual),
+    usuario: models.Usuario = Depends(requiere_permiso("conciliacion")),
 ):
     """Re-corre el matcher sobre los pendientes (útil tras sincronizar comprobantes nuevos)."""
     _cliente_propio(db, cuit, usuario)
@@ -82,7 +82,7 @@ def clasificar_movimiento(
     mov_id: int,
     datos: ClasificarIn,
     db: Session = Depends(get_db),
-    usuario: models.Usuario = Depends(usuario_actual),
+    usuario: models.Usuario = Depends(requiere_permiso("conciliacion")),
 ):
     """Decisión manual del contador sobre un movimiento: venta/no-venta o match forzado."""
     _cliente_propio(db, cuit, usuario)
@@ -105,7 +105,7 @@ def eliminar_movimiento(
     cuit: str,
     mov_id: int,
     db: Session = Depends(get_db),
-    usuario: models.Usuario = Depends(usuario_actual),
+    usuario: models.Usuario = Depends(requiere_permiso("conciliacion")),
 ):
     """Borra una fila mal importada."""
     _cliente_propio(db, cuit, usuario)

@@ -10,7 +10,7 @@ import type {
 import { CATEGORIAS } from '@/data/categorias';
 import { derivarHistorial } from '@/lib/derivarHistorial';
 import { ventana12Meses } from '@/lib/monotributo';
-import { apiGet, apiPut, apiDelete } from './apiClient';
+import { ApiError, apiGet, apiPut, apiDelete } from './apiClient';
 import { getComprobantesReales } from './comprobantesService';
 
 interface ClienteBackend {
@@ -58,6 +58,8 @@ interface ClienteBackend {
   facturacion_agro_12m?: number | null; // suma de liquidaciones agro de los últimos 12 meses
   facturacion_agro_total?: number | null; // histórico de liquidaciones agro
   activo?: boolean | null; // ¿el contador tiene activo el monitoreo del cliente?
+  responsable_id?: number | null; // responsable asignado (sólo para un titular con equipo)
+  responsable?: string | null;
 }
 
 const CODIGOS: CategoriaCodigo[] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
@@ -169,6 +171,8 @@ function construirCliente(
     causales: [],
     extracciones,
     fuente: 'arca',
+    responsableId: bk.responsable_id ?? undefined,
+    responsable: bk.responsable ?? undefined,
   };
 }
 
@@ -180,14 +184,20 @@ export async function getClientesReales(): Promise<Cliente[]> {
   return lista.map(bk => construirCliente(bk, []));
 }
 
-/** Un cliente real por CUIT (para la ficha cuando no está en el mock). */
+/** Un cliente real por CUIT (para la ficha cuando no está en el mock). Pide SOLO ese cliente al
+ *  backend (no la cartera completa) y en paralelo su detalle (comprobantes + extracciones). */
 export async function getClienteReal(cuit: string): Promise<Cliente | null> {
-  const lista = await apiGet<ClienteBackend[]>('/clientes');
-  const bk = lista.find(c => c.cuit === cuit);
-  if (!bk) return null;
+  const limpio = cuit.replace(/\D/g, '');
+  let bk: ClienteBackend;
+  try {
+    bk = await apiGet<ClienteBackend>(`/clientes/${limpio}`);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null; // no existe (o no es de esta cuenta)
+    throw e;
+  }
   const [comprobantes, extracciones] = await Promise.all([
-    getComprobantesReales(cuit),
-    getExtraccionesReales(cuit),
+    getComprobantesReales(limpio),
+    getExtraccionesReales(limpio),
   ]);
   return construirCliente(bk, comprobantes, extracciones);
 }

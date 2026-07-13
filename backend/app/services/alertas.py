@@ -28,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..security import ids_cartera
 from . import monotributo, whatsapp
 
 logger = logging.getLogger("orbita.alertas")
@@ -227,13 +228,16 @@ def derivar_alertas(cliente, calc: monotributo.CalculoCliente, a: dict, hoy: dt.
 
 
 def _vigentes_de_cliente(
-    db: Session, cliente_orm, alertas_cfg: dict, ventanas: list[dict], inflacion: float, hoy: dt.date
+    db: Session, cliente_orm, alertas_cfg: dict, ventanas: list[dict], inflacion: float, hoy: dt.date,
+    datos: dict | None = None,
 ) -> list[dict]:
-    """Alertas vigentes de un cliente, ya filtradas por los tipos ACTIVOS del contador. Import perezoso
-    de construir_cliente_out para no crear ciclo services→routers."""
+    """Alertas vigentes de un cliente, ya filtradas por los tipos ACTIVOS del contador. `datos` es la
+    entrada del cliente en datos_cartera(): al recorrer una cartera, calculalo una vez para todos y
+    pasalo (evita las queries por-cliente). Import perezoso de construir_cliente_out para no crear
+    ciclo services→routers."""
     from ..routers.clientes import construir_cliente_out
 
-    cliente_out = construir_cliente_out(db, cliente_orm)
+    cliente_out = construir_cliente_out(db, cliente_orm, datos)
     vts = ventanas if ventanas else _ventanas_default(hoy)
     calc = monotributo.calcular_cliente(cliente_out, vts, inflacion, hoy)
     out = []
@@ -244,18 +248,22 @@ def _vigentes_de_cliente(
 
 
 def alertas_vigentes(db: Session, usuario: models.Usuario, hoy: dt.date | None = None) -> list[dict]:
-    """Todas las alertas vigentes del contador (filtradas por su config). No muta nada."""
+    """Todas las alertas vigentes de la cartera visible del usuario (filtradas por su config): las
+    propias y, para un titular con equipo, también las de los clientes de sus empleados."""
     hoy = hoy or dt.date.today()
     _, alertas_cfg, ventanas, inflacion = _config_efectiva(usuario)
     clientes = db.scalars(
         select(models.ClienteARCA).where(
-            models.ClienteARCA.usuario_id == usuario.id,
+            models.ClienteARCA.usuario_id.in_(ids_cartera(db, usuario)),
             models.ClienteARCA.activo.is_(True),  # los desactivados no generan alertas
         )
     ).all()
+    from ..routers.clientes import datos_cartera
+
+    datos = datos_cartera(db, clientes)
     out: list[dict] = []
     for c in clientes:
-        out.extend(_vigentes_de_cliente(db, c, alertas_cfg, ventanas, inflacion, hoy))
+        out.extend(_vigentes_de_cliente(db, c, alertas_cfg, ventanas, inflacion, hoy, datos[c.cuit]))
     return out
 
 
@@ -294,6 +302,11 @@ def evaluar_y_notificar(db: Session, solo_usuario_id: int | None = None) -> dict
 
     res = {"contadores_notificados": 0, "alertas_nuevas": 0, "mensajes_enviados": 0}
     for u in usuarios:
+        # Los EMPLEADOS del equipo no reciben el canal: las alertas de sus clientes asignados se
+        # evalúan y notifican en la vuelta del TITULAR (ids_cartera abarca todo el equipo). Evita
+        # avisos duplicados y mantiene el registro AlertaEnviada con una sola identidad por estudio.
+        if u.titular_id is not None:
+            continue
         if not u.telefono:
             continue
         notif, alertas_cfg, ventanas, inflacion = _config_efectiva(u)
@@ -302,7 +315,7 @@ def evaluar_y_notificar(db: Session, solo_usuario_id: int | None = None) -> dict
 
         clientes = db.scalars(
             select(models.ClienteARCA).where(
-                models.ClienteARCA.usuario_id == u.id,
+                models.ClienteARCA.usuario_id.in_(ids_cartera(db, u)),
                 models.ClienteARCA.activo.is_(True),  # los desactivados no disparan alertas ni WhatsApp
             )
         ).all()
@@ -315,8 +328,11 @@ def evaluar_y_notificar(db: Session, solo_usuario_id: int | None = None) -> dict
         claves_vigentes: set = set()
         nuevas: list[dict] = []
 
+        from ..routers.clientes import datos_cartera
+
+        datos = datos_cartera(db, clientes)
         for c in clientes:
-            vigentes = _vigentes_de_cliente(db, c, alertas_cfg, ventanas, inflacion, hoy)
+            vigentes = _vigentes_de_cliente(db, c, alertas_cfg, ventanas, inflacion, hoy, datos[c.cuit])
             for a in vigentes:
                 claves_vigentes.add((a["cuit"], a["tipo"], a["severidad"]))
             if c.alertas_baseline_en is None:

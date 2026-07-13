@@ -113,9 +113,36 @@ export function esAdmin(): boolean {
   return usuarioActual()?.rol === 'admin';
 }
 
-/** ¿La cuenta logueada tiene habilitada la facturación electrónica? (rollout gateado por el backend). */
+/** ¿La cuenta logueada es un usuario del estudio (empleado creado desde Gestión de usuarios)?
+ *  Ve sólo sus clientes asignados y navega restringido (sin Novedades/Configuración/Gestión). */
+export function esEmpleado(): boolean {
+  return usuarioActual()?.es_empleado === true;
+}
+
+/** Permisos que el titular puede prender/apagar por usuario del estudio (espejo de
+ *  PERMISOS_EQUIPO del backend). */
+export type PermisoEquipo =
+  | 'nuevo_cliente'
+  | 'editar_cliente'
+  | 'eliminar_cliente'
+  | 'actualizar_clave'
+  | 'facturar'
+  | 'conciliacion'
+  | 'comunicaciones';
+
+/** ¿La cuenta logueada puede hacer esta acción? Cuentas plenas: siempre sí. Usuarios del estudio:
+ *  según los permisos que le dio el titular (ausente = habilitado). Sólo esconde UI: el backend
+ *  valida igual en cada endpoint. */
+export function tienePermiso(clave: PermisoEquipo): boolean {
+  const u = usuarioActual();
+  if (!u?.es_empleado) return true;
+  return u.permisos?.[clave] !== false;
+}
+
+/** ¿La cuenta logueada puede emitir comprobantes? Combina el gate general de facturación (rollout
+ *  del backend) con el permiso por usuario del estudio (si el titular se lo apagó, no factura). */
 export function puedeFacturar(): boolean {
-  return usuarioActual()?.facturacion_habilitada === true;
+  return usuarioActual()?.facturacion_habilitada === true && tienePermiso('facturar');
 }
 
 /** ¿El usuario REAL detrás de la sesión es admin? Sigue siendo true mientras "entra como" otro
