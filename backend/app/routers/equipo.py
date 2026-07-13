@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..db import get_db
-from ..schemas import AsignarClienteIn, MiembroIn, MiembroOut, MiembroPatch
+from ..schemas import AsignarClienteIn, AsignarClientesIn, MiembroIn, MiembroOut, MiembroPatch
 from ..security import (
     PERMISOS_EQUIPO,
     hashear_password,
@@ -176,6 +176,31 @@ def eliminar_miembro(
     db.delete(miembro)
     db.commit()
     return {"ok": True, "clientes_reasignados": reasignados}
+
+
+@router.put("/clientes/asignar")
+def asignar_clientes(
+    datos: AsignarClientesIn,
+    db: Session = Depends(get_db),
+    titular: models.Usuario = Depends(titular_actual),
+):
+    """Asigna EN LOTE varios clientes a un responsable del equipo (el titular o un empleado). Sólo
+    toca clientes que ya son de la cartera del equipo: un CUIT ajeno simplemente no se actualiza."""
+    equipo = {titular.id} | set(
+        db.scalars(select(models.Usuario.id).where(models.Usuario.titular_id == titular.id))
+    )
+    if datos.usuario_id not in equipo:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    res = db.execute(
+        update(models.ClienteARCA)
+        .where(
+            models.ClienteARCA.cuit.in_(datos.cuits),
+            models.ClienteARCA.usuario_id.in_(equipo),
+        )
+        .values(usuario_id=datos.usuario_id)
+    )
+    db.commit()
+    return {"ok": True, "asignados": res.rowcount, "usuario_id": datos.usuario_id}
 
 
 @router.put("/clientes/{cuit}/asignar")

@@ -60,3 +60,14 @@ export function asignarCliente(
 ): Promise<{ ok: boolean; cuit: string; usuario_id: number }> {
   return apiPut(`/equipo/clientes/${cuit.replace(/\D/g, '')}/asignar`, { usuario_id: usuarioId });
 }
+
+/** Asigna EN LOTE varios clientes a un responsable (modal "Asignar clientes"). */
+export function asignarClientes(
+  usuarioId: number,
+  cuits: string[]
+): Promise<{ ok: boolean; asignados: number }> {
+  return apiPut('/equipo/clientes/asignar', {
+    usuario_id: usuarioId,
+    cuits: cuits.map(c => c.replace(/\D/g, '')),
+  });
+}
