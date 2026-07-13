@@ -13,6 +13,7 @@ import {
   MoreVertical,
   KeyRound,
   Wheat,
+  Briefcase,
   Power,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -32,6 +33,7 @@ import { EstadoCuenta } from '@/components/cliente/EstadoCuenta';
 import { HistoricoMensual } from '@/components/cliente/HistoricoMensual';
 import { FacturacionDetalle } from '@/components/cliente/FacturacionDetalle';
 import { FacturacionAgropecuaria } from '@/components/cliente/FacturacionAgropecuaria';
+import { RelacionDependencia } from '@/components/cliente/RelacionDependencia';
 import { ReconciliacionBancaria } from '@/components/cliente/ReconciliacionBancaria';
 import { ListaComprobantes } from '@/components/cliente/ListaComprobantes';
 // import { CausalesList } from '@/components/cliente/CausalesList'; // oculto por ahora (ver tab "causales")
@@ -351,6 +353,14 @@ export function ClienteDetalle() {
                   <Wheat className="h-3.5 w-3.5" /> Facturación agropecuaria
                 </TabsTrigger>
               )}
+              {cliente.relacionDependencia && (
+                <TabsTrigger
+                  value="relacion-dependencia"
+                  className={cn(tabTriggerClass, 'inline-flex items-center gap-1.5')}
+                >
+                  <Briefcase className="h-3.5 w-3.5" /> Relación de dependencia
+                </TabsTrigger>
+              )}
               <TabsTrigger value="reconciliacion" className={tabTriggerClass}>Reconciliación bancaria</TabsTrigger>
               <TabsTrigger value="comprobantes" className={tabTriggerClass}>Comprobantes</TabsTrigger>
               <TabsTrigger value="dfe" className={cn(tabTriggerClass, 'inline-flex items-center gap-1.5')}>
@@ -388,6 +398,11 @@ export function ClienteDetalle() {
         {cliente.facturaAgro && (
           <TabsContent value="agro" className="mt-0">
             <FacturacionAgropecuaria cliente={cliente} />
+          </TabsContent>
+        )}
+        {cliente.relacionDependencia && (
+          <TabsContent value="relacion-dependencia" className="mt-0">
+            <RelacionDependencia cliente={cliente} calc={calc} />
           </TabsContent>
         )}
         <TabsContent value="reconciliacion" className="mt-0">
