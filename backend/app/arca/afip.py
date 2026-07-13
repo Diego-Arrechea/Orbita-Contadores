@@ -1176,11 +1176,18 @@ class AFIP:
             # (click en su panel = setear hID + btnAcceder), que lleva a Inicio o a vRut.
             if "ContentPlaceHolder1$hID" in html:
                 html, url = self._mono_elegir_representado(html)
-            # Redirección al Registro Único Tributario (vRut.aspx): el CUIT tiene el
-            # servicio adherido pero NO hay dashboard de Monotributo activo (típico de
-            # quien pasó a Responsable Inscripto). Es estable, no transitorio -> cortamos
-            # como NO monotributista (el régimen real lo confirman los comprobantes).
+            # Redirección al Registro Único Tributario (vRut.aspx): NO hay dashboard de
+            # Monotributo clásico. Puede ser (a) quien pasó a Responsable Inscripto —ya NO
+            # es monotributista— o (b) un monotributista vigente que ARCA migró a la
+            # experiencia nueva del RUT. Los desempata `adherido` (metadata del servicio):
+            #   - adherido True  -> sigue adherido al Monotributo: ES monotributista, pero
+            #     sin panel clásico no leemos categoría/facturómetro (el caller igual trae
+            #     la deuda de la CCMA, que sí funciona). No inventamos categoría (queda None).
+            #   - adherido False ya cortó arriba (no llega acá); None -> best-effort: no mono.
             if "vRut.aspx" in url or "ARCA | RUT" in html:
+                if adherido:
+                    self.log.info("Monotributo: RUT (vRut) con servicio adherido -> monotributista sin panel clásico.")
+                    return {"categoria": None, "actividad": None, "es_monotributista": True}
                 self.log.info("Monotributo: redirige al RUT (vRut) -> no es monotributista.")
                 return {"categoria": None, "actividad": None, "es_monotributista": False}
             if "spanFacturometroCategoria" in html or re.search(r"Categor[ií]a\s+[A-K]\s", html):

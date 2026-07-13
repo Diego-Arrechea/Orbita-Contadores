@@ -42,6 +42,20 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-13-monotributistas-nuevo-registro',
+    fecha: '2026-07-13',
+    titulo: 'Monotributistas que antes figuraban fuera del régimen ahora se reconocen bien',
+    items: [
+      {
+        tipo: 'arreglo',
+        texto:
+          'Algunos monotributistas aparecían por error como "no monotributista" y, con eso, no se ' +
+          'mostraba su estado de cuenta. Ahora se los identifica correctamente y se trae su deuda de ' +
+          'cuota, incluso los meses adeudados.',
+      },
+    ],
+  },
+  {
     id: '2026-07-08-clave-fiscal-reintento-instantaneo',
     fecha: '2026-07-08',
     titulo: 'Al actualizar la clave fiscal, la información se vuelve a traer al instante',
