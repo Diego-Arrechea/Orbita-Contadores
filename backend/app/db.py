@@ -206,10 +206,25 @@ def _migrar_clientes_arca(conn) -> None:
     if "agro_chequeado_en" not in cols:
         tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
         conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN agro_chequeado_en {tipo}"))
+    # Remuneración en relación de dependencia ("Aportes en Línea"), JSON serializado. TEXT portable.
+    if "remuneraciones_json" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN remuneraciones_json TEXT"))
+    # Cuándo se chequeó por última vez "Aportes en Línea" (NULL = nunca). TIMESTAMP portable.
+    if "aportes_chequeado_en" not in cols:
+        tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
+        conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN aportes_chequeado_en {tipo}"))
     # Meses seguidos de monotributo que adeuda hoy (Consulta de Saldos de la CCMA). INTEGER anda igual
     # en SQLite y Postgres; NULL = sin dato (no monotributista o sync sin CCMA).
     if "meses_adeudados" not in cols:
         conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN meses_adeudados INTEGER"))
+    # Ventana de recategorización REAL del padrón (fechas oficiales de ARCA, ISO). VARCHAR/BOOLEAN
+    # andan igual en SQLite y Postgres; NULL = sin dato (no monotributista o sync sin esa consulta).
+    if "recat_ventana_desde" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN recat_ventana_desde VARCHAR(20)"))
+    if "recat_ventana_hasta" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN recat_ventana_hasta VARCHAR(20)"))
+    if "recat_mostrar_alerta" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN recat_mostrar_alerta BOOLEAN"))
     # ¿El contador tiene activo el monitoreo del cliente? En False el motor de sync lo saltea y en la
     # lista aparece como "Desactivado". DEFAULT TRUE → los clientes ya existentes quedan activos.
     if "activo" not in cols:

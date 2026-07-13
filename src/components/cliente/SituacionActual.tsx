@@ -71,6 +71,19 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
   const debeRecategorizar = calc.categoriaCorresponde.codigo !== cliente.categoria;
   const ratioPct = calc.ratioGastosTopeCatK;
   const ratioUmbralStr = formatPercent(calc.ratioUmbralLegal);
+  // Respaldo de gastos por relación de dependencia: cuánto del total comprado a "consumidor final"
+  // (compras 12m) queda cubierto por el haber percibido informado, si tenemos la remuneración.
+  const rem = cliente.remuneracion;
+  const respaldo =
+    rem && rem.totalBruto > 0
+      ? {
+          empleador: rem.empleadores[0],
+          total: rem.totalBruto,
+          restante: Math.max(0, calc.comprasUltimos12 - rem.totalBruto),
+          cubierto:
+            calc.comprasUltimos12 > 0 ? Math.min(1, rem.totalBruto / calc.comprasUltimos12) : 1,
+        }
+      : null;
 
   // Facturación últimos 12 meses para el gauge: si tenemos la cifra OFICIAL de ARCA (facturómetro del
   // padrón) la usamos como autoritativa; si no, caemos al cálculo propio por comprobantes. Lo mismo
@@ -288,8 +301,29 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
         </div>
         {cliente.relacionDependencia && (
           <div className="mt-3 rounded-md bg-muted/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-            Tiene relación de dependencia: parte de estas compras pueden estar justificadas por el
-            haber percibido, aunque figuren a consumidor final y no estén vinculadas a la actividad.
+            {respaldo ? (
+              <>
+                Trabaja en relación de dependencia
+                {respaldo.empleador ? ` en ${respaldo.empleador}` : ''}. El haber percibido de los
+                últimos 12 meses ({formatCurrency(respaldo.total)}){' '}
+                {respaldo.restante > 0 ? (
+                  <>
+                    respalda cerca del {formatPercent(respaldo.cubierto, 0)} de estas compras; quedan{' '}
+                    {formatCurrency(respaldo.restante)} sin justificar por el sueldo.
+                  </>
+                ) : (
+                  <>
+                    cubre la totalidad de estas compras, aunque figuren a consumidor final y no estén
+                    vinculadas a la actividad.
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                Tiene relación de dependencia: parte de estas compras pueden estar justificadas por el
+                haber percibido, aunque figuren a consumidor final y no estén vinculadas a la actividad.
+              </>
+            )}
           </div>
         )}
       </Card>

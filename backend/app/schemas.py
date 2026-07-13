@@ -55,15 +55,18 @@ def clasificar_regimen(cbte_tipos_emitidos: set[int]) -> str | None:
 def resolver_regimen(almacenado: str | None, inferido: str | None) -> str | None:
     """Combina el régimen AUTORITATIVO del padrón ARCA (`almacenado`, fuente oficial) con el
     `inferido` de los comprobantes emitidos. Precedencia:
-      1) padrón dice monotributo            → 'monotributo'
+      1) padrón dice monotributo             → 'monotributo'
       2) evidencia dura de RI (emite A/B/M/E) → 'responsable_inscripto'
-      3) padrón dice que NO es monotributista → 'no_monotributo'
-      4) inferencia por comprobantes (clase C → monotributo) o None si no hay evidencia.
+      3) padrón dice responsable_inscripto   → 'responsable_inscripto'  (del padrón de impuestos: IVA)
+      4) padrón dice que NO es monotributista → 'no_monotributo'
+      5) inferencia por comprobantes (clase C → monotributo) o None si no hay evidencia.
     Nunca inventa 'monotributo' sin evidencia: None = sin determinar (el front no fabrica categoría).
     """
     if almacenado == "monotributo":
         return "monotributo"
     if inferido == "responsable_inscripto":
+        return "responsable_inscripto"
+    if almacenado == "responsable_inscripto":
         return "responsable_inscripto"
     if almacenado == "no_monotributo":
         return "no_monotributo"
@@ -128,6 +131,25 @@ class HistorialMesOut(BaseModel):
     ingresosNoFacturados: float = 0  # noqa: N815 — siempre 0 desde el backend; lo pisa el front si aplica
 
 
+class RemuneracionMesOut(BaseModel):
+    """Un mes de remuneración bruta declarada al SIPA (relación de dependencia)."""
+
+    periodo: str  # aaaamm
+    bruto: float
+    incluyeSac: bool = False  # noqa: N815 — incluye SAC/aguinaldo (el '(*)' de ARCA)
+
+
+class RemuneracionOut(BaseModel):
+    """Remuneración del cliente en relación de dependencia ("Aportes en Línea"). Sirve para
+    justificar gastos: el haber percibido respalda compras a "consumidor final"."""
+
+    empleadores: list[str] = []  # razones sociales de los empleadores informados
+    totalBruto: float = 0  # noqa: N815 — suma de la remuneración bruta del período
+    periodoDesde: str | None = None  # noqa: N815 — aaaamm
+    periodoHasta: str | None = None  # noqa: N815 — aaaamm
+    meses: list[RemuneracionMesOut] = []  # serie mensual (cronológica)
+
+
 class ClienteOut(BaseModel):
     cuit: str
     nombre: str
@@ -135,6 +157,12 @@ class ClienteOut(BaseModel):
     categoria: str | None = None
     actividad: str | None = None
     prox_recategorizacion: str | None = None
+    # Ventana de recategorización REAL del padrón de ARCA (ISO aaaa-mm-dd): abre en `recat_ventana_desde`
+    # y cierra (fecha límite) en `recat_ventana_hasta`. El front la usa como fecha límite oficial en vez
+    # del calendario hardcodeado. `recat_mostrar_alerta` = ARCA marca que corresponde recategorizar.
+    recat_ventana_desde: str | None = None
+    recat_ventana_hasta: str | None = None
+    recat_mostrar_alerta: bool | None = None
     cuota_estado: str | None = None  # al-dia | con-deuda
     cuota_deuda: float | None = None
     cuota_saldo_favor: float | None = None
@@ -154,6 +182,9 @@ class ClienteOut(BaseModel):
     # ¿Tiene relación de dependencia (trabajo en blanco)? Efectivo = override manual del contador si
     # lo marcó, si no el auto-detectado. None = no se sabe. Relevante para justificar gastos.
     relacion_dependencia: bool | None = None
+    # Remuneración informada de la relación de dependencia (empleador + total + serie mensual). None
+    # si no aplica o aún no se consultó. Alimenta el respaldo de gastos en la ficha.
+    remuneracion: RemuneracionOut | None = None
     # Historial mensual agregado (últimos 12 meses calendario, cronológico). Reemplaza el bajar todos
     # los comprobantes en el dashboard: alcanza para % tope, ratio de gastos y proyección.
     historial_mensual: list[HistorialMesOut] = []

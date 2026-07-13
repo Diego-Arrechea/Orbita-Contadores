@@ -25,6 +25,8 @@ from ..schemas import (
     JobOut,
     LiquidacionAgroOut,
     LiquidacionesAgroOut,
+    RemuneracionMesOut,
+    RemuneracionOut,
     clasificar_regimen,
     nombre_tipo,
     resolver_regimen,
@@ -127,6 +129,30 @@ def _agro_facturacion(db: Session, cuit: str, factura_agro: bool) -> tuple[float
     return total, doce
 
 
+def _remuneracion(c: models.ClienteARCA) -> RemuneracionOut | None:
+    """Arma la remuneración de relación de dependencia desde `remuneraciones_json`. None si no hay."""
+    if not c.remuneraciones_json:
+        return None
+    try:
+        d = json.loads(c.remuneraciones_json)
+    except (ValueError, TypeError):
+        return None
+    meses = [
+        RemuneracionMesOut(
+            periodo=m.get("periodo", ""), bruto=float(m.get("bruto") or 0),
+            incluyeSac=bool(m.get("incluye_sac")),
+        )
+        for m in d.get("remuneraciones", [])
+    ]
+    return RemuneracionOut(
+        empleadores=[e.get("razon_social", "") for e in d.get("empleadores", []) if e.get("razon_social")],
+        totalBruto=float(d.get("total_bruto") or 0),
+        periodoDesde=d.get("periodo_desde"),
+        periodoHasta=d.get("periodo_hasta"),
+        meses=meses,
+    )
+
+
 def _cliente_propio(db: Session, cuit: str, usuario: models.Usuario) -> models.ClienteARCA:
     """Devuelve el cliente sólo si pertenece al usuario logueado; si no, 404 (sin revelar que existe)."""
     cliente = db.get(models.ClienteARCA, cuit)
@@ -162,6 +188,9 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
         categoria=edic.get("categoria") or c.categoria,
         actividad=edic.get("tipoActividad") or c.actividad,
         prox_recategorizacion=c.prox_recategorizacion,
+        recat_ventana_desde=c.recat_ventana_desde,
+        recat_ventana_hasta=c.recat_ventana_hasta,
+        recat_mostrar_alerta=c.recat_mostrar_alerta,
         cuota_estado=edic.get("estadoCuotaMesActual") or c.cuota_estado,
         cuota_deuda=float(c.cuota_deuda) if c.cuota_deuda is not None else None,
         cuota_saldo_favor=float(c.cuota_saldo_favor) if c.cuota_saldo_favor is not None else None,
@@ -184,6 +213,7 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA) -> ClienteOut:
             if edic.get("relacionDependencia") is not None
             else c.relacion_dependencia
         ),
+        remuneracion=_remuneracion(c),
         historial_mensual=historial,
         tiene_comprobantes=tiene_comps,
         tiene_facturacion=bool(c.cert_cifrado and c.key_cifrado),

@@ -107,6 +107,29 @@ export interface Extraccion {
   comprobantes?: number;
 }
 
+/** Un mes de remuneración bruta declarada (relación de dependencia). */
+export interface RemuneracionMes {
+  /** aaaamm */
+  periodo: string;
+  bruto: number;
+  /** Incluye SAC/aguinaldo. */
+  incluyeSac: boolean;
+}
+
+/** Remuneración del cliente en relación de dependencia ("Aportes en Línea"). */
+export interface Remuneracion {
+  /** Razones sociales de los empleadores informados. */
+  empleadores: string[];
+  /** Suma de la remuneración bruta del período (haber percibido). */
+  totalBruto: number;
+  /** aaaamm */
+  periodoDesde?: string;
+  /** aaaamm */
+  periodoHasta?: string;
+  /** Serie mensual (cronológica). */
+  meses: RemuneracionMes[];
+}
+
 export interface Cliente {
   id: string;
   nombre: string;
@@ -121,6 +144,9 @@ export interface Cliente {
   /** ¿Tiene relación de dependencia (trabajo en blanco)? Lo marca el contador (o se auto-detecta).
    *  Sirve para justificar parte de las compras a consumidor final con el haber percibido. */
   relacionDependencia: boolean;
+  /** Remuneración informada de la relación de dependencia (empleador + total 12m + serie mensual).
+   *  Alimenta el respaldo de gastos en la ficha. Ausente si no aplica o aún no se consultó. */
+  remuneracion?: Remuneracion;
   estadoAlerta: EstadoAlerta;
   ultimaExtraccion?: string;
   resultadoUltimaExtraccion: 'exitosa' | 'fallida' | 'pendiente';
@@ -141,6 +167,13 @@ export interface Cliente {
   facturacion12mOficial?: number;
   topeCategoriaOficial?: number;
   facturometroActualizado?: string;
+  /** Ventana de recategorización REAL del padrón de ARCA (ISO aaaa-mm-dd): abre en `ventanaRecatDesde`
+   *  y su fecha LÍMITE es `ventanaRecatHasta`. Cuando existe, manda sobre el calendario semestral por
+   *  defecto (dejar de hardcodear la fecha: si ARCA prorroga, ésta es la buena). Sólo monotributista. */
+  ventanaRecatDesde?: string;
+  ventanaRecatHasta?: string;
+  /** ARCA marca que corresponde recategorizar (aún en estudio si es por-cliente o de calendario). */
+  recatMostrarAlerta?: boolean;
   historialMensual: HistorialMes[];
   movimientosBancarios: MovimientoBancario[];
   comprobantes: Comprobante[];

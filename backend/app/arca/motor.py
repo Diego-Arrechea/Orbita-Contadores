@@ -153,6 +153,17 @@ def liquidaciones_agro(
     )
 
 
+# --- Aportes en Línea (MisAportes) — relación de dependencia — SÓLO HTTP ------
+def mis_aportes(
+    cuit_login: str, clave: str, desde: str | None = None, hasta: str | None = None
+) -> dict:
+    """Remuneración del SIPA (F.931) del titular en relación de dependencia. Sólo HTTP (el motor
+    browser nunca hizo MisAportes)."""
+    from . import motor_http
+
+    return motor_http.mis_aportes(cuit_login, clave, desde=desde, hasta=hasta)
+
+
 # --- Certificado de facturación (cert + Fase B) -------------------------------
 def bootstrap_cliente(
     cuit_cliente: str, cuit_login: str, clave: str, alias: str | None = None, on_progress=None

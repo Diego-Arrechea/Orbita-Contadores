@@ -69,6 +69,20 @@ export interface CalculoCliente {
   topeCategoriaConInflacion: number; // tope de la categoría resultante, YA actualizado por inflación (6m)
 }
 
+/**
+ * Ventana de recategorización armada con la fecha LÍMITE real de ARCA (`recat_ventana_hasta`, ISO).
+ * La nueva categoría rige desde el 1° del mes de esa fecha límite (histórico: cierra el 5, rige
+ * desde el 1). El semestre se infiere del mes de cierre (feb → Jul-Dic; ago → Ene-Jun).
+ */
+function ventanaDesdeArca(hastaISO: string): VentanaRecategorizacion {
+  const mes = Number(hastaISO.slice(5, 7));
+  return {
+    semestre: mes >= 1 && mes <= 3 ? 'Julio-Diciembre' : 'Enero-Junio',
+    fechaLimite: hastaISO,
+    efectoDesde: `${hastaISO.slice(0, 7)}-01`,
+  };
+}
+
 export function calcularCliente(
   cliente: Cliente,
   ventanas: VentanaRecategorizacion[],
@@ -154,7 +168,16 @@ export function calcularCliente(
   const inflacionEvitaSubirCategoria =
     CATEGORIAS.indexOf(categoriaConInflacion) < CATEGORIAS.indexOf(categoriaCorresponde);
 
-  const ventanasFuturas = ventanas
+  // Ventana de recategorización REAL de ARCA (si la trajimos) por sobre el calendario semestral por
+  // defecto: su fecha de cierre es la fecha LÍMITE oficial. De la config sólo conservamos las ventanas
+  // POSTERIORES a la real (las siguientes, que ARCA todavía no informó); la del mismo evento —tenga la
+  // misma fecha o una prorrogada— queda reemplazada por la real. Así, si ARCA corre la fecha, manda la
+  // real y no la hardcodeada. Espejo de services/monotributo.py.
+  const ventanaReal = cliente.ventanaRecatHasta ? ventanaDesdeArca(cliente.ventanaRecatHasta) : undefined;
+  const ventanasEfectivas = ventanaReal
+    ? [ventanaReal, ...ventanas.filter(v => v.fechaLimite > ventanaReal.fechaLimite)]
+    : ventanas;
+  const ventanasFuturas = ventanasEfectivas
     .map(v => ({ ...v, dias: differenceInCalendarDays(parseISO(v.fechaLimite), HOY) }))
     .filter(v => v.dias >= 0)
     .sort((a, b) => a.dias - b.dias);
