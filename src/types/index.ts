@@ -2,10 +2,13 @@ export type EstadoAlerta = 'rojo' | 'amarillo' | 'gris' | 'verde';
 export type TipoActividad = 'comercio' | 'servicios';
 export type CategoriaCodigo =
   | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K';
-// 'no_monotributo' = ARCA confirma que NO es monotributista, pero no es (o no sabemos si es) RI:
+// 'no_monotributo' = confirmado que NO es monotributista, pero no es (o no sabemos si es) RI:
 // régimen general / exento / empleado / consumidor final. Se distingue de 'responsable_inscripto'
 // para no rotular como RI a alguien sin evidencia de serlo (ver src/lib/regimen.ts).
-export type Regimen = 'monotributo' | 'responsable_inscripto' | 'no_monotributo';
+// 'pendiente' = TODAVÍA no tenemos el dato del régimen (el alta del cliente no llegó a traerlo:
+// típicamente la clave fiscal está mal cargada). NO es lo mismo que 'no_monotributo' (un veredicto):
+// acá no sabemos, así que no hay que afirmar que no es monotributista. Ver clientesService.
+export type Regimen = 'monotributo' | 'responsable_inscripto' | 'no_monotributo' | 'pendiente';
 
 export interface Categoria {
   codigo: CategoriaCodigo;

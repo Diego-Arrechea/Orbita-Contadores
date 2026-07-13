@@ -79,15 +79,21 @@ function construirCliente(
     bk.categoria && CODIGOS.includes(bk.categoria as CategoriaCodigo)
       ? (bk.categoria as CategoriaCodigo)
       : null;
-  // Régimen: lo resuelve el backend (padrón autoritativo + inferencia por comprobantes). Si no vino
-  // o no hay evidencia de monotributo, NO asumimos monotributo: antes se inventaba Cat. A para un
-  // no-monotributista (facturación 0 → categoría más baja). Ahora queda 'no_monotributo'.
+  // Régimen: lo resuelve el backend (padrón autoritativo + inferencia por comprobantes). Distinguimos
+  // tres situaciones para NO afirmar de más:
+  //   - 'monotributo' / 'responsable_inscripto' / 'no_monotributo': veredicto real del backend (o
+  //     categoría real del padrón ⇒ monotributista).
+  //   - 'pendiente': el backend NO trae veredicto (regimen null) y no hay categoría ⇒ TODAVÍA no lo
+  //     sabemos (típico de un alta que no llegó a traer los datos: clave mal cargada). Antes esto caía
+  //     en 'no_monotributo' y la ficha afirmaba "no es monotributista" sobre un cliente sin datos.
   const regimen: Regimen =
     bk.regimen === 'monotributo' || catReal
       ? 'monotributo'
       : bk.regimen === 'responsable_inscripto'
         ? 'responsable_inscripto'
-        : 'no_monotributo';
+        : bk.regimen === 'no_monotributo'
+          ? 'no_monotributo'
+          : 'pendiente';
   // La categoría sólo aplica a monotributistas: la real del padrón, o inferida por facturación si
   // es monotributista sin ese dato. Para no-monotributistas: null (no se inventa).
   const categoria: CategoriaCodigo | null =

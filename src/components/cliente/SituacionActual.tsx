@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Building2, Wheat } from 'lucide-react';
+import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Building2, Wheat, Clock } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ProgresoTope } from '@/components/shared/ProgresoTope';
 import { cn, formatCurrency, formatDate, formatPercent } from '@/lib/utils';
 import { getCategoria } from '@/data/categorias';
-import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
+import { esMonotributista, etiquetaRegimen, regimenPendiente } from '@/lib/regimen';
 import { esAdminReal } from '@/lib/cuenta';
 import { useConfig } from '@/context/ConfigContext';
 import { VerDetalle } from '@/components/cliente/VerDetalle';
@@ -25,6 +25,27 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
   // Toggle del visor del tope: "Hoy" vs "Ajustado por inflación" (declarado antes de cualquier
   // return para no romper el orden de hooks).
   const [verInflacion, setVerInflacion] = useState(false);
+  // Todavía no tenemos el dato del régimen (el alta no llegó a traerlo). NO afirmamos que no es
+  // monotributista: mostramos un cartel de "en proceso" y, si la clave está mal cargada, cómo destrabarlo.
+  if (regimenPendiente(cliente)) {
+    return (
+      <Card className="p-5 sm:p-7">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Clock className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold">Datos en proceso</h3>
+            <p className="text-sm text-muted-foreground mt-1 max-w-prose">
+              {cliente.claveInvalida
+                ? 'Todavía no pudimos traer la situación de este cliente porque la clave fiscal cargada no es correcta. Actualizá la clave desde el botón de la ficha y la información se completa sola.'
+                : 'Estamos preparando la información de este cliente. En breve vas a ver acá su situación de monotributo.'}
+            </p>
+          </div>
+        </div>
+      </Card>
+    );
+  }
   if (!esMonotributista(cliente)) {
     const esRI = cliente.regimen === 'responsable_inscripto';
     return (
@@ -38,7 +59,7 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
             <p className="text-sm text-muted-foreground mt-1 max-w-prose">
               {esRI
                 ? 'Este cliente no es monotributista, así que el seguimiento de monotributo (categoría, topes, recategorización y cuota) no aplica. Podés ver sus comprobantes e histórico en las otras solapas.'
-                : 'Este CUIT no figura como monotributista en ARCA (no aparece en el padrón de Monotributo ni emite comprobantes clase C), así que el seguimiento de monotributo (categoría, topes, recategorización y cuota) no aplica. Podés ver sus comprobantes e histórico en las otras solapas.'}
+                : 'Este cliente no figura como monotributista, así que el seguimiento de monotributo (categoría, topes, recategorización y cuota) no aplica. Podés ver sus comprobantes e histórico en las otras solapas.'}
             </p>
           </div>
         </div>
