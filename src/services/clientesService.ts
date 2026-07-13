@@ -20,6 +20,9 @@ interface ClienteBackend {
   categoria?: string | null;
   actividad?: string | null;
   prox_recategorizacion?: string | null;
+  recat_ventana_desde?: string | null; // ventana de recategorización real (ISO), fecha de apertura
+  recat_ventana_hasta?: string | null; // ídem, fecha LÍMITE (reemplaza el calendario hardcodeado)
+  recat_mostrar_alerta?: boolean | null; // ARCA marca que corresponde recategorizar
   cuota_estado?: string | null;
   cuota_deuda?: number | null;
   cuota_saldo_favor?: number | null;
@@ -36,6 +39,14 @@ interface ClienteBackend {
   notas?: string | null; // edición del contador (override en la cuenta)
   fecha_inicio?: string | null; // edición del contador (override en la cuenta)
   relacion_dependencia?: boolean | null; // tiene relación de dependencia (override manual o auto)
+  // Remuneración informada de la relación de dependencia (empleador + total + serie mensual).
+  remuneracion?: {
+    empleadores?: string[] | null;
+    totalBruto?: number | null;
+    periodoDesde?: string | null;
+    periodoHasta?: string | null;
+    meses?: { periodo: string; bruto: number; incluyeSac?: boolean | null }[] | null;
+  } | null;
   // Historial mensual ya agregado por el backend (últimos 12 meses). El dashboard lo consume sin
   // tener que bajar todos los comprobantes; la ficha del cliente sigue bajando el detalle aparte.
   historial_mensual?: HistorialMes[] | null;
@@ -111,6 +122,19 @@ function construirCliente(
     fechaInicio: bk.fecha_inicio ?? (primerMes ? `${primerMes}-01` : '2020-01-01'),
     notas: bk.notas ?? '',
     relacionDependencia: bk.relacion_dependencia ?? false,
+    remuneracion: bk.remuneracion
+      ? {
+          empleadores: bk.remuneracion.empleadores ?? [],
+          totalBruto: bk.remuneracion.totalBruto ?? 0,
+          periodoDesde: bk.remuneracion.periodoDesde ?? undefined,
+          periodoHasta: bk.remuneracion.periodoHasta ?? undefined,
+          meses: (bk.remuneracion.meses ?? []).map((m) => ({
+            periodo: m.periodo,
+            bruto: m.bruto,
+            incluyeSac: m.incluyeSac ?? false,
+          })),
+        }
+      : undefined,
     estadoAlerta: 'verde',
     ultimaExtraccion: bk.ultima_extraccion ?? undefined,
     resultadoUltimaExtraccion:
@@ -126,6 +150,9 @@ function construirCliente(
     facturacion12mOficial: bk.facturacion_12m ?? undefined,
     topeCategoriaOficial: bk.tope_categoria ?? undefined,
     facturometroActualizado: bk.facturometro_actualizado ?? undefined,
+    ventanaRecatDesde: bk.recat_ventana_desde ?? undefined,
+    ventanaRecatHasta: bk.recat_ventana_hasta ?? undefined,
+    recatMostrarAlerta: bk.recat_mostrar_alerta ?? undefined,
     historialMensual,
     movimientosBancarios: [],
     comprobantes,

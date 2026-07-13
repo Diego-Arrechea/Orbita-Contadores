@@ -151,6 +151,11 @@ CCAM_BASE = "https://servicios2.afip.gob.ar/tramites_con_clave_fiscal/ccam"
 # (API REST JSON; sesión JSESSIONID propia del dominio ve.cloud).
 VE_BASE = "https://ve.cloud.afip.gob.ar"
 
+# "Aportes en Línea" (MisAportes) en serviciossegsoc: la remuneración que el empleador declara al
+# SIPA (F.931) del empleado en relación de dependencia. ASP.NET WebForms (ASP.NET_SessionId +
+# __VIEWSTATE/__EVENTVALIDATION); el entry SSO real es default.aspx. Ver el método mis_aportes().
+MISAPORTES_BASE = "https://serviciossegsoc.afip.gob.ar/MisAportes/app"
+
 # Entry point (paso c de abrir_servicio) de servicios conocidos. Tenerlo acá
 # permite saltar el GET de metadata (que solo servía para descubrir esta URL).
 SERVICIOS_ENTRY = {
@@ -164,6 +169,8 @@ SERVICIOS_ENTRY = {
     "adminrel": f"{CERT_BASE}/default.aspx",
     "ccam": f"{CCAM_BASE}/procesa.asp",
     "e-ventanilla": f"{VE_BASE}/login",
+    # Aportes en Línea: el token+sign va a default.aspx (index.aspx cae en ErrorPage→FinSession).
+    "mis_aportes": f"{MISAPORTES_BASE}/default.aspx",
 }
 
 # Comprobantes en Línea (rcel) en fe.afip.gob.ar. NO es mcmp: rcel es el facturador web, y su
@@ -237,6 +244,15 @@ _RE_ASPNET_VS = re.compile(
 _RE_SCRIPT_STYLE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
 _RE_TAG = re.compile(r"<[^>]+>")
 _RE_WS = re.compile(r"\s+")
+
+
+def _num_ars(s: str) -> float:
+    """Importe en formato AR ('4.694.468,96') -> float 4694468.96. '' / None -> 0.0."""
+    s = (s or "").strip().replace(".", "").replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
 
 
 def _pista_pantalla(html: str, limite: int = 160) -> str:
@@ -1780,6 +1796,91 @@ class AFIP:
             "cod_postal": _campo("codPostal", "codigoPostal", "cp"),
         }
 
+    @staticmethod
+    def _fecha_iso(f: str | None) -> str | None:
+        """'dd/mm/aaaa' -> 'aaaa-mm-dd' (ISO). None / formato inesperado -> None."""
+        if not f or "/" not in str(f):
+            return None
+        try:
+            d, m, y = str(f).split("/")
+            return f"{int(y):04d}-{int(m):02d}-{int(d):02d}"
+        except (ValueError, TypeError):
+            return None
+
+    def impuestos_padron(self, cuit: str | None = None) -> list[dict]:
+        """Impuestos inscriptos del CUIT en el padrón: GET /portal/api/cuit/{cuit}/tipoCuitImpuestos.
+        Cada item: {id, periodo, descripcion, estado}. Es la señal AUTORITATIVA del régimen (qué
+        tributos tiene activos) SIN abrir el SSO de Monotributo: un único GET sobre la sesión del
+        portal ya abierta. Devuelve [] si no se pudo leer."""
+        cuit = str(cuit or self.cuit)
+        try:
+            r = self.session.get(
+                f"{URL_PORTAL_API_BASE}/cuit/{cuit}/tipoCuitImpuestos",
+                headers={"Accept": "application/json, text/plain, */*", "Referer": URL_PORTAL_APP},
+            )
+            data = (r.json() or {}).get("data") or {}
+            imp = data.get("impuestos")
+            return imp if isinstance(imp, list) else []
+        except Exception:  # noqa: BLE001
+            return []
+
+    def regimen_desde_impuestos(self, cuit: str | None = None) -> dict:
+        """Régimen impositivo derivado del padrón de impuestos (impuestos_padron). Devuelve
+        {regimen, es_monotributista, activos}:
+          - algún impuesto MONOTRIBUTO activo    -> 'monotributo'           (es_monotributista True)
+          - si no, algún IVA activo              -> 'responsable_inscripto' (False)
+          - si no, hay otros impuestos activos   -> 'no_monotributo'        (False)
+          - sin datos / sin impuestos            -> regimen None, es_monotributista None (NO pisar)
+
+        es_monotributista None = "no sé" → el caller cae al camino del panel (comportamiento previo).
+        False sólo cuando el padrón CONFIRMA inscripción y ninguna es Monotributo (ahí se puede cortar
+        sin esperar el SSO). Lee la inscripción, no la pantalla → inmune al 'migrado al RUT'."""
+        imp = self.impuestos_padron(cuit)
+        if not imp:
+            return {"regimen": None, "es_monotributista": None, "activos": []}
+        activos = [i for i in imp if str(i.get("estado") or "").strip().upper() == "ACTIVO"]
+        descs = [str(i.get("descripcion") or "").upper() for i in activos]
+
+        def _hay(sub: str) -> bool:
+            return any(sub in d for d in descs)
+
+        if not activos:
+            regimen, es_mono = "no_monotributo", False  # inscripto pero todo dado de baja
+        elif _hay("MONOTRIBUTO"):
+            regimen, es_mono = "monotributo", True
+        elif _hay("IVA"):
+            regimen, es_mono = "responsable_inscripto", False
+        else:
+            regimen, es_mono = "no_monotributo", False
+        self.log.info(
+            "Régimen (padrón impuestos) %s: %s | activos: %s",
+            cuit or self.cuit, regimen, ", ".join(descs) or "—",
+        )
+        return {"regimen": regimen, "es_monotributista": es_mono, "activos": descs}
+
+    def debe_recategorizar(self, cuit: str | None = None) -> dict:
+        """Ventana de recategorización REAL del monotributo: GET
+        /portal/api/monotributista/{cuit}/deberecategorizar. Devuelve {desde, hasta, mostrar_alerta}
+        con las fechas OFICIALES de ARCA (ISO aaaa-mm-dd) — para dejar de hardcodear el calendario
+        semestral. {} si no se pudo leer o el endpoint no trae la fecha de cierre."""
+        cuit = str(cuit or self.cuit)
+        try:
+            r = self.session.get(
+                f"{URL_PORTAL_API_BASE}/monotributista/{cuit}/deberecategorizar",
+                headers={"Accept": "application/json, text/plain, */*", "Referer": URL_PORTAL_APP},
+            )
+            data = (r.json() or {}).get("data") or {}
+        except Exception:  # noqa: BLE001
+            return {}
+        hasta = self._fecha_iso(data.get("fechaHastaRecategorizacion"))
+        if not hasta:
+            return {}
+        return {
+            "desde": self._fecha_iso(data.get("fechaDesdeRecategorizacion")),
+            "hasta": hasta,
+            "mostrar_alerta": bool(data.get("showAlertaRecategorizacion")),
+        }
+
     # --- Administrador de Relaciones: alta de relación (delegar un servicio) -
     # adminrel en serviciosweb (ASP.NET WebForms "clásico", __VIEWSTATE 'dDw...').
     # adminrel_asociar_computador delega un Web Service (por defecto Facturación
@@ -2667,6 +2768,179 @@ class AFIP:
         self.session.get(f"{base}/inicioPerfil.htm", headers={"Referer": f"{base}/index.jsp"})
         self._lsp_sector = sector
         return base
+
+    # --- Aportes en Línea (MisAportes): remuneración del empleado en relación de dependencia -----
+    def mis_aportes(self, *, desde: str | None = None, hasta: str | None = None) -> dict:
+        """Trae la remuneración declarada al SIPA (servicio "Aportes en Línea"/MisAportes) del
+        contribuyente logueado. Es el F.931 que informa el empleador: sirve para justificar gastos
+        (el haber percibido respalda compras a consumidor final) y como señal AUTORITATIVA de que el
+        cliente está en relación de dependencia.
+
+        `desde`/`hasta` = 'YYYYMM' (default: últimos 12 meses hasta el mes anterior completo).
+        Devuelve:
+            {es_relacion_dependencia: bool | None,   # True=rel.dep · False=sin nómina · None=no determinable
+             periodo_desde, periodo_hasta: 'YYYYMM',
+             empleadores: [{razon_social, cuit}],
+             remuneraciones: [{periodo: 'YYYYMM', bruto: float, incluye_sac: bool}],
+             total_bruto: float}
+        Sólo aplica al TITULAR de la clave (el servicio es personal; no cubre representados).
+        Flujo validado end-to-end; ver la memoria `aportes-en-linea-misaportes`.
+        """
+        if not self.logged_in:
+            self.login()
+
+        # Ventana por defecto: 12 meses hasta el mes anterior completo.
+        if not (desde and hasta):
+            fin = _dt.date.today().replace(day=1) - _dt.timedelta(days=1)   # último día del mes previo
+            ini = (fin.replace(day=1) - _dt.timedelta(days=330)).replace(day=1)
+            desde = desde or f"{ini.year}{ini.month:02d}"
+            hasta = hasta or f"{fin.year}{fin.month:02d}"
+
+        B = MISAPORTES_BASE
+
+        def hidden(html):
+            out = {}
+            for tag in re.findall(r'<input[^>]*type="hidden"[^>]*>', html, re.I):
+                n = re.search(r'name="([^"]+)"', tag)
+                v = re.search(r'value="([^"]*)"', tag)
+                if n:
+                    out[n.group(1)] = v.group(1) if v else ""
+            return out
+
+        def postback(url, html, target, extra=None, referer=None):
+            data = hidden(html)
+            data["__EVENTTARGET"] = target
+            data["__EVENTARGUMENT"] = ""
+            if extra:
+                data.update(extra)
+            return self.session.post(
+                url, data=data,
+                headers={"Content-Type": "application/x-www-form-urlencoded",
+                         "Origin": "https://serviciossegsoc.afip.gob.ar",
+                         "Referer": referer or url},
+            )
+
+        # SSO (token+sign -> default.aspx) y GET del index real.
+        self.abrir_servicio("mis_aportes")
+        r = self.session.get(f"{B}/index.aspx",
+                             headers={"Referer": "https://portalcf.cloud.afip.gob.ar/"})
+        if "BtnIngresar" not in r.text and "InputPeriodoDesde" not in r.text:
+            raise AFIPError(f"Aportes en Línea: no cargó el index ({_pista_pantalla(r.text)}).")
+
+        # index -> "Ingresar" -> pantalla de período -> elegir 12m y "Continuar".
+        r_sel = postback(f"{B}/index.aspx", r.text, "ctl00$ContentPlaceHolder1$BtnIngresar",
+                         referer=f"{B}/index.aspx")
+        extra = {
+            "ctl00$ContentPlaceHolder1$InputPeriodoDesde$txtMes": desde[4:6],
+            "ctl00$ContentPlaceHolder1$InputPeriodoDesde$txtAño": desde[0:4],
+            "ctl00$ContentPlaceHolder1$InputPeriodoHasta$txtMes": hasta[4:6],
+            "ctl00$ContentPlaceHolder1$InputPeriodoHasta$txtAño": hasta[0:4],
+        }
+        r_full = postback(f"{B}/consulta/seleccion.aspx", r_sel.text,
+                          "ctl00$ContentPlaceHolder1$BtnContinuar", extra=extra,
+                          referer=f"{B}/consulta/seleccion.aspx")
+        html = r_full.text
+
+        def parse_full(h):
+            """De una pantalla MuestraFull.aspx: ([{razon_social,cuit}], [{periodo,bruto,incluye_sac}]).
+            Los períodos (hidden `...ctlNN$Periodo`) y las celdas `TDConRemBruta` van 1:1 y en el mismo
+            orden de documento, así que se extraen como dos listas y se combinan (evita ventanear entre
+            los ~9 hidden intermedios de cada fila). El '(*)' del bruto = incluye SAC/aguinaldo."""
+            emps = []
+            mrs = re.search(r'id="ctl00_lblEmpleadorRazonSocial"[^>]*>([^<]*)', h)
+            mcu = re.search(r'id="ctl00_lblEmpleadorCuil"[^>]*>([^<]*)', h)
+            if mrs and mrs.group(1).strip():
+                emps.append({
+                    "razon_social": _html.unescape(mrs.group(1).strip()),
+                    "cuit": (mcu.group(1).strip() if mcu else "").replace("-", ""),
+                })
+            per = re.findall(r'rptPeriodoConsFull\$ctl\d+\$Periodo"[^>]*value="(\d{6})"', h)
+            bru = re.findall(r"TDConRemBruta'[^>]*>\s*(\(\*\))?\s*([\d.]+,\d{2})", h)
+            rem = [
+                {"periodo": p, "bruto": _num_ars(b), "incluye_sac": bool(s)}
+                for p, (s, b) in zip(per, bru)
+            ]
+            return emps, rem
+
+        pagina = (r_full.url or "").rsplit("/", 1)[-1].split("?")[0].lower()
+        low = html.lower()
+        # Cartel de ARCA cuando el contribuyente NO está en ninguna nómina del período (cae en
+        # seleccionempleador.aspx con ese mensaje) = NO tiene relación de dependencia.
+        sin_nomina = (
+            "ninguna nómina" in low or "ninguna nomina" in low or "no se encuentra inclu" in low
+        )
+
+        empleadores, remuneraciones = [], []
+        multi_sin_detalle = False
+        if "ctl00_lblEmpleadorRazonSocial" in html:
+            # Cayó directo en MuestraFull → 1 solo empleador.
+            empleadores, remuneraciones = parse_full(html)
+        elif pagina == "seleccionempleador.aspx" and not sin_nomina:
+            # VARIOS empleadores: la grilla `rptEmpleadores` lista uno por fila con un botón-imagen
+            # `BtnVerEmpleador` que abre su MuestraFull. Se itera cada uno y se acumula. El POST del
+            # <input type=image> manda name.x/name.y; reusamos el VIEWSTATE de la grilla en cada click.
+            botones = re.findall(
+                r'name="(ctl00\$ContentPlaceHolder1\$rptEmpleadores\$ctl\d+\$BtnVerEmpleador)"', html
+            )
+            for btn in botones:
+                data = hidden(html)
+                data[f"{btn}.x"] = "8"
+                data[f"{btn}.y"] = "8"
+                rr = self.session.post(
+                    f"{B}/consulta/seleccionempleador.aspx", data=data,
+                    headers={"Content-Type": "application/x-www-form-urlencoded",
+                             "Origin": "https://serviciossegsoc.afip.gob.ar",
+                             "Referer": f"{B}/consulta/seleccionempleador.aspx"},
+                )
+                emps_i, rem_i = parse_full(rr.text)
+                empleadores += emps_i
+                remuneraciones += rem_i
+            multi_sin_detalle = bool(botones) and not remuneraciones
+
+        # Combinar por período (sumar entre empleadores) → serie de ingreso total mensual, cronológica.
+        if remuneraciones:
+            acum, con_sac = {}, {}
+            for r in remuneraciones:
+                acum[r["periodo"]] = acum.get(r["periodo"], 0.0) + r["bruto"]
+                con_sac[r["periodo"]] = con_sac.get(r["periodo"], False) or r["incluye_sac"]
+            remuneraciones = [
+                {"periodo": p, "bruto": round(acum[p], 2), "incluye_sac": con_sac[p]}
+                for p in sorted(acum)
+            ]
+        # Dedup de empleadores por CUIT (por si alguno se repite).
+        vistos, emps_unicos = set(), []
+        for e in empleadores:
+            if e["cuit"] not in vistos:
+                vistos.add(e["cuit"])
+                emps_unicos.append(e)
+        empleadores = emps_unicos
+        total = round(sum(x["bruto"] for x in remuneraciones), 2)
+
+        # es_rd: True (rel. dep.), False (sin nómina), None (no determinable → no afirmar ni pisar).
+        if remuneraciones:
+            es_rd = True
+        elif sin_nomina:
+            es_rd = False
+        elif multi_sin_detalle or pagina == "seleccionempleador.aspx":
+            # Hay empleadores (está en una nómina) aunque no hayamos podido leer el detalle.
+            es_rd = True
+            self.log.warning("Aportes %s: varios empleadores pero sin detalle leído (parcial).", self.cuit)
+        else:
+            # Pantalla inesperada (re-render de seleccion.aspx, 'Ha ocurrido un error', ErrorPage):
+            # None = no tocamos el estado guardado.
+            es_rd = None
+            self.log.info("Aportes %s: sin datos determinables (%s: %s)",
+                          self.cuit, pagina, _pista_pantalla(html))
+        self.log.info("Aportes %s: rel_dep=%s empleadores=%d periodos=%d total=%.2f",
+                      self.cuit, es_rd, len(empleadores), len(remuneraciones), total)
+        return {
+            "es_relacion_dependencia": es_rd,  # True | False | None (no determinable)
+            "periodo_desde": desde,
+            "periodo_hasta": hasta,
+            "empleadores": empleadores,
+            "remuneraciones": remuneraciones,
+            "total_bruto": total,
+        }
 
     def lsp_consultar(
         self, direccion: str = "receptor", *, sector: str = "hacienda", desde=None, hasta=None,

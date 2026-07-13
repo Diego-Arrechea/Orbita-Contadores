@@ -168,10 +168,21 @@ def calcular_cliente(
         acumulado_proy, prom_ult3, variacion, tope_ref, hoy
     )
 
+    # Ventana de recategorización REAL de ARCA (si la trajimos) por sobre el calendario de la config:
+    # su fecha de cierre (`recat_ventana_hasta`) es la fecha límite OFICIAL. De la config sólo quedan las
+    # ventanas POSTERIORES a la real (las que ARCA todavía no informó); la del mismo evento —misma fecha
+    # o prorrogada— la reemplaza la real, así una prórroga manda sobre la hardcodeada. Espejo de monotributo.ts.
+    ventanas_efectivas = list(ventanas)
+    if cliente.recat_ventana_hasta:
+        ventanas_efectivas = [{"fechaLimite": cliente.recat_ventana_hasta}] + [
+            v
+            for v in ventanas_efectivas
+            if v.get("fechaLimite") and v["fechaLimite"] > cliente.recat_ventana_hasta
+        ]
     futuras = sorted(
         (
             {**v, "dias": (dt.date.fromisoformat(v["fechaLimite"][:10]) - hoy).days}
-            for v in ventanas
+            for v in ventanas_efectivas
             if v.get("fechaLimite")
         ),
         key=lambda v: v["dias"],

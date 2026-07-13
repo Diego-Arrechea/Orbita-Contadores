@@ -42,6 +42,50 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-13-relacion-dependencia-remuneracion',
+    fecha: '2026-07-13',
+    titulo: 'Clientes en relación de dependencia: ahora traemos su remuneración',
+    resumen:
+      'Para los clientes que además trabajan en relación de dependencia, mostramos el sueldo ' +
+      'informado y cuánto de sus compras queda respaldado.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Detectamos solos qué clientes tienen relación de dependencia, sin que tengas que marcarlo ' +
+          'cliente por cliente.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'En la ficha del cliente ves el empleador y la remuneración de los últimos 12 meses, y te ' +
+          'calculamos qué parte de las compras a consumidor final queda justificada por el haber ' +
+          'percibido y qué parte todavía no.',
+      },
+    ],
+  },
+  {
+    id: '2026-07-13-regimen-y-recategorizacion',
+    fecha: '2026-07-13',
+    titulo: 'Régimen de cada cliente más preciso y ventana de recategorización siempre al día',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'Identificamos con más precisión el régimen de cada cliente —Monotributo o Responsable ' +
+          'Inscripto—, incluso antes de tener todo su historial. Menos clientes quedan como "sin ' +
+          'determinar" o mal clasificados.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Las fechas de la ventana de recategorización toman el calendario oficial vigente de cada ' +
+          'cliente, así el aviso de "se viene la recategorización" queda siempre con la fecha correcta, ' +
+          'aunque se prorrogue.',
+      },
+    ],
+  },
+  {
     id: '2026-07-13-monotributistas-nuevo-registro',
     fecha: '2026-07-13',
     titulo: 'Monotributistas que antes figuraban fuera del régimen ahora se reconocen bien',

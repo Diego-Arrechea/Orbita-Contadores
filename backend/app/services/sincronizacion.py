@@ -305,10 +305,13 @@ def sincronizar_padron(db: Session, cuit: str, headless: bool | None = None) -> 
     # datos_monotributo fija "actuando en representación" y verifica el CUIT (guard anti-cruce):
     # devuelve {} si la representación no tomó, así nunca se le atribuye la categoría del contador.
     datos = motor.datos_monotributo(credencial.cuit, clave, cuit_objetivo=cuit, headless=headless)
-    # Régimen AUTORITATIVO del padrón (fuente oficial): si el portal de Monotributo abrió, es
-    # monotributista; si no abrió, ARCA confirma que NO lo es. Sólo lo pisamos con una señal real
-    # (no con None) para no borrar un valor previo si el padrón falló a medias.
-    if datos.get("es_monotributista") is True or datos.get("categoria"):
+    # Régimen AUTORITATIVO del padrón (fuente oficial). El padrón de IMPUESTOS ('regimen' en datos)
+    # es la señal fina y directa: distingue 'responsable_inscripto' de 'no_monotributo' y es inmune al
+    # caso "migrado al RUT". Si no vino, caemos al veredicto binario del panel (es_monotributista).
+    # Sólo se pisa con una señal real (no con None) para no borrar un valor previo si el padrón falló.
+    if datos.get("regimen"):
+        cliente.regimen = datos["regimen"]
+    elif datos.get("es_monotributista") is True or datos.get("categoria"):
         cliente.regimen = "monotributo"
     elif datos.get("es_monotributista") is False:
         cliente.regimen = "no_monotributo"
@@ -328,6 +331,11 @@ def sincronizar_padron(db: Session, cuit: str, headless: bool | None = None) -> 
         "facturacion_12m",
         "tope_categoria",
         "facturometro_actualizado",
+        # Ventana de recategorización REAL (fechas oficiales de ARCA); reemplaza el calendario
+        # hardcodeado del front. mostrar_alerta puede ser False (se persiste igual: no es None).
+        "recat_ventana_desde",
+        "recat_ventana_hasta",
+        "recat_mostrar_alerta",
     ):
         if datos.get(campo) is not None:
             setattr(cliente, campo, datos[campo])

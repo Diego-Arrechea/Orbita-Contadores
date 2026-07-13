@@ -140,6 +140,14 @@ class ClienteARCA(Base):
     categoria: Mapped[str | None] = mapped_column(String(2), nullable=True)
     actividad: Mapped[str | None] = mapped_column(String(20), nullable=True)  # comercio | servicios
     prox_recategorizacion: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Ventana de recategorización REAL, traída del padrón de ARCA (fechas oficiales, ISO aaaa-mm-dd):
+    # `recat_ventana_desde` abre la ventana, `recat_ventana_hasta` es la fecha límite para recategorizar.
+    # Reemplazan el calendario hardcodeado (5/8 y 5/2) que el front generaba solo: cuando ARCA prorroga
+    # una fecha, ésta manda. `recat_mostrar_alerta` = si ARCA marca que corresponde recategorizar (aún
+    # bajo estudio si es por-cliente o de calendario). Nullable: sólo titular monotributista.
+    recat_ventana_desde: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    recat_ventana_hasta: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    recat_mostrar_alerta: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # Estado de la cuota (CCMA) y próximo vencimiento (portal Monotributo). Nullable: sólo titular
     # monotributista; para representados / no-monotributistas quedan en None.
     cuota_estado: Mapped[str | None] = mapped_column(String(12), nullable=True)  # al-dia | con-deuda
@@ -153,10 +161,23 @@ class ClienteARCA(Base):
     meses_adeudados: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # ¿El cliente tiene relación de dependencia (trabajo en blanco)? Dato relevante para el contador:
     # parte de las compras a "consumidor final" pueden quedar justificadas por el haber percibido.
-    # Esta columna guarda el valor DETECTADO automáticamente (de momento sin completar por la sync;
-    # queda en None hasta validar la señal de ARCA). El contador puede marcarlo a mano: ese override
-    # vive en edicion_json (clave relacionDependencia) y gana sobre esta columna. Ver clientes.py.
+    # Esta columna guarda el valor DETECTADO automáticamente por "Aportes en Línea": True/False según
+    # tenga remuneraciones informadas al SIPA (ver services/aportes.py). El contador puede marcarlo a
+    # mano: ese override vive en edicion_json (clave relacionDependencia) y gana sobre esta columna
+    # al momento de mostrar. Ver clientes.py y la memoria `aportes-en-linea-misaportes`.
     relacion_dependencia: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Remuneración del empleado en relación de dependencia (servicio "Aportes en Línea"/MisAportes),
+    # JSON serializado: {empleadores:[{razon_social,cuit}], remuneraciones:[{periodo,bruto,incluye_sac}],
+    # total_bruto, periodo_desde, periodo_hasta, actualizado_en}. Alimenta el respaldo de gastos en la
+    # ficha. None = no consultado / sin relación de dependencia. Ver services/aportes.py.
+    remuneraciones_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Cuándo el motor chequeó por ÚLTIMA vez "Aportes en Línea" (relación de dependencia). NULL = nunca:
+    # el worker lo consulta una vez (baja cadencia) y setea la fecha; los que tienen relación de
+    # dependencia se refrescan semanal, los que no, se re-chequean cada ~30 días (pueden empezar a
+    # trabajar en blanco). Mismo patrón que agro_chequeado_en. Ver services/aportes.py::paso_worker.
+    aportes_chequeado_en: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Facturómetro del portal Monotributo: ingresos brutos de los últimos 12 meses según ARCA
     # (facturacion_12m), tope oficial de la categoría actual (tope_categoria) y la fecha de corte que
     # informa ARCA (facturometro_actualizado, dd/mm/aaaa). Numerador y denominador OFICIALES del gauge

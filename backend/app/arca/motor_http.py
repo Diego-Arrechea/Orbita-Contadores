@@ -268,13 +268,34 @@ def datos_monotributo(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: st
     (cuota_estado/deuda/saldo_favor + deuda_detalle) del Cálculo de Deuda oficial
     (P02->P04, validado vs prod). Espeja al padrón viejo que bundleaba estado_cuota.
     """
+    obj = cuit_objetivo or cuit_login
+    # Régimen AUTORITATIVO del padrón de impuestos (1 GET, SIN abrir el SSO de Monotributo). Lee la
+    # inscripción, no el panel → inmune al caso "monotributista migrado al RUT" que confunde a la
+    # pantalla. Si el padrón CONFIRMA que NO es monotributista, cortamos sin el wait caro del SSO.
+    reg = afip.regimen_desde_impuestos(obj)
+    if reg.get("es_monotributista") is False:
+        salida = {"es_monotributista": False}
+        if reg.get("regimen"):
+            salida["regimen"] = reg["regimen"]  # responsable_inscripto / no_monotributo
+        return salida
+
     m = afip.monotributo()
-    if not m.get("es_monotributista"):
+    es_mono = m.get("es_monotributista")
+    # El padrón de impuestos gana como veredicto de "es monotributista": el panel puede caer en el
+    # RUT (categoría None) para un monotributista vigente; ahí el impuesto Monotributo activo lo
+    # confirma igual (out queda con categoría None, que el caller no pisa).
+    if reg.get("es_monotributista") is True:
+        es_mono = True
+    if not es_mono:
         # no monotributista (o sin determinar): mismo contrato que el scraper viejo
-        return {"es_monotributista": m.get("es_monotributista", False)}
+        salida = {"es_monotributista": es_mono if es_mono is not None else False}
+        if reg.get("regimen"):
+            salida["regimen"] = reg["regimen"]
+        return salida
     pv = m.get("proximo_vencimiento") or {}
     out = {
         "es_monotributista": True,
+        "regimen": reg.get("regimen") or "monotributo",
         "categoria": m.get("categoria"),
         "actividad": m.get("actividad"),
         "prox_recategorizacion": m.get("prox_recategorizacion"),
@@ -282,6 +303,13 @@ def datos_monotributo(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: st
         "prox_venc_importe": pv.get("importe"),
         "debito_automatico": m.get("debito_automatico"),
     }
+    # Ventana de recategorización REAL (fechas oficiales de ARCA): reemplaza el calendario hardcodeado.
+    # best-effort: si el endpoint no responde, se omite y el front cae a las ventanas de la config.
+    recat = afip.debe_recategorizar(obj)
+    if recat.get("hasta"):
+        out["recat_ventana_hasta"] = recat["hasta"]
+        out["recat_ventana_desde"] = recat.get("desde")
+        out["recat_mostrar_alerta"] = recat.get("mostrar_alerta")
     # Facturómetro: SELF-HEAL — sólo persistir si el monto es > 0. Un 0 transitorio
     # (AJAX a medio cargar) pisaría el último valor bueno → la ficha mostraría $0
     # sobre un cliente que sí facturó. Mismo criterio que el padrón viejo (padron.extraer).
@@ -417,6 +445,16 @@ def liquidaciones_agro(
                 _time.sleep(_PAUSA_PDF)
             out.append(_map_liquidacion(r, direccion, sector, bruto))
     return out
+
+
+# --- Aportes en Línea (MisAportes) — remuneración en relación de dependencia — SÓLO HTTP ------
+@_con_sesion
+def mis_aportes(
+    afip: AFIP, cuit_login: str, clave: str, desde: str | None = None, hasta: str | None = None
+) -> dict:
+    """Remuneración declarada al SIPA (relación de dependencia) del titular de la clave. `desde`/
+    `hasta` = 'YYYYMM' (default: 12m). Sólo HTTP: el motor browser nunca hizo MisAportes."""
+    return afip.mis_aportes(desde=desde, hasta=hasta)
 
 
 # --- Certificado (reemplaza scraping.bootstrap.bootstrap_cliente) --------------

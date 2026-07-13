@@ -28,6 +28,7 @@ from ..config import settings
 from ..db import SessionLocal
 from ..models import ClienteARCA, Extraccion, WorkerHeartbeat
 from ..services.agro import paso_worker as agro_paso_worker
+from ..services.aportes import paso_worker as aportes_paso_worker
 from ..services.alertas import evaluar_y_notificar
 from ..services.scheduler import _sincronizar_con_reintento
 from ..services.sincronizacion import sincronizar_padron
@@ -157,6 +158,15 @@ def _worker(idx: int) -> None:
                 ra = agro_paso_worker(db, cuit)
                 if ra:
                     logger.info("[w%d] %s agro -> %s liq (nuevas %s)", idx, cuit, ra["procesadas"], ra["nuevas"])
+            except Exception:  # noqa: BLE001
+                pass
+            # Aportes en Línea (relación de dependencia): consulta gateada de baja cadencia. best-effort:
+            # un fallo acá no debe tumbar la sync ya hecha, y deja el cliente sin marcar para reintentar.
+            try:
+                rap = aportes_paso_worker(db, cuit)
+                if rap:
+                    logger.info("[w%d] %s aportes -> rel_dep=%s total=%.0f", idx, cuit,
+                                rap.get("es_relacion_dependencia"), rap.get("total_bruto") or 0)
             except Exception:  # noqa: BLE001
                 pass
             logger.info("[w%d] %s OK -> %s comprobantes nuevos", idx, cuit, n)
