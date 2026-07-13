@@ -42,6 +42,18 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-08-clave-fiscal-reintento-instantaneo',
+    fecha: '2026-07-08',
+    titulo: 'Al actualizar la clave fiscal, la información se vuelve a traer al instante',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'Cuando corregís la clave fiscal de un cliente, volvemos a traer su información en el acto para confirmar que quedó al día, sin tener que esperar a la próxima actualización.',
+      },
+    ],
+  },
+  {
     id: '2026-07-07-facturacion-agropecuaria-editar',
     fecha: '2026-07-07',
     titulo: 'Marcá la facturación agropecuaria desde la ficha del cliente',

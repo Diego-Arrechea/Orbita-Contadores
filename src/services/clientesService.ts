@@ -192,9 +192,15 @@ export async function editarCliente(cuit: string, campos: CamposEdicion): Promis
 }
 
 /** Actualiza la clave fiscal con la que se sincroniza el cliente (cuando la cambia en ARCA). Se
- *  guarda cifrada en el backend; apaga el aviso de "debe cambiar la clave" del cliente. */
-export async function actualizarClaveFiscal(cuit: string, clave: string): Promise<void> {
-  await apiPut(`/clientes/${cuit.replace(/\D/g, '')}/clave`, { clave });
+ *  guarda cifrada en el backend; apaga el aviso de "debe cambiar la clave" del cliente. El backend
+ *  vuelve a traer la información del cliente en el acto con la clave nueva y devuelve un job_id para
+ *  seguir ese reintento. */
+export async function actualizarClaveFiscal(cuit: string, clave: string): Promise<{ jobId: string }> {
+  const r = await apiPut<{ ok: boolean; job_id: string }>(
+    `/clientes/${cuit.replace(/\D/g, '')}/clave`,
+    { clave },
+  );
+  return { jobId: r.job_id };
 }
 
 /** Activa o desactiva el monitoreo de un cliente. Desactivado: deja de actualizarse su información

@@ -284,7 +284,14 @@ def actualizar_clave_cliente(
         .values(clave_requiere_cambio=False, clave_invalida=False)
     )
     db.commit()
-    return {"ok": True}
+    # Re-probar la sincronización YA con la clave nueva, sin esperar al motor continuo. El contador
+    # acaba de corregir la clave y quiere saber en el momento si quedó bien o sigue fallando; si no
+    # disparásemos acá, el cliente recién se reintentaría cuando el worker lo agarre por vencido.
+    # Corre en un thread (la sync tarda) y devuelve job_id para seguir el progreso desde la ficha.
+    # El advisory lock por CUIT serializa si el worker justo lo toma a la vez → sin doble login.
+    job_id = jobs.crear_job()
+    threading.Thread(target=_correr_sync, args=(job_id, cuit), daemon=True).start()
+    return {"ok": True, "job_id": job_id}
 
 
 @router.delete("/clientes/{cuit}")
