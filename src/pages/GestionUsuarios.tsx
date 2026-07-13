@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle,
   KeyRound,
+  ListChecks,
   Loader2,
   MoreHorizontal,
   Pencil,
@@ -20,6 +21,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react';
+import type { Cliente } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -53,6 +55,7 @@ import { qkClientes, useClientesReales } from '@/lib/queries';
 import { mensajeDeError } from '@/services/authService';
 import {
   asignarCliente,
+  asignarClientes,
   crearMiembro,
   editarMiembro,
   eliminarMiembro,
@@ -431,6 +434,167 @@ function DialogPassword({
   );
 }
 
+/** Modal "Asignar clientes": toda la cartera con checkboxes (tildado = a cargo de este miembro).
+ *  Al guardar, lo tildado pasa al miembro y lo que se destildó vuelve al titular. Es el flujo
+ *  principal para repartir carteras (reemplaza al selector cliente por cliente). */
+function DialogAsignarClientes({
+  miembro,
+  clientes,
+  titularId,
+  onCerrar,
+  onGuardado,
+}: {
+  miembro: Miembro | null;
+  clientes: Cliente[];
+  titularId: number;
+  onCerrar: () => void;
+  onGuardado: () => void;
+}) {
+  const [seleccion, setSeleccion] = useState<Set<string>>(new Set());
+  const [miembroInicial, setMiembroInicial] = useState<number | null>(null);
+  const [busqueda, setBusqueda] = useState('');
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+
+  // Re-sincroniza la selección cuando se abre para OTRO miembro: arranca con sus asignados.
+  if (miembro && miembro.id !== miembroInicial) {
+    setMiembroInicial(miembro.id);
+    setSeleccion(new Set(clientes.filter(c => c.responsableId === miembro.id).map(c => c.cuit)));
+    setBusqueda('');
+    setError('');
+  }
+
+  const q = busqueda.trim().toLowerCase();
+  const filtrados = [...clientes]
+    .sort((a, b) => a.nombre.localeCompare(b.nombre))
+    .filter(c => !q || c.nombre.toLowerCase().includes(q) || c.cuit.includes(q.replace(/\D/g, '') || q));
+  const todosFiltradosTildados = filtrados.length > 0 && filtrados.every(c => seleccion.has(c.cuit));
+
+  function alternar(cuit: string, tildado: boolean) {
+    setSeleccion(prev => {
+      const s = new Set(prev);
+      if (tildado) s.add(cuit);
+      else s.delete(cuit);
+      return s;
+    });
+  }
+
+  function alternarTodos() {
+    setSeleccion(prev => {
+      const s = new Set(prev);
+      filtrados.forEach(c => (todosFiltradosTildados ? s.delete(c.cuit) : s.add(c.cuit)));
+      return s;
+    });
+  }
+
+  async function guardar() {
+    if (!miembro) return;
+    const actuales = new Set(
+      clientes.filter(c => c.responsableId === miembro.id).map(c => c.cuit)
+    );
+    const agregar = [...seleccion].filter(c => !actuales.has(c));
+    const quitar = [...actuales].filter(c => !seleccion.has(c));
+    if (agregar.length === 0 && quitar.length === 0) {
+      onCerrar();
+      return;
+    }
+    setGuardando(true);
+    setError('');
+    try {
+      if (agregar.length) await asignarClientes(miembro.id, agregar);
+      if (quitar.length) await asignarClientes(titularId, quitar); // destildado → vuelve al titular
+      onGuardado();
+    } catch (e) {
+      setError(mensajeDeError(e));
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Dialog open={miembro !== null} onOpenChange={v => !v && onCerrar()}>
+      <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>
+            Clientes a cargo de {miembro?.nombre} {miembro?.apellido}
+          </DialogTitle>
+          <DialogDescription>
+            Tildá los clientes que lleva. Lo que destildes vuelve a tu cuenta.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={busqueda}
+              onChange={e => setBusqueda(e.target.value)}
+              placeholder="Buscar cliente…"
+              className="pl-9"
+            />
+          </div>
+          <Button variant="outline" size="sm" onClick={alternarTodos} disabled={filtrados.length === 0}>
+            {todosFiltradosTildados ? 'Destildar todos' : 'Tildar todos'}
+          </Button>
+        </div>
+        <div className="-mx-1 min-h-0 flex-1 space-y-1 overflow-y-auto px-1">
+          {filtrados.map(c => {
+            const responsableActual =
+              c.responsableId === miembro?.id
+                ? null // ya es de este miembro: no hace falta aclararlo
+                : c.responsableId === titularId || c.responsableId == null
+                  ? 'Mi cuenta'
+                  : c.responsable;
+            return (
+              <label
+                key={c.cuit}
+                className="flex cursor-pointer items-center gap-3 rounded-lg border border-border/60 px-3 py-2 transition-colors hover:bg-muted/50"
+              >
+                <input
+                  type="checkbox"
+                  checked={seleccion.has(c.cuit)}
+                  onChange={e => alternar(c.cuit, e.target.checked)}
+                  className="h-4 w-4 shrink-0 accent-primary"
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{c.nombre}</span>
+                  <span className="block text-xs tabular-nums text-muted-foreground">{c.cuit}</span>
+                </span>
+                {responsableActual && (
+                  <span className="shrink-0 text-xs text-muted-foreground">{responsableActual}</span>
+                )}
+              </label>
+            );
+          })}
+          {filtrados.length === 0 && (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              No hay clientes que coincidan con la búsqueda.
+            </div>
+          )}
+        </div>
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
+            <AlertCircle className="h-4 w-4 shrink-0" /> {error}
+          </div>
+        )}
+        <DialogFooter className="items-center gap-2 sm:justify-between">
+          <span className="text-sm text-muted-foreground">
+            {seleccion.size} cliente{seleccion.size === 1 ? '' : 's'} seleccionado
+            {seleccion.size === 1 ? '' : 's'}
+          </span>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onCerrar} disabled={guardando}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void guardar()} disabled={guardando}>
+              {guardando && <Loader2 className="h-4 w-4 animate-spin" />} Guardar
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** Confirmación de eliminación de un miembro (sus clientes vuelven al titular). */
 function DialogEliminar({
   miembro,
@@ -494,6 +658,7 @@ function DialogEliminar({
 function AccionesMiembro({
   m,
   trabajando,
+  onAsignar,
   onPermisos,
   onPassword,
   onToggleActivo,
@@ -501,6 +666,7 @@ function AccionesMiembro({
 }: {
   m: Miembro;
   trabajando: boolean;
+  onAsignar: (m: Miembro) => void;
   onPermisos: (m: Miembro) => void;
   onPassword: (m: Miembro) => void;
   onToggleActivo: (m: Miembro) => void;
@@ -518,6 +684,9 @@ function AccionesMiembro({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => onAsignar(m)}>
+          <ListChecks /> Asignar clientes
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onPermisos(m)}>
           <Pencil /> Editar permisos
         </DropdownMenuItem>
@@ -546,6 +715,7 @@ export function GestionUsuarios() {
   const { data: clientes = [], isLoading: cargandoClientes } = useClientesReales();
 
   const [dialogAlta, setDialogAlta] = useState(false);
+  const [miembroAsignar, setMiembroAsignar] = useState<Miembro | null>(null);
   const [miembroPermisos, setMiembroPermisos] = useState<Miembro | null>(null);
   const [miembroPassword, setMiembroPassword] = useState<Miembro | null>(null);
   const [miembroEliminar, setMiembroEliminar] = useState<Miembro | null>(null);
@@ -673,7 +843,18 @@ export function GestionUsuarios() {
                         </div>
                         <div className="text-xs text-muted-foreground">{m.email}</div>
                       </TableCell>
-                      <TableCell className="text-center tabular-nums">{m.clientes}</TableCell>
+                      <TableCell className="text-center">
+                        {/* Acceso directo al reparto: abre el modal de checkboxes del miembro. */}
+                        <button
+                          type="button"
+                          onClick={() => setMiembroAsignar(m)}
+                          title="Asignar clientes"
+                          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm tabular-nums text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
+                        >
+                          {m.clientes}
+                          <ListChecks className="h-3.5 w-3.5" />
+                        </button>
+                      </TableCell>
                       <TableCell className="text-sm">{fechaHora(m.ultimo_acceso)}</TableCell>
                       <TableCell className="text-center">
                         {m.activo ? (
@@ -699,6 +880,7 @@ export function GestionUsuarios() {
                           <AccionesMiembro
                             m={m}
                             trabajando={accionando === m.id}
+                            onAsignar={setMiembroAsignar}
                             onPermisos={setMiembroPermisos}
                             onPassword={setMiembroPassword}
                             onToggleActivo={m => void toggleActivo(m)}
@@ -726,6 +908,7 @@ export function GestionUsuarios() {
                   <AccionesMiembro
                     m={m}
                     trabajando={accionando === m.id}
+                    onAsignar={setMiembroAsignar}
                     onPermisos={setMiembroPermisos}
                     onPassword={setMiembroPassword}
                     onToggleActivo={m => void toggleActivo(m)}
@@ -738,9 +921,14 @@ export function GestionUsuarios() {
                   ) : (
                     <Badge variant="muted">Desactivada</Badge>
                   )}
-                  <span className="text-xs tabular-nums text-muted-foreground">
+                  <button
+                    type="button"
+                    onClick={() => setMiembroAsignar(m)}
+                    className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground underline-offset-2 hover:text-primary hover:underline"
+                  >
                     {m.clientes} cliente(s) a cargo
-                  </span>
+                    <ListChecks className="h-3 w-3" />
+                  </button>
                   <span className="text-xs text-muted-foreground">
                     Último acceso: {fechaHora(m.ultimo_acceso)}
                   </span>
@@ -758,8 +946,8 @@ export function GestionUsuarios() {
             <div>
               <h2 className="text-lg font-semibold tracking-tight">Clientes y responsables</h2>
               <p className="text-sm text-muted-foreground">
-                Elegí quién lleva cada monotributista. Cada usuario ve sólo los suyos; vos seguís
-                viendo todos.
+                Vista general de quién lleva cada monotributista (para repartir varios de una vez,
+                usá "Asignar clientes" en el usuario). Cada usuario ve sólo los suyos.
               </p>
             </div>
             <div className="relative w-full max-w-xs">
@@ -849,6 +1037,16 @@ export function GestionUsuarios() {
         onCerrar={() => setDialogAlta(false)}
         onCreado={() => {
           setDialogAlta(false);
+          refrescar();
+        }}
+      />
+      <DialogAsignarClientes
+        miembro={miembroAsignar}
+        clientes={clientes}
+        titularId={yo?.id ?? 0}
+        onCerrar={() => setMiembroAsignar(null)}
+        onGuardado={() => {
+          setMiembroAsignar(null);
           refrescar();
         }}
       />

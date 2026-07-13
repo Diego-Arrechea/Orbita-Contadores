@@ -618,6 +618,14 @@ class AsignarClienteIn(BaseModel):
     usuario_id: int
 
 
+class AsignarClientesIn(BaseModel):
+    """Asignación EN LOTE: estos clientes pasan a este responsable (flujo de checkboxes del modal
+    "Asignar clientes"; evita un request por cliente al repartir carteras grandes)."""
+
+    usuario_id: int
+    cuits: list[str] = Field(min_length=1)
+
+
 # --- Panel superadmin (sólo rol=admin; ver routers/admin.py) ---
 
 
