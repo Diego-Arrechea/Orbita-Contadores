@@ -53,6 +53,13 @@ export const NOVEDADES: Novedad[] = [
           'mostraba su estado de cuenta. Ahora se los identifica correctamente y se trae su deuda de ' +
           'cuota, incluso los meses adeudados.',
       },
+      {
+        tipo: 'arreglo',
+        texto:
+          'Cuando la información de un cliente recién agregado todavía no está disponible, su ficha ya ' +
+          'no dice "no monotributista": muestra "Datos en proceso" y, si hace falta corregir la clave ' +
+          'fiscal, te lo indica.',
+      },
     ],
   },
   {
