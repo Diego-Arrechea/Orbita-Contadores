@@ -106,7 +106,7 @@ export function Registro() {
     if (!form.nombre.trim() || !form.apellido.trim()) return 'Completá tu nombre y apellido.';
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim())) return 'Ingresá un email válido.';
     const tel = soloDigitos(form.telefono).replace(/^0/, '').replace(/^15/, '');
-    if (tel.length !== 10)
+    if (tel && tel.length !== 10)
       return 'El celular debe tener 10 dígitos: tu código de área + número, sin el 0 ni el 15.';
     const dni = soloDigitos(form.dni);
     if (dni.length < 7 || dni.length > 8) return 'El DNI debe tener 7 u 8 dígitos.';
@@ -128,12 +128,13 @@ export function Registro() {
     }
     setCargando(true);
     setError(null);
+    const tel = soloDigitos(form.telefono).replace(/^0/, '').replace(/^15/, '');
     try {
       const auth = await registrar({
         nombre: form.nombre.trim(),
         apellido: form.apellido.trim(),
         email: form.email.trim(),
-        telefono: '+549' + soloDigitos(form.telefono).replace(/^0/, '').replace(/^15/, ''),
+        telefono: tel ? '+549' + tel : '',
         dni: form.dni,
         cuit: form.cuit,
         estudio: form.estudio.trim(),
@@ -191,10 +192,11 @@ export function Registro() {
               type="tel"
               value={form.telefono}
               onChange={set('telefono')}
-              placeholder="221 6099723"
+              placeholder="221 5551234"
               autoComplete="tel"
               prefijo="+54 9"
               hint="Tu código de área + número, sin el 0 ni el 15."
+              opcional
             />
 
             <div className="grid grid-cols-2 gap-3">
