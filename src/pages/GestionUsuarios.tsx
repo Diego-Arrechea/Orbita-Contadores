@@ -658,7 +658,6 @@ function DialogEliminar({
 function AccionesMiembro({
   m,
   trabajando,
-  onAsignar,
   onPermisos,
   onPassword,
   onToggleActivo,
@@ -666,7 +665,6 @@ function AccionesMiembro({
 }: {
   m: Miembro;
   trabajando: boolean;
-  onAsignar: (m: Miembro) => void;
   onPermisos: (m: Miembro) => void;
   onPassword: (m: Miembro) => void;
   onToggleActivo: (m: Miembro) => void;
@@ -684,9 +682,6 @@ function AccionesMiembro({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={() => onAsignar(m)}>
-          <ListChecks /> Asignar clientes
-        </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onPermisos(m)}>
           <Pencil /> Editar permisos
         </DropdownMenuItem>
@@ -843,18 +838,7 @@ export function GestionUsuarios() {
                         </div>
                         <div className="text-xs text-muted-foreground">{m.email}</div>
                       </TableCell>
-                      <TableCell className="text-center">
-                        {/* Acceso directo al reparto: abre el modal de checkboxes del miembro. */}
-                        <button
-                          type="button"
-                          onClick={() => setMiembroAsignar(m)}
-                          title="Asignar clientes"
-                          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-sm tabular-nums text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
-                        >
-                          {m.clientes}
-                          <ListChecks className="h-3.5 w-3.5" />
-                        </button>
-                      </TableCell>
+                      <TableCell className="text-center tabular-nums">{m.clientes}</TableCell>
                       <TableCell className="text-sm">{fechaHora(m.ultimo_acceso)}</TableCell>
                       <TableCell className="text-center">
                         {m.activo ? (
@@ -876,11 +860,19 @@ export function GestionUsuarios() {
                         </button>
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="flex justify-end">
+                        {/* "Asignar clientes" va como botón visible al lado del menú: es la acción
+                            principal del reparto y tiene que estar a mano (pedido del contador). */}
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setMiembroAsignar(m)}
+                          >
+                            <ListChecks className="h-3.5 w-3.5" /> Asignar clientes
+                          </Button>
                           <AccionesMiembro
                             m={m}
                             trabajando={accionando === m.id}
-                            onAsignar={setMiembroAsignar}
                             onPermisos={setMiembroPermisos}
                             onPassword={setMiembroPassword}
                             onToggleActivo={m => void toggleActivo(m)}
@@ -905,15 +897,19 @@ export function GestionUsuarios() {
                     </div>
                     <div className="break-all text-xs text-muted-foreground">{m.email}</div>
                   </div>
-                  <AccionesMiembro
-                    m={m}
-                    trabajando={accionando === m.id}
-                    onAsignar={setMiembroAsignar}
-                    onPermisos={setMiembroPermisos}
-                    onPassword={setMiembroPassword}
-                    onToggleActivo={m => void toggleActivo(m)}
-                    onEliminar={setMiembroEliminar}
-                  />
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Button variant="outline" size="sm" onClick={() => setMiembroAsignar(m)}>
+                      <ListChecks className="h-3.5 w-3.5" /> Asignar
+                    </Button>
+                    <AccionesMiembro
+                      m={m}
+                      trabajando={accionando === m.id}
+                      onPermisos={setMiembroPermisos}
+                      onPassword={setMiembroPassword}
+                      onToggleActivo={m => void toggleActivo(m)}
+                      onEliminar={setMiembroEliminar}
+                    />
+                  </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {m.activo ? (
@@ -921,14 +917,9 @@ export function GestionUsuarios() {
                   ) : (
                     <Badge variant="muted">Desactivada</Badge>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => setMiembroAsignar(m)}
-                    className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground underline-offset-2 hover:text-primary hover:underline"
-                  >
+                  <span className="text-xs tabular-nums text-muted-foreground">
                     {m.clientes} cliente(s) a cargo
-                    <ListChecks className="h-3 w-3" />
-                  </button>
+                  </span>
                   <span className="text-xs text-muted-foreground">
                     Último acceso: {fechaHora(m.ultimo_acceso)}
                   </span>
