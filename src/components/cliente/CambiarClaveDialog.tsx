@@ -101,7 +101,7 @@ export function CambiarClaveDialog({
             </button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Queda guardada de forma cifrada.
+            Queda guardada de forma cifrada. Al guardarla, volvemos a traer su información enseguida.
           </p>
         </div>
 
