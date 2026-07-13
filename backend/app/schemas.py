@@ -321,7 +321,7 @@ class RegistroIn(BaseModel):
     nombre: str = Field(min_length=1, max_length=80)
     apellido: str = Field(min_length=1, max_length=80)
     email: EmailStr
-    telefono: str = Field(min_length=6, max_length=30)
+    telefono: str = Field(default="", max_length=30)
     dni: str
     cuit: str
     estudio: str = Field(min_length=1, max_length=120)
@@ -337,6 +337,8 @@ class RegistroIn(BaseModel):
         # dígitos. El front ya manda "+549" + 10 dígitos; esto lo vuelve idempotente y blinda
         # contra hits directos a la API con cualquier formato.
         d = _solo_digitos(v)
+        if not d:  # opcional: se puede completar después desde Configuración → Cuenta
+            return ""
         for prefijo in ("54", "9", "0", "15"):
             if d.startswith(prefijo):
                 d = d[len(prefijo):]
@@ -389,7 +391,7 @@ class PerfilIn(BaseModel):
 
     nombre: str = Field(min_length=1, max_length=80)
     apellido: str = Field(min_length=1, max_length=80)
-    telefono: str = Field(min_length=6, max_length=30)
+    telefono: str = Field(default="", max_length=30)
     estudio: str = Field(min_length=1, max_length=120)
     matricula: str | None = Field(default=None, max_length=40)
 

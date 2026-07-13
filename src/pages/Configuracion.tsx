@@ -187,7 +187,7 @@ export function Configuracion() {
       setResultadoPerfil({ ok: false, msg: 'Nombre, apellido y estudio no pueden quedar vacíos.' });
       return;
     }
-    if (perfil.telefono.trim().length < 6) {
+    if (perfil.telefono.trim() && perfil.telefono.trim().length < 6) {
       setResultadoPerfil({ ok: false, msg: 'Ingresá un teléfono válido.' });
       return;
     }
