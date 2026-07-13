@@ -47,7 +47,7 @@ import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
 import { formatCuit, formatDate, cn } from '@/lib/utils';
 import { derivarAlertas } from '@/lib/alertas';
 import { descargarReporteExcel } from '@/lib/reporteExcel';
-import { puedeFacturar } from '@/lib/cuenta';
+import { puedeFacturar, tienePermiso } from '@/lib/cuenta';
 import { getMovimientos } from '@/services/movimientosService';
 import { useQueryClient } from '@tanstack/react-query';
 import { useClienteReal, useComunicaciones, qkClientes } from '@/lib/queries';
@@ -156,9 +156,11 @@ export function ClienteDetalle() {
         >
           <ChevronLeft className="h-4 w-4" /> Volver al dashboard
         </Button>
-        <Button variant="outline" size="sm" onClick={() => navigate('/clientes/nuevo')}>
-          <UserPlus className="h-4 w-4" /> Agregar otro cliente
-        </Button>
+        {tienePermiso('nuevo_cliente') && (
+          <Button variant="outline" size="sm" onClick={() => navigate('/clientes/nuevo')}>
+            <UserPlus className="h-4 w-4" /> Agregar otro cliente
+          </Button>
+        )}
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-5">
@@ -259,15 +261,17 @@ export function ClienteDetalle() {
                     >
                       <FileSpreadsheet /> {generandoExcel ? 'Generando Excel…' : 'Descargar Excel'}
                     </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setTimeout(() => setEditarOpen(true), 0)}>
-                      <Pencil /> Editar
-                    </DropdownMenuItem>
-                    {esReal && (
+                    {tienePermiso('editar_cliente') && (
+                      <DropdownMenuItem onSelect={() => setTimeout(() => setEditarOpen(true), 0)}>
+                        <Pencil /> Editar
+                      </DropdownMenuItem>
+                    )}
+                    {esReal && tienePermiso('actualizar_clave') && (
                       <DropdownMenuItem onSelect={() => setTimeout(() => setClaveOpen(true), 0)}>
                         <KeyRound /> Actualizar clave fiscal
                       </DropdownMenuItem>
                     )}
-                    {esReal && (
+                    {esReal && tienePermiso('editar_cliente') && (
                       <DropdownMenuItem
                         disabled={cambiandoActivo}
                         onSelect={() => void alternarActivo()}
@@ -275,7 +279,7 @@ export function ClienteDetalle() {
                         <Power /> {clienteActivo ? 'Desactivar cliente' : 'Activar cliente'}
                       </DropdownMenuItem>
                     )}
-                    {esReal && (
+                    {esReal && tienePermiso('eliminar_cliente') && (
                       <>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem

@@ -1,4 +1,5 @@
 import { Menu, Orbit } from 'lucide-react';
+import { esEmpleado } from '@/lib/cuenta';
 import { CargasIndicator } from './CargasIndicator';
 import { PreparacionesIndicator } from './PreparacionesIndicator';
 import { NotificacionesIndicator } from './NotificacionesIndicator';
@@ -25,7 +26,8 @@ export function Topbar({ onAbrirMenu }: { onAbrirMenu?: () => void }) {
       <div className="ml-auto flex items-center gap-3 sm:gap-4">
         <CargasIndicator />
         <PreparacionesIndicator />
-        <NovedadesIndicator />
+        {/* Los usuarios del estudio no ven Novedades (navegación restringida). */}
+        {!esEmpleado() && <NovedadesIndicator />}
         <NotificacionesIndicator />
       </div>
     </header>

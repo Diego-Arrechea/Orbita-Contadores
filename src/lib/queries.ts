@@ -2,7 +2,8 @@
  * Hooks de query compartidos (React Query) para datos de clientes. Centralizan las query keys así la
  * invalidación es consistente desde un solo lugar (ver components/shared/InvalidadorCache).
  */
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { Cliente } from '@/types';
 import { getClientesReales, getClienteReal } from '@/services/clientesService';
 import { getComunicaciones } from '@/services/comunicacionesService';
 import { getLiquidacionesAgro } from '@/services/liquidacionesAgroService';
@@ -18,12 +19,16 @@ export function useClientesReales() {
   return useQuery({ queryKey: qkClientes, queryFn: getClientesReales });
 }
 
-/** Un cliente real por CUIT (ficha / reporte). `enabled` evita pedir cuando se usa el mock. */
+/** Un cliente real por CUIT (ficha / reporte). `enabled` evita pedir cuando se usa el mock.
+ *  Mientras llega el detalle completo, la ficha pinta AL INSTANTE con el dato que ya tiene la
+ *  lista cacheada (misma forma, sin comprobantes); el detalle la reemplaza al llegar. */
 export function useClienteReal(cuit: string | undefined, enabled = true) {
+  const qc = useQueryClient();
   return useQuery({
     queryKey: ['cliente', cuit ?? ''],
     queryFn: () => getClienteReal(cuit as string),
     enabled: enabled && !!cuit,
+    placeholderData: () => qc.getQueryData<Cliente[]>(qkClientes)?.find(c => c.cuit === cuit),
   });
 }
 

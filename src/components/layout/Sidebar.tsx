@@ -5,6 +5,7 @@ import {
   Bell,
   Landmark,
   UserPlus,
+  Users,
   Settings,
   Sparkles,
   Orbit,
@@ -15,7 +16,14 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { cuentaActual, esAdmin, impersonando, logoutCuenta } from '@/lib/cuenta';
+import {
+  cuentaActual,
+  esAdmin,
+  esEmpleado,
+  impersonando,
+  logoutCuenta,
+  tienePermiso,
+} from '@/lib/cuenta';
 import { useNovedadesVistas } from '@/lib/novedadesVistas';
 import { registrarLogout } from '@/services/authService';
 import { resetChatSoporte } from '@/components/shared/SoporteChat';
@@ -26,9 +34,25 @@ const nav = [
   { to: '/alertas', label: 'Alertas', icon: Bell },
   { to: '/conciliacion', label: 'Conciliación', icon: Landmark },
   { to: '/clientes/nuevo', label: 'Nuevo cliente', icon: UserPlus },
+  { to: '/usuarios', label: 'Gestión de usuarios', icon: Users },
   { to: '/configuracion', label: 'Configuración', icon: Settings },
   { to: '/novedades', label: 'Novedades', icon: Sparkles },
 ];
+
+/** Menú según la cuenta. Usuario del estudio (empleado): sin Gestión, Configuración ni Novedades, y
+ *  "Nuevo cliente" sólo si el titular le dio el permiso. Cuenta plena: todo (+ Superadmin si admin). */
+function itemsSegunCuenta() {
+  if (esEmpleado()) {
+    return nav.filter(item => {
+      if (['/usuarios', '/configuracion', '/novedades'].includes(item.to)) return false;
+      if (item.to === '/clientes/nuevo') return tienePermiso('nuevo_cliente');
+      return true;
+    });
+  }
+  return esAdmin()
+    ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
+    : nav;
+}
 
 const LS_COLAPSADA = 'orbita_sidebar_colapsada';
 
@@ -66,15 +90,14 @@ function ContenidoSidebar({
   const cuenta = cuentaActual();
   const { noVistas } = useNovedadesVistas();
 
-  // El ítem del panel sólo aparece para cuentas admin (la ruta /admin además está protegida en back).
-  const items = esAdmin()
-    ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
-    : nav;
+  // Menú según la cuenta (las rutas además están protegidas con guards + en el backend).
+  const items = itemsSegunCuenta();
 
   // El avatar/ficha de la cuenta lleva directo a la pestaña Cuenta de Configuración
-  // (deep-link ?tab=cuenta) y cierra el drawer en mobile.
+  // (deep-link ?tab=cuenta) y cierra el drawer en mobile. Los usuarios del estudio no tienen
+  // Configuración: el avatar no navega.
   function irAConfiguracion() {
-    navigate('/configuracion?tab=cuenta');
+    if (!esEmpleado()) navigate('/configuracion?tab=cuenta');
     onNavegar?.();
   }
 

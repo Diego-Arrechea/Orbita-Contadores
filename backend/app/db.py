@@ -69,10 +69,22 @@ def _migrar_usuarios(conn) -> None:
         # Aviso de lanzamiento de alertas: SIN default a propósito (existing rows → NULL → se siembran
         # en 2 abajo; los nuevos usan el default 0 del modelo). Cuántos ingresos más mostrar el modal.
         "aviso_alertas_pendiente": "INTEGER",
+        # Equipo del estudio ("Gestión de usuarios"): titular_id ≠ NULL marca la cuenta como EMPLEADO
+        # de ese titular; permisos_json guarda sus permisos ({clave: bool}, NULL = todos habilitados).
+        "titular_id": "INTEGER REFERENCES usuarios(id)",
+        "permisos_json": "TEXT",
     }
     for nombre, tipo in nuevas.items():
         if nombre not in cols:
             conn.execute(text(f"ALTER TABLE usuarios ADD COLUMN {nombre} {tipo}"))
+
+    # `cuit` pasó a ser nullable (las cuentas de empleado no cargan CUIT). En Postgres alcanza un
+    # ALTER idempotente; en SQLite no se puede soltar el NOT NULL con ALTER → _cuit_nullable_sqlite
+    # reconstruye la tabla (sólo la primera vez; dev-only).
+    if es_sqlite:
+        _cuit_nullable_sqlite(conn)
+    else:
+        conn.execute(text("ALTER TABLE usuarios ALTER COLUMN cuit DROP NOT NULL"))
 
     # Backfill de filas previas (las nuevas columnas quedaron NULL en datos viejos) + seed de admins.
     conn.execute(text("UPDATE usuarios SET rol = 'contador' WHERE rol IS NULL"))
@@ -106,6 +118,34 @@ def _migrar_usuarios(conn) -> None:
             ),
             {"email": email.lower()},
         )
+
+
+def _cuit_nullable_sqlite(conn) -> None:
+    """SQLite (dev) no soporta soltar un NOT NULL por ALTER: si `usuarios.cuit` sigue NOT NULL (DB
+    creada antes del equipo de estudio), reconstruye la tabla desde el modelo actual copiando los
+    datos. Idempotente: si el flag ya está en 0, no hace nada."""
+    info = conn.execute(text("PRAGMA table_info(usuarios)")).fetchall()
+    col = next((row for row in info if row[1] == "cuit"), None)
+    if col is None or not col[3]:  # row[3] = flag notnull; 0 → ya es nullable
+        return
+    # Import perezoso: models importa Base de este módulo (a nivel función no hay ciclo).
+    from sqlalchemy.schema import CreateIndex, CreateTable
+
+    from . import models
+
+    tabla = models.Usuario.__table__
+    columnas_modelo = {c.name for c in tabla.columns}
+    comunes = ", ".join(row[1] for row in info if row[1] in columnas_modelo)
+    # legacy_alter_table=ON: que el RENAME no re-apunte a `usuarios_old` las FKs de OTRAS tablas
+    # (clientes_arca.usuario_id, etc.), que deben seguir referenciando a `usuarios`.
+    conn.execute(text("PRAGMA legacy_alter_table=ON"))
+    conn.execute(text("ALTER TABLE usuarios RENAME TO usuarios_old"))
+    conn.execute(text(str(CreateTable(tabla).compile(engine))))
+    conn.execute(text(f"INSERT INTO usuarios ({comunes}) SELECT {comunes} FROM usuarios_old"))
+    conn.execute(text("DROP TABLE usuarios_old"))  # sus índices caen con ella
+    conn.execute(text("PRAGMA legacy_alter_table=OFF"))
+    for indice in tabla.indexes:  # re-crear los índices únicos (email/cuit) del modelo
+        conn.execute(text(str(CreateIndex(indice).compile(engine))))
 
 
 def _columnas(conn, tabla: str) -> set[str]:

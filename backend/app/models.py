@@ -54,7 +54,10 @@ class Usuario(Base):
     email: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     telefono: Mapped[str] = mapped_column(String(30))
     dni: Mapped[str] = mapped_column(String(10))
-    cuit: Mapped[str] = mapped_column(String(11), unique=True, index=True)
+    # Nullable: las cuentas de EMPLEADO (creadas por el titular desde "Gestión de usuarios") no
+    # cargan CUIT; el registro normal sigue exigiéndolo (lo valida RegistroIn). unique tolera
+    # múltiples NULL tanto en SQLite como en Postgres.
+    cuit: Mapped[str | None] = mapped_column(String(11), unique=True, index=True, nullable=True)
     estudio: Mapped[str] = mapped_column(String(120))
     matricula: Mapped[str | None] = mapped_column(String(40), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(100))
@@ -70,6 +73,17 @@ class Usuario(Base):
     # Rol del usuario en Órbita. 'contador' = cuenta normal (ve sólo sus clientes); 'admin' = acceso
     # al panel superadmin (gestiona todas las cuentas). Ver routers/admin.py + security.admin_actual.
     rol: Mapped[str] = mapped_column(String(20), default="contador", server_default="contador")
+    # Equipo del estudio ("Gestión de usuarios"): si está seteado, esta cuenta es un EMPLEADO creado
+    # por el titular `titular_id` y ve/opera SÓLO los clientes que tiene asignados (los que llevan su
+    # usuario_id). NULL = cuenta plena (titular o contador independiente): ve lo suyo y, si creó
+    # empleados, también los clientes de todo su equipo. Ver security.ids_cartera.
+    titular_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("usuarios.id"), nullable=True, index=True
+    )
+    # Permisos del EMPLEADO (JSON {clave: bool}; ver security.PERMISOS_EQUIPO). Ausente/NULL = todos
+    # habilitados (default). Sólo aplica a empleados: para cuentas plenas se ignora (pueden todo).
+    # Los edita el titular desde "Gestión de usuarios"; se enforcan en los endpoints (requiere_permiso).
+    permisos_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Cuenta habilitada. False = el contador no puede iniciar sesión ni operar (la deshabilita un
     # admin desde el panel). El chequeo vive en login y en usuario_actual.
     activo: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
