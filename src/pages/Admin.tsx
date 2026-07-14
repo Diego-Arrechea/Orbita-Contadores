@@ -1355,13 +1355,16 @@ function SyncsFallidas({ fallidas }: { fallidas: AdminSyncFallida[] }) {
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <AlertTriangle className="h-4 w-4 text-warning-foreground" />
-        <h2 className="text-sm font-semibold">Clientes con sincronizaciones con problemas</h2>
+        <h2 className="text-sm font-semibold">
+          Clientes con sincronizaciones con problemas
+          <span className="ml-1 font-normal text-muted-foreground">(últimas 48 h)</span>
+        </h2>
         <Badge variant={grupos.length ? 'warning' : 'muted'}>{grupos.length}</Badge>
       </div>
 
       {grupos.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted-foreground">
-          No hay sincronizaciones con problemas recientes. 🎉
+          No hay sincronizaciones con problemas en las últimas 48 h. 🎉
         </Card>
       ) : (
         <>
