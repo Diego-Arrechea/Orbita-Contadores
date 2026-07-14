@@ -191,6 +191,24 @@ def _cliente_propio(db: Session, cuit: str, usuario: models.Usuario) -> models.C
     return cliente
 
 
+def _motivo_amigable(motivo: str | None) -> str | None:
+    """Traduce el motivo TÉCNICO de una sincronización fallida a copy de dominio para el contador
+    (regla de producto: la copy visible nunca menciona el mecanismo). El motivo crudo se conserva
+    para operaciones en el panel admin; acá sólo se reescribe lo que ve el usuario. Lo no cubierto
+    pasa igual."""
+    if not motivo:
+        return motivo
+    m = motivo.lower()
+    # Adhesión de Mis Comprobantes: el cliente aún no tiene habilitada la consulta de sus
+    # comprobantes. Con el alta automática esto se resuelve solo en las próximas actualizaciones.
+    if "mcmp" in m or "adhesión de web" in m or "adhesion de web" in m:
+        return (
+            "Estamos habilitando la consulta de comprobantes emitidos y recibidos de este cliente. "
+            "Se completa automáticamente en las próximas actualizaciones."
+        )
+    return motivo
+
+
 def construir_cliente_out(db: Session, c: models.ClienteARCA, datos: dict | None = None) -> ClienteOut:
     """Arma el ClienteOut de un cliente: combina el dato crudo de ARCA con el override manual del
     contador (edicion_json), el régimen resuelto, el historial 12m y la última extracción. Lo usan
@@ -231,7 +249,7 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA, datos: dict | None
         facturometro_actualizado=c.facturometro_actualizado,
         ultima_extraccion=_iso_utc(ult[0]) if ult else None,
         resultado_ultima_extraccion=ult[1] if ult else None,
-        motivo_ultima_extraccion=ult[2] if ult else None,
+        motivo_ultima_extraccion=_motivo_amigable(ult[2]) if ult else None,
         notas=edic.get("notas"),
         fecha_inicio=edic.get("fechaInicio"),
         # Relación de dependencia: el override manual del contador (True/False) gana; si no lo marcó

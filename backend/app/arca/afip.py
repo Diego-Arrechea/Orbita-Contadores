@@ -653,18 +653,22 @@ class AFIP:
         if not isinstance(aut, dict) or "token" not in aut or "sign" not in aut:
             # La autorización no trajo token+sign: el CUIT no tiene habilitado este
             # servicio. Para los servicios auto-adheribles (Mis Comprobantes, etc.) lo
-            # adherimos solos en el Administrador de Relaciones y reintentamos UNA vez
-            # (el flag _adhiriendo corta la recursión si la adhesión no alcanzó). El
-            # resto se marca limpio en vez de reventar con KeyError aguas abajo (p. ej.
-            # CCMA para quien no es monotributista ni autónomo).
+            # adherimos solos y reintentamos UNA vez (el flag _adhiriendo corta la
+            # recursión si la adhesión no alcanzó). El resto se marca limpio en vez de
+            # reventar con KeyError aguas abajo (p. ej. CCMA para quien no es
+            # monotributista ni autónomo).
+            #
+            # Contingencia en capas: primero el POST de la propia API del portal (el
+            # mismo botón "Agregar" del portal, un JSON limpio); si no queda, caemos al
+            # Administrador de Relaciones (wizard HTML) como red de seguridad.
             serv_rel = AUTO_ADHERIR.get(service_name)
             if serv_rel and not self._adhiriendo:
-                self.log.info(
-                    "Servicio %s no adherido; lo adhiero (%s) y reintento", service_name, serv_rel
-                )
+                self.log.info("Servicio %s no adherido; lo adhiero y reintento", service_name)
                 self._adhiriendo = True
                 try:
-                    self.adminrel_adherir_servicio(serv_rel)
+                    if not self._portal_adherir_servicio(service_name):
+                        self.log.info("  POST del portal no alcanzó; pruebo el wizard (%s)", serv_rel)
+                        self.adminrel_adherir_servicio(serv_rel)
                 finally:
                     self._adhiriendo = False
                 self.abrir_servicio(service_name, entry_url=entry_url)
@@ -2060,12 +2064,41 @@ class AFIP:
             referer=confirm_url,
         )
         if "aceptada=true" not in r.url.lower():
-            cuerpo = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", r.text)).strip()
             raise AFIPError(
-                f"No se confirmó la relación {servicename} <- {alias}: {cuerpo[:200]}"
+                f"No se confirmó la relación {servicename} <- {alias}: {_pista_pantalla(r.text, 200)}"
             )
         self.log.info("Relación %s <- %s OK", servicename, alias)
         return {"alias": alias, "ws": servicename, "representado": rep, "representante": valor}
+
+    def _portal_adherir_servicio(self, service_name: str) -> bool:
+        """Adhiere un servicio auto-adherible con la propia API del portal: el mismo
+        POST que dispara el botón "Agregar" cuando entrás a un servicio que no tenés.
+        Flujo observado (SPA del portal, ~200ms, todo JSON):
+            GET  /servicios/<cuit>/servicio/<name>                 -> metadata
+            POST /servicios/<cuit>/servicio/<name>  (body vacío)   -> ADHIERE
+            (luego /autorizacionAdherido trae el token+sign; lo resuelve el reintento
+             de abrir_servicio vía el /autorizacion normal, ya disponible tras adherir)
+        Mucho más simple y estable que el Administrador de Relaciones (sin ASP.NET ni
+        viewstate). Devuelve True si el POST fue 2xx.
+
+        ⚠️ Modifica la cuenta del cliente en ARCA (le agrega el servicio; reversible).
+        """
+        base = f"{URL_PORTAL_API}/{self.cuit}/servicio/{service_name}"
+        hdr = {
+            "Accept": "application/json, text/plain, */*",
+            "Origin": "https://portalcf.cloud.afip.gob.ar",
+            "Referer": URL_PORTAL_APP,
+        }
+        try:
+            self.session.get(base, headers=hdr)  # metadata (igual que el portal)
+            r = self.session.post(base, headers=hdr)  # body vacío -> adhiere
+        except requests.RequestException as e:
+            self.log.info("Adhesión de %s por API del portal falló: %s", service_name, e)
+            return False
+        ok = r.ok
+        self.log.info("Adhesión de %s por API del portal: HTTP %s (%s)",
+                      service_name, r.status_code, "OK" if ok else "sin efecto")
+        return ok
 
     def adminrel_adherir_servicio(self, servicename: str, *, representado=None) -> bool:
         """Adhiere un servicio INTERACTIVO (web://…) a un representado (default: uno mismo)
@@ -2120,15 +2153,13 @@ class AFIP:
             referer=r.url,
         )
         if "cmdGenerarRelacion" not in r.text:
-            cuerpo = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", r.text)).strip()
-            raise AFIPError(f"No se pudo preparar la adhesión de {servicename}: {cuerpo[:160]}")
+            raise AFIPError(f"No se pudo preparar la adhesión de {servicename}: {_pista_pantalla(r.text)}")
         r = self._adminrel_post(
             r.url, self._aspnet_viewstate(r.text),
             fields={"cmdGenerarRelacion.x": "1", "cmdGenerarRelacion.y": "1"}, referer=r.url,
         )
         if "aceptada=true" not in r.url.lower():
-            cuerpo = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", r.text)).strip()
-            raise AFIPError(f"No se confirmó la adhesión de {servicename}: {cuerpo[:160]}")
+            raise AFIPError(f"No se confirmó la adhesión de {servicename}: {_pista_pantalla(r.text)}")
         self.log.info("Servicio %s adherido a %s OK", servicename, rep)
         return True
 
