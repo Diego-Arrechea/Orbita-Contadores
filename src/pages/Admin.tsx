@@ -1654,13 +1654,110 @@ function facturado12m(c: AdminCliente): number {
 }
 
 type FiltroEstado = 'todos' | 'error' | 'ok' | 'sindatos';
-type OrdenClientes = 'estado' | 'facturado' | 'sync' | 'nombre';
+type OrdenCampo = 'estado' | 'nombre' | 'contador' | 'regimen' | 'facturado' | 'comprob' | 'cuota' | 'sync';
+type Orden = { campo: OrdenCampo; dir: 'asc' | 'desc' };
 
 /** Grupo según la última sincronización de un cliente, para filtrar/ordenar en el panel. */
 function grupoSync(c: AdminCliente): 'error' | 'ok' | 'sindatos' {
   if (c.resultado_ultima_extraccion === 'fallida') return 'error';
   if (c.resultado_ultima_extraccion === 'exitosa') return 'ok';
   return 'sindatos';
+}
+
+const RANK_ESTADO = { error: 0, sindatos: 1, ok: 2 } as const;
+function rankCuota(c: AdminCliente): number {
+  if (c.cuota_estado === 'con-deuda') return 0;
+  if (c.cuota_estado === 'al-dia') return 1;
+  return 2;
+}
+
+/** Comparación ASCENDENTE por campo. En ascendente, lo "que hay que mirar" queda arriba:
+ * errores primero (estado), con deuda primero (cuota), más viejos primero (sync). */
+function comparaAsc(a: AdminCliente, b: AdminCliente, campo: OrdenCampo): number {
+  const porNombre = (a.nombre || '').localeCompare(b.nombre || '');
+  switch (campo) {
+    case 'nombre':
+      return porNombre;
+    case 'contador':
+      return (a.contador_email || '').localeCompare(b.contador_email || '') || porNombre;
+    case 'regimen':
+      return (
+        regimenCorto(a.regimen).localeCompare(regimenCorto(b.regimen)) ||
+        (a.categoria || '').localeCompare(b.categoria || '') ||
+        porNombre
+      );
+    case 'facturado':
+      return facturado12m(a) - facturado12m(b) || porNombre;
+    case 'comprob':
+      return a.cantidad_comprobantes - b.cantidad_comprobantes || porNombre;
+    case 'cuota':
+      return rankCuota(a) - rankCuota(b) || porNombre;
+    case 'sync': {
+      const ta = a.ultima_extraccion ? Date.parse(a.ultima_extraccion) : 0;
+      const tb = b.ultima_extraccion ? Date.parse(b.ultima_extraccion) : 0;
+      return ta - tb || porNombre;
+    }
+    case 'estado':
+    default:
+      return RANK_ESTADO[grupoSync(a)] - RANK_ESTADO[grupoSync(b)] || porNombre;
+  }
+}
+
+function ordenarClientes(list: AdminCliente[], orden: Orden): AdminCliente[] {
+  const sign = orden.dir === 'desc' ? -1 : 1;
+  return [...list].sort((a, b) => sign * comparaAsc(a, b, orden.campo));
+}
+
+// Dirección con la que arranca cada columna al clickearla por primera vez (los números arrancan
+// de mayor a menor, que es lo que uno suele querer ver).
+const DIR_DEFAULT: Record<OrdenCampo, 'asc' | 'desc'> = {
+  estado: 'asc',
+  nombre: 'asc',
+  contador: 'asc',
+  regimen: 'asc',
+  facturado: 'desc',
+  comprob: 'desc',
+  cuota: 'asc',
+  sync: 'asc',
+};
+
+// Combinaciones campo:dir que el selector "Ordenar" ofrece como atajo (las columnas pueden llegar
+// a otras combinaciones; ahí el selector muestra su placeholder).
+const ORDEN_PRESETS = ['estado:asc', 'facturado:desc', 'sync:asc', 'nombre:asc'];
+
+/** Encabezado de columna clickeable: ordena por su campo y alterna asc/desc al reclickear. */
+function SortHeader({
+  label,
+  campo,
+  orden,
+  onOrden,
+}: {
+  label: string;
+  campo: OrdenCampo;
+  orden: Orden;
+  onOrden: (o: Orden) => void;
+}) {
+  const activo = orden.campo === campo;
+  const Icon = !activo ? ArrowUpDown : orden.dir === 'asc' ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        onOrden(
+          activo
+            ? { campo, dir: orden.dir === 'asc' ? 'desc' : 'asc' }
+            : { campo, dir: DIR_DEFAULT[campo] }
+        )
+      }
+      className={cn(
+        'inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-foreground',
+        activo && 'text-foreground font-semibold'
+      )}
+    >
+      {label}
+      <Icon className={cn('h-3.5 w-3.5', activo ? 'opacity-100' : 'opacity-40')} />
+    </button>
+  );
 }
 
 function TabClientes() {
@@ -1673,7 +1770,7 @@ function TabClientes() {
   } = useQuery({ queryKey: ['admin', 'clientes'], queryFn: listarTodosLosClientes });
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todos');
-  const [orden, setOrden] = useState<OrdenClientes>('estado');
+  const [orden, setOrden] = useState<Orden>({ campo: 'estado', dir: 'asc' });
   const error = queryError ? mensajeDeError(queryError) : '';
 
   const buscados = useMemo(() => {
@@ -1696,36 +1793,17 @@ function TabClientes() {
     return acc;
   }, [buscados]);
 
-  // Aplica el filtro por estado y ordena. 'estado' agrupa los errores arriba (el objetivo:
-  // ver de un vistazo qué clientes están fallando).
-  const visibles = useMemo(() => {
-    const base =
-      filtroEstado === 'todos' ? buscados : buscados.filter(c => grupoSync(c) === filtroEstado);
-    const rank = { error: 0, sindatos: 1, ok: 2 } as const;
-    const porNombre = (a: AdminCliente, b: AdminCliente) =>
-      (a.nombre || '').localeCompare(b.nombre || '');
-    return [...base].sort((a, b) => {
-      switch (orden) {
-        case 'facturado':
-          return facturado12m(b) - facturado12m(a);
-        case 'nombre':
-          return porNombre(a, b);
-        case 'sync': {
-          // Más desactualizados primero (los 'sin datos' van al frente, con timestamp 0).
-          const ta = a.ultima_extraccion ? Date.parse(a.ultima_extraccion) : 0;
-          const tb = b.ultima_extraccion ? Date.parse(b.ultima_extraccion) : 0;
-          return ta - tb;
-        }
-        case 'estado':
-        default:
-          return rank[grupoSync(a)] - rank[grupoSync(b)] || porNombre(a, b);
-      }
-    });
-  }, [buscados, filtroEstado, orden]);
+  // Filtro por estado (la búsqueda ya se aplicó). El ORDEN lo hace TablaClientes (columnas
+  // clickeables), compartiendo el mismo estado `orden` que el selector de acá.
+  const filtrados = useMemo(
+    () =>
+      filtroEstado === 'todos' ? buscados : buscados.filter(c => grupoSync(c) === filtroEstado),
+    [buscados, filtroEstado]
+  );
 
   const totalFacturado = useMemo(
-    () => visibles.reduce((s, c) => s + facturado12m(c), 0),
-    [visibles]
+    () => filtrados.reduce((s, c) => s + facturado12m(c), 0),
+    [filtrados]
   );
 
   if (isLoading) {
@@ -1784,22 +1862,28 @@ function TabClientes() {
         })}
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-muted-foreground">Ordenar</span>
-          <Select value={orden} onValueChange={v => setOrden(v as OrdenClientes)}>
+          <Select
+            value={ORDEN_PRESETS.includes(`${orden.campo}:${orden.dir}`) ? `${orden.campo}:${orden.dir}` : ''}
+            onValueChange={v => {
+              const [campo, dir] = v.split(':') as [OrdenCampo, 'asc' | 'desc'];
+              setOrden({ campo, dir });
+            }}
+          >
             <SelectTrigger className="h-9 w-[210px]">
-              <SelectValue />
+              <SelectValue placeholder="Por columna…" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="estado">Estado (errores primero)</SelectItem>
-              <SelectItem value="facturado">Facturado 12m (mayor)</SelectItem>
-              <SelectItem value="sync">Última sincronización (viejos)</SelectItem>
-              <SelectItem value="nombre">Nombre (A–Z)</SelectItem>
+              <SelectItem value="estado:asc">Estado (errores primero)</SelectItem>
+              <SelectItem value="facturado:desc">Facturado 12m (mayor)</SelectItem>
+              <SelectItem value="sync:asc">Última sincronización (viejos)</SelectItem>
+              <SelectItem value="nombre:asc">Nombre (A–Z)</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
 
       <div className="text-xs text-muted-foreground">
-        {visibles.length} cliente(s) · facturado 12m sumado: {pesos(totalFacturado)} · sólo lectura
+        {filtrados.length} cliente(s) · facturado 12m sumado: {pesos(totalFacturado)} · sólo lectura
       </div>
 
       {error && (
@@ -1809,8 +1893,10 @@ function TabClientes() {
       )}
 
       <TablaClientes
-        clientes={visibles}
+        clientes={filtrados}
         mostrarContador
+        orden={orden}
+        onOrden={setOrden}
         mensajeVacio={
           filtroEstado === 'error'
             ? 'No hay clientes con errores. 🎉'
@@ -1829,12 +1915,25 @@ function TablaClientes({
   clientes,
   mostrarContador,
   mensajeVacio = 'Este contador todavía no tiene clientes.',
+  orden: ordenProp,
+  onOrden,
 }: {
   clientes: AdminCliente[];
   mostrarContador: boolean;
   mensajeVacio?: string;
+  orden?: Orden;
+  onOrden?: (o: Orden) => void;
 }) {
   const cols = mostrarContador ? 7 : 6;
+  // Si el padre no controla el orden (p.ej. la ficha del contador), lo manejamos acá: las columnas
+  // quedan igual de clickeables.
+  const [ordenLocal, setOrdenLocal] = useState<Orden>({ campo: 'estado', dir: 'asc' });
+  const orden = ordenProp ?? ordenLocal;
+  const setOrden = onOrden ?? setOrdenLocal;
+  const ordenados = useMemo(() => ordenarClientes(clientes, orden), [clientes, orden]);
+  const th = (label: string, campo: OrdenCampo) => (
+    <SortHeader label={label} campo={campo} orden={orden} onOrden={setOrden} />
+  );
 
   function EstadoSync({ c }: { c: AdminCliente }) {
     return (
@@ -1882,17 +1981,17 @@ function TablaClientes({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Cliente</TableHead>
-              {mostrarContador && <TableHead>Contador</TableHead>}
-              <TableHead className="text-center">Régimen / Cat.</TableHead>
-              <TableHead className="text-right">Facturado 12m</TableHead>
-              <TableHead className="text-center">Comprob.</TableHead>
-              <TableHead className="text-center">Cuota</TableHead>
-              <TableHead>Última sincronización</TableHead>
+              <TableHead>{th('Cliente', 'nombre')}</TableHead>
+              {mostrarContador && <TableHead>{th('Contador', 'contador')}</TableHead>}
+              <TableHead className="text-center">{th('Régimen / Cat.', 'regimen')}</TableHead>
+              <TableHead className="text-right">{th('Facturado 12m', 'facturado')}</TableHead>
+              <TableHead className="text-center">{th('Comprob.', 'comprob')}</TableHead>
+              <TableHead className="text-center">{th('Cuota', 'cuota')}</TableHead>
+              <TableHead>{th('Última sincronización', 'estado')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {clientes.map(c => (
+            {ordenados.map(c => (
               <TableRow key={c.cuit}>
                 <TableCell>
                   <div className="font-medium">{c.nombre}</div>
@@ -1927,7 +2026,7 @@ function TablaClientes({
       </Card>
 
       <div className="space-y-3 lg:hidden">
-        {clientes.map(c => (
+        {ordenados.map(c => (
           <Card key={c.cuit} className="space-y-3 p-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
