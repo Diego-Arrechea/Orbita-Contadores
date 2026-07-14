@@ -69,6 +69,13 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   listarUsuarios,
   obtenerMetricas,
   obtenerMetricasCaptcha,
@@ -1646,6 +1653,16 @@ function facturado12m(c: AdminCliente): number {
   return (c.historial_mensual || []).reduce((s, m) => s + (m.emitidasNetas || 0), 0);
 }
 
+type FiltroEstado = 'todos' | 'error' | 'ok' | 'sindatos';
+type OrdenClientes = 'estado' | 'facturado' | 'sync' | 'nombre';
+
+/** Grupo según la última sincronización de un cliente, para filtrar/ordenar en el panel. */
+function grupoSync(c: AdminCliente): 'error' | 'ok' | 'sindatos' {
+  if (c.resultado_ultima_extraccion === 'fallida') return 'error';
+  if (c.resultado_ultima_extraccion === 'exitosa') return 'ok';
+  return 'sindatos';
+}
+
 function TabClientes() {
   const {
     data: clientes = [],
@@ -1655,9 +1672,11 @@ function TabClientes() {
     isFetching,
   } = useQuery({ queryKey: ['admin', 'clientes'], queryFn: listarTodosLosClientes });
   const [busqueda, setBusqueda] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState<FiltroEstado>('todos');
+  const [orden, setOrden] = useState<OrdenClientes>('estado');
   const error = queryError ? mensajeDeError(queryError) : '';
 
-  const filtrados = useMemo(() => {
+  const buscados = useMemo(() => {
     // Mismo criterio que en Cuentas: cada palabra debe aparecer en el texto combinado del cliente.
     const tokens = busqueda.trim().toLowerCase().split(/\s+/).filter(Boolean);
     if (tokens.length === 0) return clientes;
@@ -1670,9 +1689,43 @@ function TabClientes() {
     });
   }, [clientes, busqueda]);
 
+  // Conteo por estado sobre lo que matchea la búsqueda (para los contadores de las chips).
+  const conteos = useMemo(() => {
+    const acc = { todos: buscados.length, error: 0, ok: 0, sindatos: 0 };
+    for (const c of buscados) acc[grupoSync(c)]++;
+    return acc;
+  }, [buscados]);
+
+  // Aplica el filtro por estado y ordena. 'estado' agrupa los errores arriba (el objetivo:
+  // ver de un vistazo qué clientes están fallando).
+  const visibles = useMemo(() => {
+    const base =
+      filtroEstado === 'todos' ? buscados : buscados.filter(c => grupoSync(c) === filtroEstado);
+    const rank = { error: 0, sindatos: 1, ok: 2 } as const;
+    const porNombre = (a: AdminCliente, b: AdminCliente) =>
+      (a.nombre || '').localeCompare(b.nombre || '');
+    return [...base].sort((a, b) => {
+      switch (orden) {
+        case 'facturado':
+          return facturado12m(b) - facturado12m(a);
+        case 'nombre':
+          return porNombre(a, b);
+        case 'sync': {
+          // Más desactualizados primero (los 'sin datos' van al frente, con timestamp 0).
+          const ta = a.ultima_extraccion ? Date.parse(a.ultima_extraccion) : 0;
+          const tb = b.ultima_extraccion ? Date.parse(b.ultima_extraccion) : 0;
+          return ta - tb;
+        }
+        case 'estado':
+        default:
+          return rank[grupoSync(a)] - rank[grupoSync(b)] || porNombre(a, b);
+      }
+    });
+  }, [buscados, filtroEstado, orden]);
+
   const totalFacturado = useMemo(
-    () => filtrados.reduce((s, c) => s + facturado12m(c), 0),
-    [filtrados]
+    () => visibles.reduce((s, c) => s + facturado12m(c), 0),
+    [visibles]
   );
 
   if (isLoading) {
@@ -1682,6 +1735,13 @@ function TabClientes() {
       </div>
     );
   }
+
+  const chips: [FiltroEstado, string, number][] = [
+    ['todos', 'Todos', conteos.todos],
+    ['error', 'Con error', conteos.error],
+    ['ok', 'OK', conteos.ok],
+    ['sindatos', 'Sin datos', conteos.sindatos],
+  ];
 
   return (
     <div className="space-y-4">
@@ -1698,8 +1758,48 @@ function TabClientes() {
         <BotonActualizar refetch={refetch} isFetching={isFetching} />
       </div>
 
+      {/* Agrupar por estado de sincronización + ordenar. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {chips.map(([val, label, n]) => {
+          const activo = filtroEstado === val;
+          return (
+            <Button
+              key={val}
+              variant={activo ? (val === 'error' ? 'destructive' : 'default') : 'outline'}
+              size="sm"
+              onClick={() => setFiltroEstado(val)}
+            >
+              {val === 'error' && <AlertCircle className="h-3.5 w-3.5" />}
+              {label}
+              <span
+                className={cn(
+                  'ml-1.5 rounded-full px-1.5 text-[11px] tabular-nums',
+                  activo ? 'bg-white/25' : 'bg-muted text-muted-foreground'
+                )}
+              >
+                {n}
+              </span>
+            </Button>
+          );
+        })}
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Ordenar</span>
+          <Select value={orden} onValueChange={v => setOrden(v as OrdenClientes)}>
+            <SelectTrigger className="h-9 w-[210px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="estado">Estado (errores primero)</SelectItem>
+              <SelectItem value="facturado">Facturado 12m (mayor)</SelectItem>
+              <SelectItem value="sync">Última sincronización (viejos)</SelectItem>
+              <SelectItem value="nombre">Nombre (A–Z)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
       <div className="text-xs text-muted-foreground">
-        {filtrados.length} cliente(s) · facturado 12m sumado: {pesos(totalFacturado)} · sólo lectura
+        {visibles.length} cliente(s) · facturado 12m sumado: {pesos(totalFacturado)} · sólo lectura
       </div>
 
       {error && (
@@ -1708,7 +1808,17 @@ function TabClientes() {
         </div>
       )}
 
-      <TablaClientes clientes={filtrados} mostrarContador />
+      <TablaClientes
+        clientes={visibles}
+        mostrarContador
+        mensajeVacio={
+          filtroEstado === 'error'
+            ? 'No hay clientes con errores. 🎉'
+            : busqueda
+              ? 'Ningún cliente coincide con la búsqueda.'
+              : 'No hay clientes para mostrar.'
+        }
+      />
     </div>
   );
 }
@@ -1718,9 +1828,11 @@ function TabClientes() {
 function TablaClientes({
   clientes,
   mostrarContador,
+  mensajeVacio = 'Este contador todavía no tiene clientes.',
 }: {
   clientes: AdminCliente[];
   mostrarContador: boolean;
+  mensajeVacio?: string;
 }) {
   const cols = mostrarContador ? 7 : 6;
 
@@ -1806,7 +1918,7 @@ function TablaClientes({
             {clientes.length === 0 && (
               <TableRow>
                 <TableCell colSpan={cols} className="text-center text-muted-foreground py-10">
-                  Este contador todavía no tiene clientes.
+                  {mensajeVacio}
                 </TableCell>
               </TableRow>
             )}
@@ -1862,7 +1974,7 @@ function TablaClientes({
         ))}
         {clientes.length === 0 && (
           <Card className="p-8 text-center text-sm text-muted-foreground">
-            Este contador todavía no tiene clientes.
+            {mensajeVacio}
           </Card>
         )}
       </div>
