@@ -262,9 +262,11 @@ def metricas_captcha(db: Session = Depends(get_db), dias: int = 30, limite: int 
 
 
 @router.get("/sincronizaciones/fallidas", response_model=list[AdminSyncFallidaOut])
-def sincronizaciones_fallidas(db: Session = Depends(get_db), limite: int = 50):
-    """Últimas sincronizaciones fallidas (vista de ops) con el motivo técnico crudo, el cliente
-    afectado, su contador y si el cliente ya se sincronizó bien DESPUÉS (estado actual)."""
+def sincronizaciones_fallidas(db: Session = Depends(get_db), horas: int = 48, limite: int = 500):
+    """Sincronizaciones fallidas de las últimas `horas` (default 48) — vista de ops: motivo técnico
+    crudo, cliente afectado, su contador y si el cliente ya se sincronizó bien DESPUÉS (estado
+    actual). Sólo mira la ventana reciente para enfocar los problemas actuales, no el histórico."""
+    desde = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=horas)
     filas = db.execute(
         select(
             models.Extraccion,
@@ -275,9 +277,12 @@ def sincronizaciones_fallidas(db: Session = Depends(get_db), limite: int = 50):
         )
         .outerjoin(models.ClienteARCA, models.ClienteARCA.cuit == models.Extraccion.cuit)
         .outerjoin(models.Usuario, models.Usuario.id == models.ClienteARCA.usuario_id)
-        .where(models.Extraccion.resultado == "fallida")
+        .where(
+            models.Extraccion.resultado == "fallida",
+            models.Extraccion.fecha >= desde,
+        )
         .order_by(models.Extraccion.fecha.desc())
-        .limit(min(limite, 200))
+        .limit(min(limite, 1000))
     ).all()
 
     # Para resolver "¿se sincronizó bien después?": última extracción EXITOSA por cuit (una query).
