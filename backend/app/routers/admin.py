@@ -8,7 +8,7 @@ import json
 import threading
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, update
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -468,6 +468,68 @@ def reintentar_sync(
     return JobIdOut(job_id=job_id)
 
 
+def _cascada_desactivar(db: Session, titular: models.Usuario) -> None:
+    """Al deshabilitar una cuenta plena, arrastra al resto del estudio: bloquea el login de sus
+    empleados y pausa el monitoreo de TODOS los clientes del estudio (los del titular + los de sus
+    empleados). Marca cada fila con `desactivado_en_cascada=True` para poder revertir SÓLO estas al
+    reactivar (sin tocar lo que el contador ya había pausado/desactivado a mano). Idempotente: sólo
+    toca filas que hoy están activas."""
+    empleado_ids = list(
+        db.scalars(select(models.Usuario.id).where(models.Usuario.titular_id == titular.id))
+    )
+    # Empleados que hoy pueden entrar: se bloquean y se marcan como baja en cascada. Los que el
+    # titular ya había desactivado a mano (activo=False) NO se tocan → al reactivar siguen apagados.
+    db.execute(
+        update(models.Usuario)
+        .where(
+            models.Usuario.titular_id == titular.id,
+            models.Usuario.activo.is_(True),
+        )
+        .values(activo=False, desactivado_en_cascada=True)
+        .execution_options(synchronize_session=False)
+    )
+    # Clientes del estudio (titular + empleados) que hoy están activos: se pausan y se marcan. Los ya
+    # pausados a mano quedan como están (flag en False) → al reactivar siguen pausados.
+    ids_estudio = [titular.id, *empleado_ids]
+    db.execute(
+        update(models.ClienteARCA)
+        .where(
+            models.ClienteARCA.usuario_id.in_(ids_estudio),
+            models.ClienteARCA.activo.is_(True),
+        )
+        .values(activo=False, desactivado_en_cascada=True)
+        .execution_options(synchronize_session=False)
+    )
+
+
+def _cascada_reactivar(db: Session, titular: models.Usuario) -> None:
+    """Reverso de `_cascada_desactivar`: al reactivar la cuenta, rehabilita SÓLO lo que se arrastró
+    por su baja (flag `desactivado_en_cascada`) y limpia el flag. Lo que el contador pausó/desactivó
+    por su cuenta queda como estaba."""
+    empleado_ids = list(
+        db.scalars(select(models.Usuario.id).where(models.Usuario.titular_id == titular.id))
+    )
+    db.execute(
+        update(models.Usuario)
+        .where(
+            models.Usuario.titular_id == titular.id,
+            models.Usuario.desactivado_en_cascada.is_(True),
+        )
+        .values(activo=True, desactivado_en_cascada=False)
+        .execution_options(synchronize_session=False)
+    )
+    ids_estudio = [titular.id, *empleado_ids]
+    db.execute(
+        update(models.ClienteARCA)
+        .where(
+            models.ClienteARCA.usuario_id.in_(ids_estudio),
+            models.ClienteARCA.desactivado_en_cascada.is_(True),
+        )
+        .values(activo=True, desactivado_en_cascada=False)
+        .execution_options(synchronize_session=False)
+    )
+
+
 @router.patch("/usuarios/{usuario_id}", response_model=AdminUsuarioOut)
 def editar_usuario(
     usuario_id: int,
@@ -488,6 +550,14 @@ def editar_usuario(
             raise HTTPException(status_code=400, detail="No podés desactivar tu propia cuenta.")
         target.activo = cambios.activo
         _registrar(db, admin, "activar" if cambios.activo else "desactivar", target)
+        # La baja/alta arrastra al estudio SÓLO si es una cuenta plena (titular o independiente): pausa
+        # sus monotributistas y bloquea a sus empleados. Para un empleado (titular_id != NULL) no
+        # cascadea: sus clientes son compartidos con el estudio, así que sólo se togglea su login.
+        if target.titular_id is None:
+            if cambios.activo:
+                _cascada_reactivar(db, target)
+            else:
+                _cascada_desactivar(db, target)
 
     if cambios.rol is not None and cambios.rol != target.rol:
         if cambios.rol not in ("contador", "admin"):

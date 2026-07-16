@@ -87,6 +87,13 @@ class Usuario(Base):
     # Cuenta habilitada. False = el contador no puede iniciar sesión ni operar (la deshabilita un
     # admin desde el panel). El chequeo vive en login y en usuario_actual.
     activo: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    # True = esta cuenta se deshabilitó AUTOMÁTICAMENTE al dar de baja a su titular (baja en cascada),
+    # no por una decisión directa sobre ella. Sólo se marca en cuentas de EMPLEADO. Permite revertir
+    # SÓLO estas al reactivar al titular, sin resucitar empleados que el titular ya había desactivado
+    # a mano. Ver routers/admin.py (_cascada_desactivar/_cascada_reactivar).
+    desactivado_en_cascada: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0"
+    )
     # Última vez que el contador inició sesión (para el panel admin). NULL = nunca entró.
     ultimo_acceso: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -274,6 +281,14 @@ class ClienteARCA(Base):
     # (un alta nueva entra activa). Distinto de los flags de clave (que los maneja la sync sola).
     activo: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="1", nullable=False
+    )
+    # True = el monitoreo se pausó AUTOMÁTICAMENTE por una baja en cascada (se deshabilitó al contador
+    # del estudio), no porque el contador lo pausara a mano. Externamente es idéntico a una pausa
+    # manual (aparece "Desactivado" y el motor lo saltea); internamente distingue el origen para poder
+    # despausar SÓLO estos al reactivar la cuenta, respetando lo que el contador pausó por su cuenta.
+    # Un toggle manual del monitoreo lo limpia. Ver routers/admin.py (_cascada_desactivar/_reactivar).
+    desactivado_en_cascada: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
     )
 
 

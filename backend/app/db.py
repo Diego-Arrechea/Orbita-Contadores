@@ -73,6 +73,9 @@ def _migrar_usuarios(conn) -> None:
         # de ese titular; permisos_json guarda sus permisos ({clave: bool}, NULL = todos habilitados).
         "titular_id": "INTEGER REFERENCES usuarios(id)",
         "permisos_json": "TEXT",
+        # Baja en cascada: True = el empleado se deshabilitó al dar de baja a su titular (se revierte
+        # solo al reactivarlo). Ver routers/admin.py.
+        "desactivado_en_cascada": "BOOLEAN DEFAULT FALSE" if not es_sqlite else "BOOLEAN DEFAULT 0",
     }
     for nombre, tipo in nuevas.items():
         if nombre not in cols:
@@ -270,6 +273,13 @@ def _migrar_clientes_arca(conn) -> None:
     if "activo" not in cols:
         conn.execute(
             text("ALTER TABLE clientes_arca ADD COLUMN activo BOOLEAN DEFAULT TRUE")
+        )
+    # ¿La pausa del monitoreo vino de una baja en cascada (se deshabilitó al contador del estudio) y
+    # no de una pausa manual? Permite despausar SÓLO estos al reactivar la cuenta. DEFAULT FALSE anda
+    # igual en SQLite y Postgres.
+    if "desactivado_en_cascada" not in cols:
+        conn.execute(
+            text("ALTER TABLE clientes_arca ADD COLUMN desactivado_en_cascada BOOLEAN DEFAULT FALSE")
         )
 
 
