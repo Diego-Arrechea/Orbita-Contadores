@@ -121,7 +121,11 @@ def login(datos: LoginIn, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos.")
     if not usuario.activo:
         raise HTTPException(
-            status_code=403, detail="Tu cuenta está inhabilitada. Escribinos para reactivarla."
+            status_code=403,
+            detail=(
+                "Tu cuenta fue deshabilitada. Escribinos a orbitaglobalclientes@gmail.com "
+                "para reactivarla."
+            ),
         )
     usuario.ultimo_acceso = dt.datetime.now(dt.timezone.utc)
     db.commit()

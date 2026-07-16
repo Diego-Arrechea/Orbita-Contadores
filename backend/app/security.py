@@ -115,7 +115,10 @@ def usuario_actual(
         # Cuenta inhabilitada por un administrador: corta la sesión aunque el token siga vigente.
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tu cuenta está inhabilitada. Escribinos para reactivarla.",
+            detail=(
+                "Tu cuenta fue deshabilitada. Escribinos a orbitaglobalclientes@gmail.com "
+                "para reactivarla."
+            ),
         )
     # Marca transitoria (no se persiste): la sesión es una impersonación hecha por un admin.
     usuario._imp_admin = bool(payload.get("adm"))  # type: ignore[attr-defined]

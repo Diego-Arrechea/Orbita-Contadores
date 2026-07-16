@@ -352,6 +352,9 @@ def cambiar_activo_cliente(
     datos ya guardados se conservan; volver a activarlo lo reincorpora al ciclo de actualización."""
     cliente = _cliente_propio(db, cuit, usuario)
     cliente.activo = datos.activo
+    # Decisión manual del contador: el estado pasa a ser propio, deja de contar como baja en cascada
+    # (así una futura reactivación de la cuenta no lo revierte). Ver routers/admin.py.
+    cliente.desactivado_en_cascada = False
     db.add(cliente)
     db.commit()
     return {"ok": True, "activo": cliente.activo}
