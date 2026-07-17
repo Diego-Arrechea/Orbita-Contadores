@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
 import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -40,6 +41,7 @@ from ..services import sincronizacion
 from ..services.scheduler import estado_scheduler
 
 router = APIRouter(prefix="/api", tags=["clientes"])
+log = logging.getLogger("orbita.clientes")
 
 
 def _iso_utc(d: dt.datetime) -> str:
@@ -430,6 +432,30 @@ def actualizar_clave_cliente(
     job_id = jobs.crear_job()
     threading.Thread(target=_correr_sync, args=(job_id, cuit), daemon=True).start()
     return {"ok": True, "job_id": job_id}
+
+
+@router.get("/clientes/{cuit}/clave")
+def ver_clave_guardada(
+    cuit: str,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(requiere_permiso("actualizar_clave")),
+):
+    """Devuelve la clave fiscal GUARDADA de un cliente, para mostrarla al contador cuando va a
+    actualizarla. EXPOSICIÓN MÍNIMA: sólo se entrega si el cliente está en estado de error de clave
+    (AFIP forzó el cambio o la clave quedó inválida) — así no se puede espiar la clave de un cliente
+    sano. Requiere el permiso 'actualizar_clave' (el mismo que para cambiarla) y pertenencia. Se
+    deja traza de quién la consultó."""
+    cliente = _cliente_propio(db, cuit, usuario)
+    if not (cliente.clave_invalida or cliente.clave_requiere_cambio):
+        raise HTTPException(
+            status_code=403,
+            detail="La clave guardada solo puede verse cuando el cliente tiene un problema de clave.",
+        )
+    credencial = db.get(models.CredencialARCA, cliente.cuit_credencial)
+    if credencial is None or not credencial.clave_cifrada:
+        raise HTTPException(status_code=404, detail="Este cliente no tiene una clave guardada.")
+    log.info("usuario %s consultó la clave guardada del cliente %s", usuario.id, cuit)
+    return {"clave": descifrar(credencial.clave_cifrada).decode()}
 
 
 @router.delete("/clientes/{cuit}")

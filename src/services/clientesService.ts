@@ -259,6 +259,13 @@ export async function actualizarClaveFiscal(cuit: string, clave: string): Promis
   return { jobId: r.job_id };
 }
 
+/** Clave fiscal GUARDADA del cliente (la que dejó de funcionar), para mostrarla al actualizarla.
+ *  El backend sólo la entrega si el cliente tiene un problema de clave; si no, tira error. */
+export async function getClaveGuardada(cuit: string): Promise<string> {
+  const r = await apiGet<{ clave: string }>(`/clientes/${cuit.replace(/\D/g, '')}/clave`);
+  return r.clave;
+}
+
 /** Activa o desactiva el monitoreo de un cliente. Desactivado: deja de actualizarse su información
  *  y en la lista aparece atenuado como "Desactivado". Los datos ya guardados se conservan. */
 export async function cambiarActivoCliente(cuit: string, activo: boolean): Promise<void> {

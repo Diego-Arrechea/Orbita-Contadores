@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Eye, EyeOff, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,7 +12,7 @@ import {
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
-import { actualizarClaveFiscal } from '@/services/clientesService';
+import { actualizarClaveFiscal, getClaveGuardada } from '@/services/clientesService';
 import { mensajeDeError } from '@/services/authService';
 import type { Cliente } from '@/types';
 
@@ -34,13 +34,49 @@ export function CambiarClaveDialog({
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
 
+  // Clave GUARDADA (la que dejó de funcionar). Sólo se pide y se muestra cuando el cliente tiene un
+  // problema de clave (el backend, además, sólo la entrega en ese caso). Sirve de referencia para
+  // cargar la nueva. Se limpia al cerrar para no dejarla en memoria/estado.
+  const enError = Boolean(cliente.claveInvalida || cliente.claveRequiereCambio);
+  const [claveGuardada, setClaveGuardada] = useState<string | null>(null);
+  const [cargandoGuardada, setCargandoGuardada] = useState(false);
+  const [mostrarGuardada, setMostrarGuardada] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+
+  useEffect(() => {
+    if (!open || !enError) return;
+    let vivo = true;
+    setCargandoGuardada(true);
+    getClaveGuardada(cliente.cuit)
+      .then(c => vivo && setClaveGuardada(c))
+      .catch(() => vivo && setClaveGuardada(null))
+      .finally(() => vivo && setCargandoGuardada(false));
+    return () => {
+      vivo = false;
+    };
+  }, [open, enError, cliente.cuit]);
+
   const cerrar = (v: boolean) => {
     onOpenChange(v);
     if (!v) {
-      // Al cerrar, limpiá el formulario para no dejar la clave tipeada en memoria/estado.
+      // Al cerrar, limpiá todo para no dejar claves (tipeada ni guardada) en memoria/estado.
       setClave('');
       setMostrar(false);
       setError('');
+      setClaveGuardada(null);
+      setMostrarGuardada(false);
+      setCopiado(false);
+    }
+  };
+
+  const copiar = async () => {
+    if (!claveGuardada) return;
+    try {
+      await navigator.clipboard.writeText(claveGuardada);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1500);
+    } catch {
+      // portapapeles no disponible: no hacemos nada
     }
   };
 
@@ -73,6 +109,42 @@ export function CambiarClaveDialog({
             siga manteniendo al día.
           </DialogDescription>
         </DialogHeader>
+
+        {enError && (
+          <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 space-y-1.5">
+            <div className="text-xs font-medium text-muted-foreground">Clave que tenías guardada</div>
+            {cargandoGuardada ? (
+              <div className="text-sm text-muted-foreground">Cargando…</div>
+            ) : claveGuardada != null ? (
+              <div className="flex items-center gap-2">
+                <code className="flex-1 min-w-0 truncate rounded bg-card px-2 py-1 text-sm">
+                  {mostrarGuardada ? claveGuardada || '—' : '•'.repeat(Math.min(claveGuardada.length || 6, 12))}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => setMostrarGuardada(v => !v)}
+                  className="p-1.5 text-muted-foreground hover:text-foreground rounded-md"
+                  aria-label={mostrarGuardada ? 'Ocultar clave guardada' : 'Mostrar clave guardada'}
+                >
+                  {mostrarGuardada ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={copiar}
+                  className="p-1.5 text-muted-foreground hover:text-foreground rounded-md"
+                  aria-label="Copiar clave guardada"
+                >
+                  {copiado ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+                </button>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">No se pudo obtener la clave guardada.</div>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              Es la que estaba cargada y dejó de funcionar. Usala de referencia para cargar la nueva.
+            </p>
+          </div>
+        )}
 
         <div className="space-y-1.5 py-1">
           <Label htmlFor="cc-clave">Nueva clave fiscal</Label>
