@@ -359,6 +359,23 @@ def listar_representados(afip: AFIP, cuit: str, clave: str) -> list[dict]:
     return afip.representados()
 
 
+# --- Constancia de inscripción (Sistema Registral) ----------------------------
+@_con_sesion
+def constancia(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: str | None = None) -> str | None:
+    """HTML de la constancia oficial del contribuyente, listo para renderizar FUERA del portal: las
+    rutas de los estáticos (css/imágenes, que son públicos) se absolutizan a seti.afip.gob.ar y el
+    charset del <meta> se pasa a utf-8. None si no se pudo (p. ej. representado). El propio HTML trae
+    el botón "Imprimir Pantalla" (window.print)."""
+    html = afip.constancia_html(cuit_objetivo or cuit_login)
+    if not html:
+        return None
+    html = html.replace(
+        "/padron-puc-consulta-internet/",
+        "https://seti.afip.gob.ar/padron-puc-consulta-internet/",
+    )
+    return html.replace("iso-8859-1", "utf-8").replace("ISO-8859-1", "utf-8")
+
+
 # --- Puntos de venta (ABM pvel) — sólo HTTP (afip.py; el browser nunca lo hizo) -
 @_con_sesion
 def puntos_venta_pvel(afip: AFIP, cuit_login: str, clave: str) -> list[dict]:

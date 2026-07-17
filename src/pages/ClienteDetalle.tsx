@@ -15,6 +15,7 @@ import {
   Wheat,
   Briefcase,
   Power,
+  ScrollText,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -51,7 +52,7 @@ import { puedeFacturar, tienePermiso } from '@/lib/cuenta';
 import { getMovimientos } from '@/services/movimientosService';
 import { useQueryClient } from '@tanstack/react-query';
 import { useClienteReal, useComunicaciones, qkClientes } from '@/lib/queries';
-import { cambiarActivoCliente } from '@/services/clientesService';
+import { cambiarActivoCliente, getConstanciaBlob } from '@/services/clientesService';
 import { EditarClienteDialog } from '@/components/cliente/EditarClienteDialog';
 import { CambiarClaveDialog } from '@/components/cliente/CambiarClaveDialog';
 import { EliminarClienteDialog } from '@/components/cliente/EliminarClienteDialog';
@@ -83,6 +84,7 @@ export function ClienteDetalle() {
   const [generandoExcel, setGenerandoExcel] = useState(false);
   const [facturarOpen, setFacturarOpen] = useState(false);
   const [cambiandoActivo, setCambiandoActivo] = useState(false);
+  const [constanciaCargando, setConstanciaCargando] = useState(false);
   const queryClient = useQueryClient();
   const { config, inflacionEfectiva } = useConfig();
 
@@ -142,6 +144,33 @@ export function ClienteDetalle() {
       console.error('No se pudo generar el Excel del cliente', e);
     } finally {
       setGenerandoExcel(false);
+    }
+  };
+
+  // Abre la constancia de inscripción oficial del cliente en una pestaña nueva, lista para
+  // imprimir/guardar en PDF. Se trae en vivo (tarda unos segundos): abrimos la pestaña YA —en el
+  // gesto del click— para que el navegador no la bloquee como popup, y la completamos al llegar.
+  const abrirConstancia = async () => {
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(
+        '<p style="font-family:system-ui,sans-serif;padding:2rem;color:#334">Generando la constancia…</p>',
+      );
+    }
+    setConstanciaCargando(true);
+    try {
+      const blob = await getConstanciaBlob(cliente.cuit);
+      const url = URL.createObjectURL(blob);
+      if (win) win.location.href = url;
+      else window.open(url, '_blank');
+    } catch (e) {
+      console.error('No se pudo obtener la constancia', e);
+      if (win) {
+        win.document.body.innerHTML =
+          '<p style="font-family:system-ui,sans-serif;padding:2rem;color:#334">No se pudo obtener la constancia en este momento. Cerrá esta pestaña y probá de nuevo en unos minutos.</p>';
+      }
+    } finally {
+      setConstanciaCargando(false);
     }
   };
 
@@ -261,6 +290,18 @@ export function ClienteDetalle() {
                     >
                       <FileSpreadsheet /> {generandoExcel ? 'Generando Excel…' : 'Descargar Excel'}
                     </DropdownMenuItem>
+                    {esReal && (
+                      <DropdownMenuItem
+                        disabled={constanciaCargando}
+                        onSelect={e => {
+                          e.preventDefault();
+                          void abrirConstancia();
+                        }}
+                      >
+                        <ScrollText />{' '}
+                        {constanciaCargando ? 'Generando constancia…' : 'Constancia de inscripción'}
+                      </DropdownMenuItem>
+                    )}
                     {tienePermiso('editar_cliente') && (
                       <DropdownMenuItem onSelect={() => setTimeout(() => setEditarOpen(true), 0)}>
                         <Pencil /> Editar

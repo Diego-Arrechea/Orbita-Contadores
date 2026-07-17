@@ -156,6 +156,12 @@ VE_BASE = "https://ve.cloud.afip.gob.ar"
 # __VIEWSTATE/__EVENTVALIDATION); el entry SSO real es default.aspx. Ver el método mis_aportes().
 MISAPORTES_BASE = "https://serviciossegsoc.afip.gob.ar/MisAportes/app"
 
+# Sistema Registral (padron-puc-consulta-internet) en seti.afip.gob.ar (Struts .do). Es de donde
+# sale la CONSTANCIA DE INSCRIPCIÓN/OPCIÓN oficial: ConstanciaForwardAction.do redirige a
+# ConstanciaDispatcherAction.do (HTML latin-1) con régimen, categoría, impuestos, ACTIVIDADES
+# declaradas y el código verificador + vigencia. Ver constancia_html()/actividades().
+SETI_PADRON_BASE = "https://seti.afip.gob.ar/padron-puc-consulta-internet"
+
 # Entry point (paso c de abrir_servicio) de servicios conocidos. Tenerlo acá
 # permite saltar el GET de metadata (que solo servía para descubrir esta URL).
 SERVICIOS_ENTRY = {
@@ -171,6 +177,8 @@ SERVICIOS_ENTRY = {
     "e-ventanilla": f"{VE_BASE}/login",
     # Aportes en Línea: el token+sign va a default.aspx (index.aspx cae en ErrorPage→FinSession).
     "mis_aportes": f"{MISAPORTES_BASE}/default.aspx",
+    # Sistema Registral (constancia + actividades). Universal: todo CUIT lo tiene (no auto-adherir).
+    "padron-puc-consulta-internet": f"{SETI_PADRON_BASE}/AccessPointAction.do",
 }
 
 # Comprobantes en Línea (rcel) en fe.afip.gob.ar. NO es mcmp: rcel es el facturador web, y su
@@ -1800,74 +1808,73 @@ class AFIP:
             "cod_postal": _campo("codPostal", "codigoPostal", "cp"),
         }
 
+    def _abrir_padron_puc(self, *, forzar: bool = False) -> None:
+        """Abre el Sistema Registral (padron-puc-consulta-internet) por SSO una sola vez por sesión."""
+        if forzar or not getattr(self, "_padron_puc_abierto", False):
+            self.abrir_servicio("padron-puc-consulta-internet")
+            self._padron_puc_abierto = True
+
+    def constancia_html(self, cuit: str | None = None) -> str | None:
+        """HTML de la Constancia de Inscripción/Opción OFICIAL del contribuyente (Sistema Registral):
+        régimen, categoría, impuestos, actividades declaradas + código verificador y vigencia. Sale de
+        ConstanciaForwardAction.do → ConstanciaDispatcherAction.do (redirect). Devuelve el HTML ya en
+        unicode (el server responde latin-1) o None si no se pudo.
+
+        Sólo TITULAR: ConstanciaForwardAction usa el CUIT de la sesión (los representados requieren el
+        flujo de representación de seti, no soportado). En prod la sync es 100% titular."""
+        objetivo = str(cuit or self.cuit)
+        url = f"{SETI_PADRON_BASE}/ConstanciaForwardAction.do"
+        headers = {"Referer": f"{SETI_PADRON_BASE}/", "Accept": "text/html,*/*"}
+        for intento in (1, 2):
+            try:
+                self._abrir_padron_puc(forzar=intento == 2)
+                r = self.session.get(url, headers=headers, allow_redirects=True)
+                r.encoding = "latin-1"  # el Struts responde iso-8859-1
+                html = r.text or ""
+                if "ACTIVIDAD" in html.upper() or "CONSTANCIA" in html.upper():
+                    self.log.info("constancia: OK para %s (%d bytes)", objetivo, len(html))
+                    return html
+                # No parece la constancia (sesión de seti no tomó): reabrir y reintentar una vez.
+                self.log.info("constancia: respuesta inesperada (intento %d), reabro servicio", intento)
+            except Exception:  # noqa: BLE001
+                self.log.info("constancia: fallo al traer (intento %d)", intento, exc_info=True)
+        return None
+
     def actividades(self, cuit: str | None = None) -> list[dict]:
-        """Actividades económicas DECLARADAS del contribuyente en el padrón (código AFIP +
-        descripción + período de alta). Lee el mismo `/portal/api/persona/{cuit}` que el nombre y el
-        domicilio (una sola llamada, cacheada). Devuelve [{codigo, descripcion, periodo}] ordenado por
-        `orden` (la actividad principal primero). [] si no se pudo leer.
-
-        Parseo DEFENSIVO: el payload del portal no está documentado y la lista puede venir en varias
-        claves (`actividad`/`actividades`) y anidada (`datosGenerales`, `datosMonotributo`, …). Se
-        recorren todas las formas conocidas y se loguea qué se encontró para poder confirmar/ajustar
-        contra un payload real (ver TODO: validar shape con un CUIT productivo)."""
-        d = self._persona(cuit)
-        if not isinstance(d, dict):
+        """Actividades económicas DECLARADAS del contribuyente (código AFIP + descripción), parseadas
+        de la Constancia oficial (Sistema Registral). Devuelve [{codigo, descripcion, periodo}] con la
+        actividad principal primero; `periodo` queda None (la constancia no da alta por actividad). []
+        si no se pudo. Nota: comparte fuente con constancia_html() (el pedido de actividades + botón de
+        constancia salen del mismo lugar)."""
+        html = self.constancia_html(cuit)
+        if not html:
             return []
-
-        # La lista de actividades puede colgar del root o de alguno de estos contenedores anidados.
-        contenedores = [d]
-        for k in ("datosGenerales", "datosMonotributo", "datosRegimenGeneral"):
-            sub = d.get(k)
-            if isinstance(sub, dict):
-                contenedores.append(sub)
-
-        crudas: list = []
-        for cont in contenedores:
-            for k in ("actividad", "actividades", "actividadesMonotributo"):
-                v = cont.get(k)
-                if isinstance(v, list) and v:
-                    crudas = v
-                    break
-            if crudas:
-                break
-
-        if not crudas:
-            self.log.info("actividades: sin lista en el payload de persona (claves: %s)", list(d.keys()))
-            return []
-
-        def _periodo(p) -> str | None:
-            # AFIP suele dar el período como AAAAMM (int/str) -> 'MM/AAAA'.
-            s = str(p or "").strip()
-            if len(s) == 6 and s.isdigit():
-                return f"{s[4:]}/{s[:4]}"
-            return s or None
-
-        out: list[dict] = []
-        for a in crudas:
-            if not isinstance(a, dict):
-                continue
-            codigo = a.get("idActividad") or a.get("codigo") or a.get("id")
-            desc = (
-                a.get("descripcionActividad")
-                or a.get("descripcion")
-                or a.get("actividad")
-            )
-            if codigo is None and not desc:
-                continue
-            out.append(
-                {
-                    "codigo": str(codigo).strip() if codigo is not None else None,
-                    "descripcion": str(desc).strip() if desc else None,
-                    "periodo": _periodo(a.get("periodo") or a.get("periodoAsoc")),
-                    "_orden": a.get("orden"),
-                }
-            )
-
-        # Orden: la principal (orden 1) primero; los que no traen orden quedan al final en el orden dado.
-        out.sort(key=lambda x: (x["_orden"] is None, x["_orden"] if x["_orden"] is not None else 0))
-        for x in out:
-            x.pop("_orden", None)
+        out = self._parsear_actividades(html)
         self.log.info("actividades: %d declarada(s) para %s", len(out), cuit or self.cuit)
+        return out
+
+    @staticmethod
+    def _parsear_actividades(html: str) -> list[dict]:
+        """Extrae las actividades del HTML de la constancia. Cada una viene como
+        'F<nomenclador> - <codigo> - <descripcion>' (ej. 'F883 - 750000 - SERVICIOS VETERINARIOS'),
+        en el bloque rotulado 'ACTIVIDAD:'. La descripción corre hasta el próximo tag (`<`)."""
+        import html as _htmlmod
+
+        m = re.search(r"ACTIVIDAD", html, re.I)
+        if not m:
+            return []
+        # Acotar al bloque de actividades (desde 'ACTIVIDAD' hasta 'Vigencia' o un tramo acotado): así
+        # el patrón Fnnn - codigo - desc no matchea algo parecido en otra parte del documento.
+        resto = html[m.start():]
+        fin = re.search(r"[Vv]igencia", resto)
+        bloque = resto[: fin.start()] if fin else resto[:4000]
+        out: list[dict] = []
+        for am in re.finditer(r"F\s*\d+\s*-\s*(\d+)\s*-\s*([^<\r\n]+)", bloque):
+            codigo = am.group(1).strip()
+            desc = _htmlmod.unescape(am.group(2))
+            desc = re.sub(r"\s+", " ", desc).strip(" - ")
+            if desc:
+                out.append({"codigo": codigo, "descripcion": desc, "periodo": None})
         return out
 
     @staticmethod

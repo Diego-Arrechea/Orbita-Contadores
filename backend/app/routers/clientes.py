@@ -5,13 +5,13 @@ import datetime as dt
 import json
 import threading
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import case, delete, distinct, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models
-from ..crypto import cifrar
+from ..crypto import cifrar, descifrar
 from ..db import SessionLocal, get_db
 from ..schemas import (
     TIPOS_NOTA_CREDITO,
@@ -744,6 +744,37 @@ def sincronizar_deuda_cliente(
     detalle = json.loads(cliente.deuda_detalle) if cliente.deuda_detalle else None
     ok = bool(res.get("deuda_detalle") or res.get("no_aplica"))
     return {"deuda_detalle": detalle, "ok": ok}
+
+
+@router.get("/clientes/{cuit}/constancia")
+def constancia_cliente(
+    cuit: str, db: Session = Depends(get_db), usuario: models.Usuario = Depends(usuario_actual)
+):
+    """Constancia de inscripción OFICIAL del cliente, traída en vivo, como HTML listo para abrir e
+    imprimir/guardar en PDF desde el navegador (trae verificador y vigencia del día). Sólo titular."""
+    cliente = _cliente_propio(db, cuit, usuario)
+    credencial = db.get(models.CredencialARCA, cliente.cuit_credencial)
+    if credencial is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Este cliente no tiene una clave cargada para consultar su constancia.",
+        )
+    clave = descifrar(credencial.clave_cifrada).decode()
+    from ..arca import motor
+
+    try:
+        html = motor.constancia(credencial.cuit, clave, cuit_objetivo=cuit)
+    except Exception as e:  # noqa: BLE001 — error de red/sesión con ARCA
+        raise HTTPException(
+            status_code=502,
+            detail="No se pudo obtener la constancia en este momento. Probá de nuevo en unos minutos.",
+        ) from e
+    if not html:
+        raise HTTPException(
+            status_code=502,
+            detail="No se pudo obtener la constancia de este cliente en este momento.",
+        )
+    return Response(content=html, media_type="text/html; charset=utf-8")
 
 
 @router.get("/clientes/{cuit}/extracciones", response_model=list[ExtraccionOut])

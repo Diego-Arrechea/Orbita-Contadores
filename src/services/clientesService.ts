@@ -10,7 +10,7 @@ import type {
 import { CATEGORIAS } from '@/data/categorias';
 import { derivarHistorial } from '@/lib/derivarHistorial';
 import { ventana12Meses } from '@/lib/monotributo';
-import { ApiError, apiGet, apiPut, apiDelete } from './apiClient';
+import { ApiError, apiGet, apiGetBlob, apiPut, apiDelete } from './apiClient';
 import { getComprobantesReales } from './comprobantesService';
 
 interface ClienteBackend {
@@ -263,4 +263,10 @@ export async function actualizarClaveFiscal(cuit: string, clave: string): Promis
  *  y en la lista aparece atenuado como "Desactivado". Los datos ya guardados se conservan. */
 export async function cambiarActivoCliente(cuit: string, activo: boolean): Promise<void> {
   await apiPut(`/clientes/${cuit.replace(/\D/g, '')}/activo`, { activo });
+}
+
+/** Constancia de inscripción oficial del cliente (HTML listo para abrir e imprimir/guardar en PDF).
+ *  Se trae en vivo, por eso puede tardar unos segundos. */
+export function getConstanciaBlob(cuit: string): Promise<Blob> {
+  return apiGetBlob(`/clientes/${cuit.replace(/\D/g, '')}/constancia`);
 }
