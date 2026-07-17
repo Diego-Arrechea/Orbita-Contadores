@@ -284,6 +284,10 @@ export interface InflacionMercado {
 
 export interface Configuracion {
   ventanas: VentanaRecategorizacion[];
+  /** Semestre de recategorización a EVALUAR por defecto (global del contador): define el período de
+   *  12 meses cuyo facturado se mira para decidir la categoría. Ej. { Enero-Junio, 2026 } = jul-2025 a
+   *  jun-2026. Un cliente puede tener su propio override (ver `periodoRecatOverride` en Cliente). */
+  periodoRecat: { semestre: 'Enero-Junio' | 'Julio-Diciembre'; anio: number };
   /** Inflación mensual MANUAL para proyectar la facturación a 12 meses (0.02 = 2%/mes; 0 = sin inflación). Se usa sólo si inflacionAuto = false. */
   inflacionMensualProyeccion: number;
   /** Si true (default), la proyección usa la inflación esperada del mercado; si false, usa inflacionMensualProyeccion. */

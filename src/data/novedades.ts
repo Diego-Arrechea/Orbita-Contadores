@@ -59,16 +59,15 @@ export const NOVEDADES: Novedad[] = [
   {
     id: '2026-07-17-ventana-recategorizacion',
     fecha: '2026-07-17',
-    titulo: 'Evaluá la recategorización por período',
-    resumen: 'Elegí el período de 12 meses para evaluar la recategorización, no sólo los últimos 12.',
+    titulo: 'Evaluá la recategorización por semestre',
+    resumen: 'Elegí el semestre a evaluar para la recategorización, no sólo los últimos 12 meses.',
     items: [
       {
         tipo: 'nuevo',
         texto:
-          'En Situación actual, el bloque de recategorización ahora te deja elegir el período: el ' +
-          'semestre de recategorización (por ejemplo julio 2025 a junio 2026), los últimos 12 meses, ' +
-          'o cualquier mes de cierre. Te muestra el facturado de ese período y la categoría que ' +
-          'corresponde.',
+          'En Configuración → Ventanas elegís el semestre de recategorización a evaluar (por ejemplo ' +
+          'Enero–Junio 2026, que mira julio 2025 a junio 2026). En la ficha de cada cliente, el bloque ' +
+          'de recategorización muestra el facturado de ese período y la categoría que corresponde.',
       },
     ],
   },

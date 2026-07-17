@@ -50,6 +50,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { CATEGORIAS } from '@/data/categorias';
+import { hastaSemestreRecat } from '@/lib/monotributo';
 import { useConfig } from '@/context/ConfigContext';
 import { CAUSALES_EXCLUSION } from '@/data/causales';
 import { formatCurrency, formatDate, formatPercent } from '@/lib/utils';
@@ -84,7 +85,9 @@ export function Configuracion() {
   // El provider arranca en defaults y refina con lo guardado de la cuenta: cuando llega, refrescamos
   // el formulario (si el usuario ya estaba editando con el backend frío —caso raro—, se le pisa).
   useEffect(() => setConf(config), [config]);
-  const [guardado, setGuardado] = useState<'fechas' | 'alertas' | 'notificaciones' | null>(null);
+  const [guardado, setGuardado] = useState<
+    'fechas' | 'periodo' | 'alertas' | 'notificaciones' | null
+  >(null);
   const [errorGuardar, setErrorGuardar] = useState('');
 
   // Prueba de envío por WhatsApp (tab WhatsApp): manda un mensaje de ejemplo al número de la cuenta.
@@ -243,6 +246,23 @@ export function Configuracion() {
     }
   }
 
+  // Período (semestre + año) a evaluar para la recategorización. Impacta al apretar "Guardar período".
+  function setPeriodoRecat(campo: 'semestre' | 'anio', valor: string | number) {
+    setConf(prev => ({ ...prev, periodoRecat: { ...prev.periodoRecat, [campo]: valor } }));
+    setGuardado(null);
+  }
+
+  async function guardarPeriodoRecat() {
+    setErrorGuardar('');
+    try {
+      await guardarConfig({ periodoRecat: conf.periodoRecat });
+      setGuardado('periodo');
+    } catch (e) {
+      setGuardado(null);
+      setErrorGuardar(mensajeDeError(e));
+    }
+  }
+
   // Edita la config de UN tipo de alerta en el estado local (impacta al apretar "Guardar").
   function setAlerta<T extends keyof ConfigAlertas>(tipo: T, parcial: Partial<ConfigAlertas[T]>) {
     setConf(prev => ({
@@ -366,6 +386,68 @@ export function Configuracion() {
               )}
               <Button onClick={guardarFechas}>
                 <Save className="h-4 w-4" /> Guardar fechas
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="p-4 sm:p-6 mt-4">
+            <div className="text-base font-semibold mb-1">Período a evaluar la recategorización</div>
+            <p className="text-sm text-muted-foreground mb-5">
+              Los 12 meses de facturación que se miran para decidir la categoría. Se aplica a todos los
+              monotributistas (y podés cambiarlo por cliente desde su ficha).
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2 max-w-md">
+              <div className="space-y-1.5">
+                <Label>Semestre</Label>
+                <Select
+                  value={conf.periodoRecat.semestre}
+                  onValueChange={v => setPeriodoRecat('semestre', v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Enero-Junio">Enero – Junio</SelectItem>
+                    <SelectItem value="Julio-Diciembre">Julio – Diciembre</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Año</Label>
+                <Select
+                  value={String(conf.periodoRecat.anio)}
+                  onValueChange={v => setPeriodoRecat('anio', Number(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 4 }, (_, i) => new Date().getFullYear() - i).map(a => (
+                      <SelectItem key={a} value={String(a)}>
+                        {a}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              {(() => {
+                const h = hastaSemestreRecat(conf.periodoRecat.semestre, conf.periodoRecat.anio);
+                const desde = new Date(h.getFullYear(), h.getMonth() - 11, 1);
+                const fmt = (dd: Date) =>
+                  dd.toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
+                return `Evalúa el facturado de ${fmt(desde)} a ${fmt(h)}.`;
+              })()}
+            </p>
+            <div className="flex items-center justify-end gap-3 mt-5">
+              {guardado === 'periodo' && (
+                <span className="flex items-center gap-1.5 text-sm text-success">
+                  <CheckCircle2 className="h-4 w-4" /> Guardado. Se aplica a todos los clientes.
+                </span>
+              )}
+              <Button onClick={guardarPeriodoRecat}>
+                <Save className="h-4 w-4" /> Guardar período
               </Button>
             </div>
           </Card>
