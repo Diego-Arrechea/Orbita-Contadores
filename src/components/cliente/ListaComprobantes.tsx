@@ -8,8 +8,12 @@ import {
   ChevronRight,
   Download,
   Loader2,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { descargarComprobantePdf, mensajeErrorFacturacion } from '@/services/facturacionService';
+import { eliminarComprobanteManual } from '@/services/comprobantesService';
+import { CargarComprobanteDialog } from '@/components/cliente/CargarComprobanteDialog';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +39,8 @@ import type { Cliente } from '@/types';
 
 interface Props {
   cliente: Cliente;
+  /** Se llama tras cargar o borrar un comprobante a mano (para refrescar el cliente). */
+  onCambio?: () => void;
 }
 
 const POR_PAGINA = 20;
@@ -168,7 +174,94 @@ function BotonPdf({ c, cuit }: { c: Cliente['comprobantes'][number]; cuit: strin
   );
 }
 
-export function ListaComprobantes({ cliente }: Props) {
+/** Botón para borrar un comprobante cargado a mano, con confirmación en dos pasos (sin diálogo aparte). */
+function BotonEliminarManual({
+  c,
+  cuit,
+  onEliminado,
+}: {
+  c: Cliente['comprobantes'][number];
+  cuit: string;
+  onEliminado: () => void;
+}) {
+  const [confirmando, setConfirmando] = useState(false);
+  const [borrando, setBorrando] = useState(false);
+  const [error, setError] = useState('');
+
+  const eliminar = async () => {
+    setBorrando(true);
+    setError('');
+    try {
+      await eliminarComprobanteManual(cuit, c);
+      onEliminado();
+    } catch {
+      setError('No se pudo borrar');
+      setBorrando(false);
+      setConfirmando(false);
+    }
+  };
+
+  if (confirmando) {
+    return (
+      <div className="flex items-center justify-end gap-1">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-danger hover:text-danger"
+          disabled={borrando}
+          onClick={eliminar}
+        >
+          {borrando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Borrar'}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2"
+          disabled={borrando}
+          onClick={() => setConfirmando(false)}
+        >
+          No
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => setConfirmando(true)}
+          aria-label="Borrar comprobante cargado a mano"
+          className={error ? 'text-danger' : undefined}
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{error || 'Borrar este comprobante cargado a mano'}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Acción a la derecha de cada fila: borrar (si es manual) o descargar PDF (si se emitió desde la app). */
+function AccionComprobante({
+  c,
+  cuit,
+  onCambio,
+}: {
+  c: Cliente['comprobantes'][number];
+  cuit: string;
+  onCambio?: () => void;
+}) {
+  if (c.origen === 'manual') {
+    return <BotonEliminarManual c={c} cuit={cuit} onEliminado={() => onCambio?.()} />;
+  }
+  return <BotonPdf c={c} cuit={cuit} />;
+}
+
+export function ListaComprobantes({ cliente, onCambio }: Props) {
+  const [cargarOpen, setCargarOpen] = useState(false);
   const [direccion, setDireccion] = useState<'todos' | 'emitido' | 'recibido'>('todos');
   const [tipo, setTipo] = useState<TipoFiltro>('todos');
   const [busqueda, setBusqueda] = useState('');
@@ -277,7 +370,18 @@ export function ListaComprobantes({ cliente }: Props) {
             </Button>
           )}
         </div>
+        <Button className="shrink-0 md:ml-auto" onClick={() => setCargarOpen(true)}>
+          <Plus className="h-4 w-4" />
+          Agregar a mano
+        </Button>
       </div>
+
+      <CargarComprobanteDialog
+        cliente={cliente}
+        open={cargarOpen}
+        onOpenChange={setCargarOpen}
+        onGuardado={() => onCambio?.()}
+      />
 
       {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
       <div className="hidden lg:block">
@@ -306,6 +410,11 @@ export function ListaComprobantes({ cliente }: Props) {
                     <div className="text-sm font-medium leading-tight">{c.tipo}</div>
                     <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1.5">
                       <span>{c.direccion === 'emitido' ? 'Emitido' : 'Recibido'}</span>
+                      {c.origen === 'manual' && (
+                        <Badge variant="secondary" className="text-[10px] py-0">
+                          A mano
+                        </Badge>
+                      )}
                       {c.esBienPatrimonial && (
                         <Badge variant="muted" className="text-[10px] py-0">
                           <Package className="h-3 w-3" /> Patrimonial
@@ -345,7 +454,7 @@ export function ListaComprobantes({ cliente }: Props) {
                     <MontoComprobante c={c} />
                   </TableCell>
                   <TableCell>
-                    <BotonPdf c={c} cuit={cliente.cuit} />
+                    <AccionComprobante c={c} cuit={cliente.cuit} onCambio={onCambio} />
                   </TableCell>
                 </TableRow>
               );
@@ -373,6 +482,11 @@ export function ListaComprobantes({ cliente }: Props) {
                   <div className="text-sm font-medium leading-tight">{c.tipo}</div>
                   <div className="text-[11px] text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1.5">
                     <span>{c.direccion === 'emitido' ? 'Emitido' : 'Recibido'}</span>
+                    {c.origen === 'manual' && (
+                      <Badge variant="secondary" className="text-[10px] py-0">
+                        A mano
+                      </Badge>
+                    )}
                     {c.esBienPatrimonial && (
                       <Badge variant="muted" className="text-[10px] py-0">
                         <Package className="h-3 w-3" /> Patrimonial
@@ -402,10 +516,21 @@ export function ListaComprobantes({ cliente }: Props) {
                     Dev. {c.periodoDevengado}
                   </Badge>
                 )}
-                {c.tienePdf && c.cbteTipo && (
+                {c.origen === 'manual' ? (
                   <div className="ml-auto">
-                    <BotonPdf c={c} cuit={cliente.cuit} />
+                    <BotonEliminarManual
+                      c={c}
+                      cuit={cliente.cuit}
+                      onEliminado={() => onCambio?.()}
+                    />
                   </div>
+                ) : (
+                  c.tienePdf &&
+                  c.cbteTipo && (
+                    <div className="ml-auto">
+                      <BotonPdf c={c} cuit={cliente.cuit} />
+                    </div>
+                  )
                 )}
               </div>
             </Card>

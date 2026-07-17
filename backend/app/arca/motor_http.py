@@ -273,10 +273,19 @@ def datos_monotributo(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: st
     # inscripción, no el panel → inmune al caso "monotributista migrado al RUT" que confunde a la
     # pantalla. Si el padrón CONFIRMA que NO es monotributista, cortamos sin el wait caro del SSO.
     reg = afip.regimen_desde_impuestos(obj)
+    # Actividades económicas declaradas del padrón: aplican a TODO cliente (monotributista o no), así
+    # que se traen una sola vez acá —con la sesión ya abierta— y se adjuntan a cualquier salida. 1 GET
+    # a /persona (cacheado). best-effort: nunca frena la sync ni pisa lo previo si falla.
+    try:
+        acts = afip.actividades(obj)
+    except Exception:  # noqa: BLE001
+        acts = []
     if reg.get("es_monotributista") is False:
         salida = {"es_monotributista": False}
         if reg.get("regimen"):
             salida["regimen"] = reg["regimen"]  # responsable_inscripto / no_monotributo
+        if acts:
+            salida["actividades"] = acts
         return salida
 
     m = afip.monotributo()
@@ -291,6 +300,8 @@ def datos_monotributo(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: st
         salida = {"es_monotributista": es_mono if es_mono is not None else False}
         if reg.get("regimen"):
             salida["regimen"] = reg["regimen"]
+        if acts:
+            salida["actividades"] = acts
         return salida
     pv = m.get("proximo_vencimiento") or {}
     out = {
@@ -303,6 +314,8 @@ def datos_monotributo(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: st
         "prox_venc_importe": pv.get("importe"),
         "debito_automatico": m.get("debito_automatico"),
     }
+    if acts:
+        out["actividades"] = acts
     # Ventana de recategorización REAL (fechas oficiales de ARCA): reemplaza el calendario hardcodeado.
     # best-effort: si el endpoint no responde, se omite y el front cae a las ventanas de la config.
     recat = afip.debe_recategorizar(obj)

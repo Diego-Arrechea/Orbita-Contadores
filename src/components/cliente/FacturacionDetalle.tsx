@@ -1,6 +1,7 @@
 import { Fragment, useMemo } from 'react';
 import { Receipt, CalendarRange } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -72,7 +73,7 @@ function MontoComp({ c }: { c: Comprobante }) {
  * situación del cliente.
  */
 export function FacturacionDetalle({ cliente }: Props) {
-  const { grupos, bruto, nc, neto, cant, cantNC, periodo, oficial } = useMemo(() => {
+  const { grupos, bruto, nc, neto, cant, cantNC, periodo, oficial, manual } = useMemo(() => {
     // Ventana: primer día del mes de hace 11 meses (= 12 meses calendario contando el actual).
     const inicio = new Date(HOY.getFullYear(), HOY.getMonth() - 11, 1);
     const fin = new Date(HOY.getFullYear(), HOY.getMonth(), 1);
@@ -90,12 +91,15 @@ export function FacturacionDetalle({ cliente }: Props) {
     let bruto = 0;
     let nc = 0;
     let cantNC = 0;
+    let manual = 0; // parte neta que viene de comprobantes cargados a mano
     for (const c of emitidos) {
       if (esNotaCredito(c)) {
         nc += c.monto;
         cantNC++;
+        if (c.origen === 'manual') manual -= c.monto;
       } else {
         bruto += c.monto;
+        if (c.origen === 'manual') manual += c.monto;
       }
     }
 
@@ -132,6 +136,7 @@ export function FacturacionDetalle({ cliente }: Props) {
       cantNC,
       periodo: `${mesCorto(inicio)} – ${mesCorto(fin)}`,
       oficial,
+      manual,
     };
   }, [cliente.comprobantes, cliente.facturacion12mOficial]);
 
@@ -193,6 +198,13 @@ export function FacturacionDetalle({ cliente }: Props) {
             no emite directamente.
           </div>
         )}
+        {manual !== 0 && (
+          <div className="mt-3 text-[11px] text-muted-foreground">
+            Incluye{' '}
+            <span className="font-medium text-foreground">{formatCurrency(manual)}</span> de
+            comprobantes cargados a mano.
+          </div>
+        )}
       </Card>
 
       {/* Detalle por mes */}
@@ -223,7 +235,14 @@ export function FacturacionDetalle({ cliente }: Props) {
                   {g.comps.map(c => (
                     <TableRow key={c.id}>
                       <TableCell>
-                        <div className="text-sm font-medium leading-tight">{c.tipo}</div>
+                        <div className="flex items-center gap-1.5 text-sm font-medium leading-tight">
+                          {c.tipo}
+                          {c.origen === 'manual' && (
+                            <Badge variant="secondary" className="text-[10px] py-0">
+                              A mano
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-sm">
                         {formatDate(c.fechaEmision)}
@@ -266,7 +285,14 @@ export function FacturacionDetalle({ cliente }: Props) {
                   <div key={c.id} className="rounded-xl border border-border/60 p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="text-sm font-medium">{c.tipo}</div>
+                        <div className="flex items-center gap-1.5 text-sm font-medium">
+                          {c.tipo}
+                          {c.origen === 'manual' && (
+                            <Badge variant="secondary" className="text-[10px] py-0">
+                              A mano
+                            </Badge>
+                          )}
+                        </div>
                         <div className="text-[11px] text-muted-foreground">{c.contraparteNombre}</div>
                       </div>
                       <div

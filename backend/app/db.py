@@ -222,6 +222,9 @@ def _migrar_clientes_arca(conn) -> None:
     # comprobante emitido. JSON serializado. Portable: TEXT anda igual en SQLite y Postgres.
     if "emisor_fiscal_json" not in cols:
         conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN emisor_fiscal_json TEXT"))
+    # Actividades económicas declaradas del padrón (JSON [{codigo,descripcion,periodo}]). TEXT portable.
+    if "actividades_json" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN actividades_json TEXT"))
     # ¿Tiene relación de dependencia? (valor auto-detectado; el override manual va en edicion_json).
     # BOOLEAN anda igual en SQLite y Postgres.
     if "relacion_dependencia" not in cols:
@@ -284,8 +287,8 @@ def _migrar_clientes_arca(conn) -> None:
 
 
 def _migrar_comprobantes_emitidos(conn) -> None:
-    """Agrega `cae_vto` a `comprobantes_emitidos` (vto del CAE de los comprobantes emitidos desde la
-    app, para imprimirlos). Portable SQLite + Postgres."""
+    """Agrega columnas nuevas a `comprobantes_emitidos`: `cae_vto`/`condicion_iva_receptor` (para los
+    emitidos desde la app) y `origen` ('arca'|'manual', para la carga manual). Portable SQLite + Postgres."""
     cols = _columnas(conn, "comprobantes_emitidos")
     if not cols:
         return
@@ -296,6 +299,10 @@ def _migrar_comprobantes_emitidos(conn) -> None:
     if "condicion_iva_receptor" not in cols:
         conn.execute(
             text("ALTER TABLE comprobantes_emitidos ADD COLUMN condicion_iva_receptor INTEGER")
+        )
+    if "origen" not in cols:
+        conn.execute(
+            text("ALTER TABLE comprobantes_emitidos ADD COLUMN origen VARCHAR(10) DEFAULT 'arca'")
         )
 
 

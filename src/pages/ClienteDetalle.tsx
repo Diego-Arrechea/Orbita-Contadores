@@ -413,7 +413,7 @@ export function ClienteDetalle() {
           <ReconciliacionBancaria cliente={cliente} />
         </TabsContent>
         <TabsContent value="comprobantes" className="mt-0">
-          <ListaComprobantes cliente={cliente} />
+          <ListaComprobantes cliente={cliente} onCambio={() => void refetchCliente()} />
         </TabsContent>
         <TabsContent value="dfe" className="mt-0">
           <DomicilioElectronico cliente={cliente} />

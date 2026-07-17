@@ -78,6 +78,7 @@ export interface Comprobante {
   esBienPatrimonial?: boolean;
   tienePdf?: boolean;      // emitido desde la app → se puede descargar su representación impresa (PDF)
   pdfUrl?: string;
+  origen?: 'arca' | 'manual'; // 'manual' = lo cargó el contador a mano (talonario, ticket); default 'arca'
 }
 
 export type ModoCausal = 'auto' | 'manual' | 'parcial';
@@ -130,6 +131,16 @@ export interface Remuneracion {
   meses: RemuneracionMes[];
 }
 
+/** Una actividad económica declarada del cliente en el padrón (código AFIP + descripción + período
+ *  de alta). La primera de la lista es la actividad principal. Distinto de `tipoActividad`
+ *  (comercio/servicios, clasificación gruesa). */
+export interface Actividad {
+  codigo?: string;
+  descripcion?: string;
+  /** Período de alta (MM/AAAA). */
+  periodo?: string;
+}
+
 export interface Cliente {
   id: string;
   nombre: string;
@@ -139,6 +150,9 @@ export interface Cliente {
   /** Régimen impositivo deducido de los comprobantes que emite (lo trae el backend). */
   regimen?: Regimen;
   tipoActividad: TipoActividad;
+  /** Actividades económicas declaradas en el padrón (código + descripción + período). La principal
+   *  primero. Vacío/ausente = todavía no se trajo del padrón. */
+  actividades?: Actividad[];
   fechaInicio: string;
   notas: string;
   /** ¿Tiene relación de dependencia (trabajo en blanco)? Lo marca el contador (o se auto-detecta).

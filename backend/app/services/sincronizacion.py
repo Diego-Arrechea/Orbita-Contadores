@@ -98,6 +98,11 @@ def _upsert(db: Session, cuit: str, direccion: str, crudos: list[dict]) -> tuple
             )
         )
         if existe:
+            # Un comprobante cargado a mano por el contador manda sobre lo que devuelva ARCA: no lo
+            # pisamos (evita que un dato manual se sobrescriba si por casualidad colisiona la clave).
+            if existe.origen == "manual":
+                procesados += 1
+                continue
             existe.fecha = _parse_fecha(c["fecha"])
             existe.imp_total = pesos
             existe.imp_total_origen = origen
@@ -346,6 +351,10 @@ def sincronizar_padron(db: Session, cuit: str, headless: bool | None = None) -> 
     # con domicilio: motor_http omite la clave si el portal no lo trae, así no borramos uno bueno.
     if isinstance(datos.get("emisor_fiscal"), dict):
         cliente.emisor_fiscal_json = json.dumps(datos["emisor_fiscal"], ensure_ascii=False)
+    # Actividades declaradas del padrón (código + descripción + período). Sólo se pisa si vinieron:
+    # motor_http omite la clave si el portal no las trajo, así no borramos una lista buena.
+    if isinstance(datos.get("actividades"), list) and datos["actividades"]:
+        cliente.actividades_json = json.dumps(datos["actividades"], ensure_ascii=False)
     if datos:
         db.commit()
     return datos

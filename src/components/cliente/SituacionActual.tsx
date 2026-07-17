@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Building2, Wheat, Clock } from 'lucide-react';
+import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Building2, Wheat, Clock, PencilLine, Briefcase } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ProgresoTope } from '@/components/shared/ProgresoTope';
@@ -98,7 +98,11 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
   const tieneOficial = cliente.facturacion12mOficial != null && cliente.facturacion12mOficial > 0;
   const topeOficialValido =
     cliente.topeCategoriaOficial != null && cliente.topeCategoriaOficial > 0;
-  const facturacionMostrada = tieneOficial ? cliente.facturacion12mOficial! : facturacionComputada;
+  // La cifra oficial de ARCA no incluye lo cargado a mano: se lo sumamos para que cuente contra el
+  // tope. El cálculo propio (sin oficial) ya lo trae por los comprobantes.
+  const facturacionMostrada = tieneOficial
+    ? cliente.facturacion12mOficial! + calc.facturacionManual12m
+    : facturacionComputada;
   const topeMostrado = topeOficialValido ? cliente.topeCategoriaOficial! : categoriaActual.topeAnual;
   const porcentajeMostrado = topeMostrado > 0 ? facturacionMostrada / topeMostrado : 0;
 
@@ -223,6 +227,13 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
           <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <Wheat className="h-3 w-3 text-primary shrink-0" />
             Incluye {formatCurrency(calc.facturacionAgro12m)} de facturación agropecuaria.
+          </div>
+        )}
+
+        {!verInflacion && calc.facturacionManual12m !== 0 && (
+          <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <PencilLine className="h-3 w-3 text-primary shrink-0" />
+            Incluye {formatCurrency(calc.facturacionManual12m)} de comprobantes cargados a mano.
           </div>
         )}
 
@@ -373,6 +384,39 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
           )}
         </div>
       </Card>
+
+      {/* Actividades económicas declaradas en el padrón (código + descripción + período). La primera
+          es la principal. Sólo se muestra si ya se trajeron del padrón. */}
+      {cliente.actividades && cliente.actividades.length > 0 && (
+        <Card className="p-5 sm:p-7 col-span-full">
+          <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3 inline-flex items-center gap-1.5">
+            <Briefcase className="h-3.5 w-3.5" />
+            Actividades declaradas
+          </div>
+          <ul className="space-y-2.5">
+            {cliente.actividades.map((a, i) => (
+              <li key={`${a.codigo ?? ''}-${i}`} className="flex items-start gap-3 text-sm">
+                {a.codigo && (
+                  <span className="shrink-0 tabular-nums rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+                    {a.codigo}
+                  </span>
+                )}
+                <div className="min-w-0 leading-relaxed">
+                  <span className="text-foreground">{a.descripcion ?? 'Actividad sin descripción'}</span>
+                  {i === 0 && (
+                    <Badge variant="muted" className="ml-2 align-middle text-[10px]">
+                      Principal
+                    </Badge>
+                  )}
+                  {a.periodo && (
+                    <span className="ml-2 text-xs text-muted-foreground">desde {a.periodo}</span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
     </div>
   );
 }

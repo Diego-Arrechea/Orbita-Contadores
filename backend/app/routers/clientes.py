@@ -7,6 +7,7 @@ import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import case, delete, distinct, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -16,6 +17,7 @@ from ..schemas import (
     TIPOS_NOTA_CREDITO,
     ClaveClienteIn,
     ClienteOut,
+    ComprobanteManualIn,
     ComprobanteOut,
     ComunicacionOut,
     EdicionClienteIn,
@@ -182,6 +184,25 @@ def _remuneracion(c: models.ClienteARCA) -> RemuneracionOut | None:
     )
 
 
+def _actividades(c: models.ClienteARCA) -> list[ActividadOut]:
+    """Actividades declaradas del padrón desde `actividades_json`. [] si no hay o el JSON está roto."""
+    if not c.actividades_json:
+        return []
+    try:
+        data = json.loads(c.actividades_json)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return [
+        ActividadOut(
+            codigo=a.get("codigo"), descripcion=a.get("descripcion"), periodo=a.get("periodo")
+        )
+        for a in data
+        if isinstance(a, dict)
+    ]
+
+
 def _cliente_propio(db: Session, cuit: str, usuario: models.Usuario) -> models.ClienteARCA:
     """Devuelve el cliente sólo si está en la cartera visible del usuario logueado (los propios y,
     para un titular con equipo, los de sus empleados); si no, 404 (sin revelar que existe)."""
@@ -233,6 +254,7 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA, datos: dict | None
         regimen=resolver_regimen(c.regimen, clasificar_regimen(tipos_emit)),
         categoria=edic.get("categoria") or c.categoria,
         actividad=edic.get("tipoActividad") or c.actividad,
+        actividades=_actividades(c),
         prox_recategorizacion=c.prox_recategorizacion,
         recat_ventana_desde=c.recat_ventana_desde,
         recat_ventana_hasta=c.recat_ventana_hasta,
@@ -558,6 +580,28 @@ def estado_sync(_usuario: models.Usuario = Depends(usuario_actual)):
     return estado_scheduler()
 
 
+def _comprobante_out(c: models.ComprobanteEmitido) -> ComprobanteOut:
+    """Mapea un ComprobanteEmitido al shape que consume el frontend (camelCase)."""
+    return ComprobanteOut(
+        id=f"{c.cuit}-{c.direccion}-{c.punto_venta}-{c.cbte_tipo}-{c.numero}",
+        direccion=c.direccion,
+        tipo=nombre_tipo(c.cbte_tipo),
+        cbteTipo=c.cbte_tipo,
+        fechaEmision=c.fecha.isoformat(),
+        puntoVenta=c.punto_venta,
+        numero=str(c.numero).zfill(8),
+        monto=float(c.imp_total),  # pesos (canónico)
+        moneda=c.moneda or "ARS",
+        cotizacion=float(c.cotizacion) if c.cotizacion is not None else 1.0,
+        # Filas viejas (pre-migración) no tienen imp_total_origen: caen al imp_total.
+        montoOrigen=float(c.imp_total_origen) if c.imp_total_origen is not None else float(c.imp_total),
+        contraparteNombre=c.contraparte_nombre or "—",
+        contraparteCuit=c.doc_nro,
+        tienePdf=bool(c.cae_vto),  # emitido desde la app → tiene representación impresa
+        origen=c.origen or "arca",
+    )
+
+
 @router.get("/clientes/{cuit}/comprobantes", response_model=list[ComprobanteOut])
 def comprobantes_cliente(
     cuit: str, db: Session = Depends(get_db), usuario: models.Usuario = Depends(usuario_actual)
@@ -568,26 +612,77 @@ def comprobantes_cliente(
         .where(models.ComprobanteEmitido.cuit == cuit)
         .order_by(models.ComprobanteEmitido.fecha.desc())
     ).all()
-    return [
-        ComprobanteOut(
-            id=f"{c.cuit}-{c.direccion}-{c.punto_venta}-{c.cbte_tipo}-{c.numero}",
-            direccion=c.direccion,
-            tipo=nombre_tipo(c.cbte_tipo),
-            cbteTipo=c.cbte_tipo,
-            fechaEmision=c.fecha.isoformat(),
-            puntoVenta=c.punto_venta,
-            numero=str(c.numero).zfill(8),
-            monto=float(c.imp_total),  # pesos (canónico)
-            moneda=c.moneda or "ARS",
-            cotizacion=float(c.cotizacion) if c.cotizacion is not None else 1.0,
-            # Filas viejas (pre-migración) no tienen imp_total_origen: caen al imp_total.
-            montoOrigen=float(c.imp_total_origen) if c.imp_total_origen is not None else float(c.imp_total),
-            contraparteNombre=c.contraparte_nombre or "—",
-            contraparteCuit=c.doc_nro,
-            tienePdf=bool(c.cae_vto),  # emitido desde la app → tiene representación impresa
+    return [_comprobante_out(c) for c in comps]
+
+
+@router.post(
+    "/clientes/{cuit}/comprobantes/manual", response_model=ComprobanteOut, status_code=201
+)
+def crear_comprobante_manual(
+    cuit: str,
+    datos: ComprobanteManualIn,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(requiere_permiso("editar_cliente")),
+):
+    """Carga MANUAL de un comprobante que no figura en Mis Comprobantes: una venta con talonario en
+    papel o una compra/gasto (p. ej. un ticket) que no llegó por los canales electrónicos. Queda
+    marcado `origen='manual'` para distinguirlo, protegerlo del re-sync y poder borrarlo."""
+    _cliente_propio(db, cuit, usuario)
+    comp = models.ComprobanteEmitido(
+        cuit=cuit,
+        direccion=datos.direccion,
+        cbte_tipo=datos.cbte_tipo,
+        punto_venta=datos.punto_venta,
+        numero=datos.numero,
+        fecha=datos.fecha,
+        imp_total=datos.importe_total,
+        imp_total_origen=datos.importe_total,
+        moneda="ARS",
+        cotizacion=1,
+        doc_nro=datos.contraparte_cuit,
+        contraparte_nombre=datos.contraparte_nombre,
+        origen="manual",
+    )
+    db.add(comp)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Ya existe un comprobante con ese tipo, punto de venta y número para este cliente.",
         )
-        for c in comps
-    ]
+    db.refresh(comp)
+    return _comprobante_out(comp)
+
+
+@router.delete("/clientes/{cuit}/comprobantes/manual/{direccion}/{punto_venta}/{cbte_tipo}/{numero}")
+def eliminar_comprobante_manual(
+    cuit: str,
+    direccion: str,
+    punto_venta: int,
+    cbte_tipo: int,
+    numero: int,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(requiere_permiso("editar_cliente")),
+):
+    """Borra un comprobante cargado a mano. Sólo se pueden borrar los de `origen='manual'`: los
+    traídos de Mis Comprobantes son un cache que se rehace solo, no se tocan desde acá."""
+    _cliente_propio(db, cuit, usuario)
+    comp = db.scalar(
+        select(models.ComprobanteEmitido).where(
+            models.ComprobanteEmitido.cuit == cuit,
+            models.ComprobanteEmitido.direccion == direccion,
+            models.ComprobanteEmitido.punto_venta == punto_venta,
+            models.ComprobanteEmitido.cbte_tipo == cbte_tipo,
+            models.ComprobanteEmitido.numero == numero,
+        )
+    )
+    if comp is None or comp.origen != "manual":
+        raise HTTPException(status_code=404, detail="No se encontró un comprobante manual para borrar.")
+    db.delete(comp)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/clientes/{cuit}/liquidaciones-agro", response_model=LiquidacionesAgroOut)

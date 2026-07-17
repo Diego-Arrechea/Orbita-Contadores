@@ -1800,6 +1800,76 @@ class AFIP:
             "cod_postal": _campo("codPostal", "codigoPostal", "cp"),
         }
 
+    def actividades(self, cuit: str | None = None) -> list[dict]:
+        """Actividades económicas DECLARADAS del contribuyente en el padrón (código AFIP +
+        descripción + período de alta). Lee el mismo `/portal/api/persona/{cuit}` que el nombre y el
+        domicilio (una sola llamada, cacheada). Devuelve [{codigo, descripcion, periodo}] ordenado por
+        `orden` (la actividad principal primero). [] si no se pudo leer.
+
+        Parseo DEFENSIVO: el payload del portal no está documentado y la lista puede venir en varias
+        claves (`actividad`/`actividades`) y anidada (`datosGenerales`, `datosMonotributo`, …). Se
+        recorren todas las formas conocidas y se loguea qué se encontró para poder confirmar/ajustar
+        contra un payload real (ver TODO: validar shape con un CUIT productivo)."""
+        d = self._persona(cuit)
+        if not isinstance(d, dict):
+            return []
+
+        # La lista de actividades puede colgar del root o de alguno de estos contenedores anidados.
+        contenedores = [d]
+        for k in ("datosGenerales", "datosMonotributo", "datosRegimenGeneral"):
+            sub = d.get(k)
+            if isinstance(sub, dict):
+                contenedores.append(sub)
+
+        crudas: list = []
+        for cont in contenedores:
+            for k in ("actividad", "actividades", "actividadesMonotributo"):
+                v = cont.get(k)
+                if isinstance(v, list) and v:
+                    crudas = v
+                    break
+            if crudas:
+                break
+
+        if not crudas:
+            self.log.info("actividades: sin lista en el payload de persona (claves: %s)", list(d.keys()))
+            return []
+
+        def _periodo(p) -> str | None:
+            # AFIP suele dar el período como AAAAMM (int/str) -> 'MM/AAAA'.
+            s = str(p or "").strip()
+            if len(s) == 6 and s.isdigit():
+                return f"{s[4:]}/{s[:4]}"
+            return s or None
+
+        out: list[dict] = []
+        for a in crudas:
+            if not isinstance(a, dict):
+                continue
+            codigo = a.get("idActividad") or a.get("codigo") or a.get("id")
+            desc = (
+                a.get("descripcionActividad")
+                or a.get("descripcion")
+                or a.get("actividad")
+            )
+            if codigo is None and not desc:
+                continue
+            out.append(
+                {
+                    "codigo": str(codigo).strip() if codigo is not None else None,
+                    "descripcion": str(desc).strip() if desc else None,
+                    "periodo": _periodo(a.get("periodo") or a.get("periodoAsoc")),
+                    "_orden": a.get("orden"),
+                }
+            )
+
+        # Orden: la principal (orden 1) primero; los que no traen orden quedan al final en el orden dado.
+        out.sort(key=lambda x: (x["_orden"] is None, x["_orden"] if x["_orden"] is not None else 0))
+        for x in out:
+            x.pop("_orden", None)
+        self.log.info("actividades: %d declarada(s) para %s", len(out), cuit or self.cuit)
+        return out
+
     @staticmethod
     def _fecha_iso(f: str | None) -> str | None:
         """'dd/mm/aaaa' -> 'aaaa-mm-dd' (ISO). None / formato inesperado -> None."""

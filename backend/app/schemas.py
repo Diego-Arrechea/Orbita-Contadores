@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 # Mapa CbteTipo (AFIP, FEParamGetTiposCbte) -> TipoComprobante (Órbita).
 # Los nombres de Notas de Crédito CONTIENEN "Nota Crédito" a propósito: así el cálculo las
@@ -92,6 +92,60 @@ class ComprobanteOut(BaseModel):
     # True sólo para los comprobantes EMITIDOS desde la app (tienen cae_vto): se les puede generar la
     # representación impresa (PDF). Los traídos de Mis Comprobantes no — su PDF oficial vive en ARCA.
     tienePdf: bool = False  # noqa: N815
+    # 'arca' (traído de Mis Comprobantes o emitido por la app) | 'manual' (lo cargó el contador a mano).
+    origen: str = "arca"
+
+
+# cbte_tipos habilitados en la CARGA MANUAL: cualquier tipo REGISTRADO (el catálogo completo), para
+# ventas y compras. La app soporta clientes de cualquier régimen (monotributo clase C, RI clase A/B,
+# M, exportación E, FCE, tiques), así que no se restringe por dirección.
+CBTE_TIPOS_MANUAL: set[int] = set(TIPO_COMPROBANTE)
+
+
+class ComprobanteManualIn(BaseModel):
+    """Alta MANUAL de un comprobante que no figura en Mis Comprobantes (factura de talonario en papel,
+    ticket de gasto). `direccion='emitido'` es una venta (suma al facturado); 'recibido' una compra/gasto."""
+
+    direccion: str
+    cbte_tipo: int
+    fecha: dt.date
+    punto_venta: int = 0
+    numero: int
+    importe_total: float  # en pesos (canónico)
+    contraparte_nombre: str = ""
+    contraparte_cuit: str = ""
+
+    @field_validator("direccion")
+    @classmethod
+    def _direccion_valida(cls, v: str) -> str:
+        if v not in ("emitido", "recibido"):
+            raise ValueError("La dirección debe ser 'emitido' o 'recibido'.")
+        return v
+
+    @field_validator("importe_total")
+    @classmethod
+    def _importe_positivo(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("El importe debe ser mayor a 0.")
+        return round(v, 2)
+
+    @field_validator("punto_venta", "numero")
+    @classmethod
+    def _no_negativo(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("El punto de venta y el número no pueden ser negativos.")
+        return v
+
+    @field_validator("contraparte_cuit")
+    @classmethod
+    def _solo_digitos(cls, v: str) -> str:
+        return "".join(ch for ch in v if ch.isdigit())
+
+    @model_validator(mode="after")
+    def _tipo_registrado(self) -> "ComprobanteManualIn":
+        if self.cbte_tipo not in CBTE_TIPOS_MANUAL:
+            raise ValueError("El tipo de comprobante no está registrado.")
+        return self
 
 
 class LiquidacionAgroOut(BaseModel):
@@ -150,12 +204,24 @@ class RemuneracionOut(BaseModel):
     meses: list[RemuneracionMesOut] = []  # serie mensual (cronológica)
 
 
+class ActividadOut(BaseModel):
+    """Una actividad económica declarada del cliente en el padrón. La primera de la lista es la
+    actividad principal (orden 1)."""
+
+    codigo: str | None = None  # código de actividad AFIP (nomenclador)
+    descripcion: str | None = None
+    periodo: str | None = None  # período de alta (MM/AAAA)
+
+
 class ClienteOut(BaseModel):
     cuit: str
     nombre: str
     regimen: str | None = None  # monotributo | responsable_inscripto | no_monotributo | None
     categoria: str | None = None
     actividad: str | None = None
+    # Actividades económicas DECLARADAS en el padrón (código + descripción + período). La principal
+    # primero. Distinto de `actividad` (comercio/servicios, clasificación gruesa). Vacío = sin dato aún.
+    actividades: list[ActividadOut] = []
     prox_recategorizacion: str | None = None
     # Ventana de recategorización REAL del padrón de ARCA (ISO aaaa-mm-dd): abre en `recat_ventana_desde`
     # y cierra (fecha límite) en `recat_ventana_hasta`. El front la usa como fecha límite oficial en vez
