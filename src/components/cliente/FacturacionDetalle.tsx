@@ -1,5 +1,5 @@
 import { Fragment, useMemo } from 'react';
-import { Receipt, CalendarRange } from 'lucide-react';
+import { Receipt, CalendarRange, Store } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -73,7 +73,7 @@ function MontoComp({ c }: { c: Comprobante }) {
  * situación del cliente.
  */
 export function FacturacionDetalle({ cliente }: Props) {
-  const { grupos, bruto, nc, neto, cant, cantNC, periodo, oficial, manual } = useMemo(() => {
+  const { grupos, porPV, bruto, nc, neto, cant, cantNC, periodo, oficial, manual } = useMemo(() => {
     // Ventana: primer día del mes de hace 11 meses (= 12 meses calendario contando el actual).
     const inicio = new Date(HOY.getFullYear(), HOY.getMonth() - 11, 1);
     const fin = new Date(HOY.getFullYear(), HOY.getMonth(), 1);
@@ -122,6 +122,20 @@ export function FacturacionDetalle({ cliente }: Props) {
         return { mes, comps, neto: b2 - n2 };
       });
 
+    // Totales por punto de venta (para "totalizar los distintos puntos de venta"): mismo criterio que
+    // el neto general (facturas suman, notas de crédito restan), pero agrupado por punto de venta.
+    const pvMap = new Map<number, { bruto: number; nc: number; cant: number }>();
+    for (const c of emitidos) {
+      const e = pvMap.get(c.puntoVenta) ?? { bruto: 0, nc: 0, cant: 0 };
+      if (esNotaCredito(c)) e.nc += c.monto;
+      else e.bruto += c.monto;
+      e.cant++;
+      pvMap.set(c.puntoVenta, e);
+    }
+    const porPV = [...pvMap.entries()]
+      .map(([pv, v]) => ({ pv, cant: v.cant, neto: v.bruto - v.nc }))
+      .sort((a, b) => a.pv - b.pv);
+
     const oficial =
       cliente.facturacion12mOficial != null && cliente.facturacion12mOficial > 0
         ? cliente.facturacion12mOficial
@@ -129,6 +143,7 @@ export function FacturacionDetalle({ cliente }: Props) {
 
     return {
       grupos,
+      porPV,
       bruto,
       nc,
       neto: bruto - nc,
@@ -206,6 +221,68 @@ export function FacturacionDetalle({ cliente }: Props) {
           </div>
         )}
       </Card>
+
+      {/* Totales por punto de venta: sólo si el cliente factura desde más de uno (con uno solo el
+          desglose sería igual al neto general). Mismo neto = facturas − notas de crédito. */}
+      {porPV.length > 1 && (
+        <Card className="overflow-hidden">
+          <div className="flex items-center gap-2 px-5 pt-5 text-xs uppercase tracking-wider text-muted-foreground">
+            <Store className="h-4 w-4" />
+            Totales por punto de venta
+          </div>
+          {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
+          <div className="hidden lg:block">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Punto de venta</TableHead>
+                  <TableHead className="text-right">Comprobantes</TableHead>
+                  <TableHead className="text-right">Facturado neto</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {porPV.map(p => (
+                  <TableRow key={p.pv}>
+                    <TableCell className="font-medium tabular-nums">
+                      {p.pv.toString().padStart(5, '0')}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {p.cant}
+                    </TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">
+                      {formatCurrency(p.neto)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="space-y-2 p-4 lg:hidden">
+            {porPV.map(p => (
+              <div
+                key={p.pv}
+                className="flex items-center justify-between rounded-xl border border-border/60 p-3"
+              >
+                <div>
+                  <div className="text-sm font-medium tabular-nums">
+                    Punto {p.pv.toString().padStart(5, '0')}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    {p.cant} {p.cant === 1 ? 'comprobante' : 'comprobantes'}
+                  </div>
+                </div>
+                <div className="text-sm font-semibold tabular-nums">{formatCurrency(p.neto)}</div>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-3 border-t border-border/60 bg-muted/30 px-5 py-3.5">
+            <span className="text-sm font-medium">
+              Total · {porPV.length} puntos de venta
+            </span>
+            <span className="text-sm font-semibold tabular-nums">{formatCurrency(neto)}</span>
+          </div>
+        </Card>
+      )}
 
       {/* Detalle por mes */}
       <Card className="overflow-hidden">
