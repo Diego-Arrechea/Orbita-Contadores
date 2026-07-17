@@ -421,6 +421,7 @@ function AccionesCuenta({
 type ColumnaOrden =
   | 'contador'
   | 'clientes'
+  | 'empleados'
   | 'alta'
   | 'acceso'
   | 'cierre'
@@ -440,6 +441,8 @@ function valorOrden(u: AdminUsuario, col: ColumnaOrden): string | number | null 
       return `${u.nombre ?? ''} ${u.apellido ?? ''}`.trim().toLowerCase();
     case 'clientes':
       return u.clientes ?? 0;
+    case 'empleados':
+      return u.empleados ?? 0;
     case 'alta':
       return ts(u.creado_en);
     case 'acceso':
@@ -658,6 +661,9 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
               <EncabezadoOrden col="clientes" orden={orden} onOrdenar={ordenarPor} className="text-center">
                 Clientes
               </EncabezadoOrden>
+              <EncabezadoOrden col="empleados" orden={orden} onOrdenar={ordenarPor} className="text-center">
+                Empleados
+              </EncabezadoOrden>
               <EncabezadoOrden col="alta" orden={orden} onOrdenar={ordenarPor}>
                 Alta
               </EncabezadoOrden>
@@ -699,6 +705,9 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                   </button>
                 </TableCell>
                 <TableCell className="text-center tabular-nums">{u.clientes}</TableCell>
+                <TableCell className="text-center tabular-nums">
+                  {u.empleados ? u.empleados : <span className="text-muted-foreground">—</span>}
+                </TableCell>
                 <TableCell className="text-sm">{fechaCorta(u.creado_en)}</TableCell>
                 <TableCell className="text-sm">{fechaHora(u.ultimo_acceso)}</TableCell>
                 <TableCell className="text-sm">{fechaHora(u.ultimo_logout)}</TableCell>
@@ -728,7 +737,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
             ))}
             {ordenados.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground py-10">
+                <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
                   No hay cuentas que coincidan con la búsqueda.
                 </TableCell>
               </TableRow>
@@ -770,6 +779,11 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
               <span className="text-xs text-muted-foreground tabular-nums">
                 {u.clientes} cliente(s)
               </span>
+              {!!u.empleados && (
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {u.empleados} empleado(s)
+                </span>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">

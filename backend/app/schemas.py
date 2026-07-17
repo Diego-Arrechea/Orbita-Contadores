@@ -647,6 +647,7 @@ class AdminUsuarioOut(BaseModel):
     ultimo_acceso: str | None = None  # ISO; None = nunca inició sesión
     ultimo_logout: str | None = None  # ISO; None = nunca registró un cierre de la app
     clientes: int = 0  # cuántos clientes tiene cargados
+    empleados: int = 0  # cuántas subcuentas de empleado dependen de esta cuenta (titular_id)
 
 
 class AdminUsuarioPatch(BaseModel):
