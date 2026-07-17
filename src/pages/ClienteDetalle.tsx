@@ -16,7 +16,6 @@ import {
   Briefcase,
   Power,
   ScrollText,
-  ExternalLink,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -301,21 +300,6 @@ export function ClienteDetalle() {
                       >
                         <ScrollText />{' '}
                         {constanciaCargando ? 'Generando constancia…' : 'Constancia de inscripción'}
-                      </DropdownMenuItem>
-                    )}
-                    {/* Acceso directo a la recategorización de Monotributo (el contador la hace con la
-                        clave del cliente). Sólo monotributistas. Abre el portal en una pestaña nueva. */}
-                    {esReal && esMonotributista(cliente) && (
-                      <DropdownMenuItem
-                        onSelect={() =>
-                          window.open(
-                            'https://monotributo.afip.gob.ar/app/default.aspx',
-                            '_blank',
-                            'noopener,noreferrer',
-                          )
-                        }
-                      >
-                        <ExternalLink /> Recategorizar
                       </DropdownMenuItem>
                     )}
                     {tienePermiso('editar_cliente') && (

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Building2, Wheat, Clock, PencilLine, Briefcase } from 'lucide-react';
+import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Building2, Wheat, Clock, PencilLine, Briefcase, ExternalLink } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ProgresoTope } from '@/components/shared/ProgresoTope';
@@ -264,6 +264,22 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
             <span className="text-muted-foreground tabular-nums">
               {formatCurrency(calc.categoriaCorresponde.topeAnual)}
             </span>
+          </div>
+        )}
+
+        {/* Acceso directo a la recategorización de Monotributo (el contador la hace con la clave del
+            cliente). Abre el portal en una pestaña nueva. */}
+        {!verInflacion && (
+          <div className="mt-4">
+            <a
+              href="https://monotributo.afip.gob.ar/app/default.aspx"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium hover:bg-muted/50 transition-colors"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Recategorizar
+            </a>
           </div>
         )}
       </Card>
