@@ -16,6 +16,7 @@ from ..crypto import cifrar, descifrar
 from ..db import SessionLocal, get_db
 from ..schemas import (
     TIPOS_NOTA_CREDITO,
+    ActividadOut,
     ClaveClienteIn,
     ClienteOut,
     ComprobanteManualIn,
