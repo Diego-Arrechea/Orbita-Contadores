@@ -109,6 +109,16 @@ def crear_punto_venta(
     return motor_http.crear_punto_venta(cuit_login, clave, nombre=nombre, sistema=sistema)
 
 
+# --- Constancia de inscripción (Sistema Registral) — SÓLO HTTP (afip.py) ------
+def constancia(cuit_login: str, clave: str, cuit_objetivo: str | None = None) -> str | None:
+    """HTML de la constancia oficial del contribuyente, listo para renderizar (estáticos
+    absolutizados). Sólo HTTP: el browser nunca hizo este flujo. None si no se pudo (p. ej.
+    representado)."""
+    from . import motor_http
+
+    return motor_http.constancia(cuit_login, clave, cuit_objetivo=cuit_objetivo)
+
+
 # --- Domicilio Fiscal Electrónico / e-ventanilla — SÓLO HTTP (afip.py) --------
 def comunicaciones(
     cuit_login: str, clave: str, cuit_objetivo: str | None = None, desde=None, hasta=None

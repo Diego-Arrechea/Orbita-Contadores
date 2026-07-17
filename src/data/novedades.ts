@@ -42,6 +42,21 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-17-constancia-inscripcion',
+    fecha: '2026-07-17',
+    titulo: 'Constancia de inscripción al instante',
+    resumen: 'Abrí la constancia de inscripción de cualquier cliente desde su ficha, lista para imprimir.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En la ficha del cliente, en el menú de acciones (⋮), sumamos "Constancia de inscripción": ' +
+          'te abre la constancia oficial vigente del cliente, lista para imprimir o guardar en PDF, ' +
+          'sin tener que salir de Órbita.',
+      },
+    ],
+  },
+  {
     id: '2026-07-17-totales-por-punto-de-venta',
     fecha: '2026-07-17',
     titulo: 'Totales por punto de venta',
