@@ -50,6 +50,47 @@ export function facturacionManual12m(comprobantes: Comprobante[], hasta: Date = 
   }, 0);
 }
 
+/** Mes de cierre del último semestre de recategorización cerrado respecto de `hoy` (junio o
+ *  diciembre). El período de recat son los 12 meses que cierran ahí: hoy jul-2026 → cierra jun-2026
+ *  (período jul-2025 a jun-2026). Enero–junio → cierra en diciembre del año anterior; julio–diciembre
+ *  → junio del mismo año. */
+export function cierreSemestreRecat(hoy: Date = HOY): Date {
+  return hoy.getMonth() >= 6
+    ? new Date(hoy.getFullYear(), 5, 1)
+    : new Date(hoy.getFullYear() - 1, 11, 1);
+}
+
+export interface FacturadoVentana {
+  /** Primer y último mes calendario de la ventana (día 1). */
+  desde: Date;
+  hasta: Date;
+  /** Facturado NETO (facturas − NC) del período, por comprobantes. */
+  facturado: number;
+  /** Categoría que le correspondería por ese facturado. */
+  categoriaCorresponde: Categoria;
+}
+
+/** Facturado NETO de los 12 meses calendario que cierran en `hasta`, tomado del historial mensual (que
+ *  YA incluye la carga manual) + lo agropecuario, con la categoría que le correspondería. Sirve para
+ *  evaluar la recategorización sobre un período ELEGIDO por el contador; el facturómetro OFICIAL de
+ *  ARCA es sólo el rolling de 12 meses a hoy, así que para otras ventanas se usa el cálculo propio. */
+export function facturadoEnVentana(cliente: Cliente, hasta: Date): FacturadoVentana {
+  const meses = ventana12Meses(cliente.historialMensual, hasta);
+  const facturado =
+    meses.reduce((acc, m) => acc + m.emitidasNetas + m.ingresosNoFacturados, 0) +
+    (cliente.facturacionAgro12m ?? 0);
+  const categoriaCorresponde =
+    CATEGORIAS.find(c => facturado <= c.topeAnual) || CATEGORIAS[CATEGORIAS.length - 1];
+  const finIdx = hasta.getFullYear() * 12 + hasta.getMonth();
+  const desdeIdx = finIdx - 11;
+  return {
+    desde: new Date(Math.floor(desdeIdx / 12), desdeIdx % 12, 1),
+    hasta: new Date(hasta.getFullYear(), hasta.getMonth(), 1),
+    facturado,
+    categoriaCorresponde,
+  };
+}
+
 export interface CalculoCliente {
   facturacionUltimos12: number;
   /** Parte de `facturacionUltimos12` que viene de liquidaciones agropecuarias (0 si no aplica). */
