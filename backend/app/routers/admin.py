@@ -87,6 +87,7 @@ def _admin_usuario_out(u: models.Usuario, clientes: int, empleados: int = 0) -> 
         ultimo_logout=_iso(u.ultimo_logout),
         clientes=clientes,
         empleados=empleados,
+        titular_id=u.titular_id,
     )
 
 
