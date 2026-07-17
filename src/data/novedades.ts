@@ -42,6 +42,48 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-17-actividades-declaradas',
+    fecha: '2026-07-17',
+    titulo: 'Actividades declaradas del cliente',
+    resumen: 'Mirá de un vistazo las actividades económicas de cada cliente en su ficha.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En la ficha del cliente, dentro de Situación actual, ahora ves las actividades económicas ' +
+          'declaradas (código y descripción), con la actividad principal destacada.',
+      },
+    ],
+  },
+  {
+    id: '2026-07-17-comprobantes-a-mano',
+    fecha: '2026-07-17',
+    titulo: 'Cargá comprobantes a mano',
+    resumen:
+      'Sumá las ventas de talonario y los gastos que no figuran entre los comprobantes del cliente.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En la solapa Comprobantes de cada cliente podés agregar a mano una venta (por ejemplo una ' +
+          'factura de talonario en papel) o una compra/gasto (como un ticket) que no aparece entre sus ' +
+          'comprobantes.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Las ventas que cargás a mano suman al facturado de los últimos 12 meses y se tienen en cuenta ' +
+          'para la categoría y la recategorización.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Los comprobantes cargados a mano quedan identificados con una etiqueta y los podés borrar ' +
+          'cuando quieras.',
+      },
+    ],
+  },
+  {
     id: '2026-07-13-carga-mas-rapida',
     fecha: '2026-07-13',
     titulo: 'La app carga mucho más rápido',

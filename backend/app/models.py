@@ -218,6 +218,11 @@ class ClienteARCA(Base):
     # provincia, CP) traído del padrón durante la sync. JSON serializado. Se usa para imprimir la
     # representación del comprobante emitido (RG 5616). Nullable = todavía no se snapshoteó.
     emisor_fiscal_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Actividades económicas DECLARADAS del cliente en el padrón (código AFIP + descripción + período
+    # de alta), traídas durante la sync. JSON serializado: [{codigo, descripcion, periodo}]. La primera
+    # (orden 1) es la actividad principal. Se muestra en la ficha ("Situación actual"). Distinto de la
+    # columna `actividad` (comercio/servicios, clasificación gruesa). Nullable = todavía no se trajo.
+    actividades_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Línea de base de alertas: cuándo el motor "fotografió" por primera vez el estado de alertas de
     # este cliente. NULL = todavía no se baselineó → la próxima pasada registra sus alertas vigentes
     # como ya conocidas SIN avisar (anti-spam al alta). Ver services/alertas.py::evaluar_y_notificar.
@@ -330,6 +335,10 @@ class ComprobanteEmitido(Base):
     # Sólo en comprobantes emitidos desde la app (es el dato que se eligió al emitir); se imprime en la
     # representación del comprobante. NULL = no registrada (filas previas a esta columna).
     condicion_iva_receptor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Origen del dato: 'arca' (traído de Mis Comprobantes o emitido por WSFEv1) | 'manual' (cargado a
+    # mano por el contador: factura de talonario en papel, ticket de gasto que no figura en ARCA). El
+    # sync PROTEGE los manuales (no los pisa ni los borra) y sólo se eliminan desde la app.
+    origen: Mapped[str] = mapped_column(String(10), default="arca", server_default="arca")
     sincronizado_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

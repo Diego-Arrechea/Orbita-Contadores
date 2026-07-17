@@ -19,6 +19,9 @@ interface ClienteBackend {
   regimen?: string | null; // monotributo | responsable_inscripto | null
   categoria?: string | null;
   actividad?: string | null;
+  // Actividades económicas DECLARADAS en el padrón (código AFIP + descripción + período). La principal
+  // primero. Distinto de `actividad` (comercio/servicios, clasificación gruesa).
+  actividades?: { codigo?: string | null; descripcion?: string | null; periodo?: string | null }[] | null;
   prox_recategorizacion?: string | null;
   recat_ventana_desde?: string | null; // ventana de recategorización real (ISO), fecha de apertura
   recat_ventana_hasta?: string | null; // ídem, fecha LÍMITE (reemplaza el calendario hardcodeado)
@@ -120,6 +123,16 @@ function construirCliente(
     categoria,
     regimen,
     tipoActividad,
+    // Actividades declaradas del padrón (código + descripción + período); la principal primero.
+    actividades: (bk.actividades ?? []).flatMap(a =>
+      a.descripcion || a.codigo
+        ? [{
+            codigo: a.codigo ?? undefined,
+            descripcion: a.descripcion ?? undefined,
+            periodo: a.periodo ?? undefined,
+          }]
+        : [],
+    ),
     // Override del contador (guardado en la cuenta) o el derivado: la fecha del primer comprobante.
     fechaInicio: bk.fecha_inicio ?? (primerMes ? `${primerMes}-01` : '2020-01-01'),
     notas: bk.notas ?? '',

@@ -1,4 +1,4 @@
-import type { Cliente, Categoria, HistorialMes, VentanaRecategorizacion } from '@/types';
+import type { Cliente, Categoria, Comprobante, HistorialMes, VentanaRecategorizacion } from '@/types';
 import {
   CATEGORIAS,
   getCategoria,
@@ -32,10 +32,31 @@ export function ventana12Meses(historial: HistorialMes[], hasta: Date = HOY): Hi
   });
 }
 
+/**
+ * Suma neta de los comprobantes cargados A MANO (origen 'manual') EMITIDOS dentro de la ventana de 12
+ * meses calendario. Las notas de crédito restan. Sirve para sumar la carga manual al facturómetro
+ * OFICIAL de ARCA (que no la incluye); el cálculo propio por comprobantes ya la tiene contemplada.
+ */
+export function facturacionManual12m(comprobantes: Comprobante[], hasta: Date = HOY): number {
+  const finIdx = hasta.getFullYear() * 12 + hasta.getMonth();
+  const desdeIdx = finIdx - 11;
+  return comprobantes.reduce((acc, c) => {
+    if (c.origen !== 'manual' || c.direccion !== 'emitido') return acc;
+    const [y, mo] = c.fechaEmision.slice(0, 7).split('-').map(Number);
+    const idx = y * 12 + (mo - 1);
+    if (idx < desdeIdx || idx > finIdx) return acc;
+    const signo = c.tipo.includes('Nota Crédito') ? -1 : 1;
+    return acc + signo * c.monto;
+  }, 0);
+}
+
 export interface CalculoCliente {
   facturacionUltimos12: number;
   /** Parte de `facturacionUltimos12` que viene de liquidaciones agropecuarias (0 si no aplica). */
   facturacionAgro12m: number;
+  /** Parte del facturado 12m que viene de comprobantes cargados A MANO (0 si no hay). Ya está sumada
+   *  al `nivelTope`/gauge cuando el número base es el oficial de ARCA (que no la incluye). */
+  facturacionManual12m: number;
   facturacionUltimos12Anualizada: number;
   mesesConActividad: number;
   porcentajeTopeActual: number;
@@ -121,7 +142,13 @@ export function calcularCliente(
   // comprobantes por encima) y con `??` ganaría y pisaría todo con $0 → usamos chequeo > 0, no null.
   const oficialValido = cliente.facturacion12mOficial != null && cliente.facturacion12mOficial > 0;
   const topeOficialValido = cliente.topeCategoriaOficial != null && cliente.topeCategoriaOficial > 0;
-  const nivelTope = oficialValido ? cliente.facturacion12mOficial! : facturacionAnualizada;
+  // Comprobantes cargados a mano: el facturómetro oficial de ARCA no los conoce, así que los sumamos
+  // sobre el oficial para que cuenten al medir contra el tope (categoría/proyección/recategorización).
+  // El cálculo propio por comprobantes (rama sin oficial) ya los incluye → sólo se suman al oficial.
+  const factManual12 = facturacionManual12m(cliente.comprobantes);
+  const nivelTope = oficialValido
+    ? cliente.facturacion12mOficial! + factManual12
+    : facturacionAnualizada;
   const topeRef = topeOficialValido ? cliente.topeCategoriaOficial! : categoriaActual.topeAnual;
   const porcentajeTopeActual = topeRef > 0 ? nivelTope / topeRef : 0;
 
@@ -141,9 +168,10 @@ export function calcularCliente(
   const promAnt3 = anteriores3.reduce((s, m) => s + m.emitidasNetas + m.ingresosNoFacturados, 0) / 3 || promUlt3;
   const variacion = promAnt3 > 0 ? (promUlt3 - promAnt3) / promAnt3 / 3 : 0;
 
-  // Arranca del nivel oficial (lo ya acumulado según ARCA) y proyecta con el ritmo de comprobantes.
+  // Arranca del nivel oficial (lo ya acumulado según ARCA, + carga manual) y proyecta con el ritmo de
+  // comprobantes. Sin oficial, `facturacion12` ya incluye la carga manual.
   const fechaProyectada = proyectarCruceTope(
-    oficialValido ? cliente.facturacion12mOficial! : facturacion12,
+    oficialValido ? cliente.facturacion12mOficial! + factManual12 : facturacion12,
     promUlt3,
     variacion,
     topeRef,
@@ -186,6 +214,7 @@ export function calcularCliente(
   return {
     facturacionUltimos12: facturacion12,
     facturacionAgro12m,
+    facturacionManual12m: factManual12,
     facturacionUltimos12Anualizada: facturacionAnualizada,
     mesesConActividad: mesesActividad,
     porcentajeTopeActual,
