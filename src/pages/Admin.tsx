@@ -497,6 +497,47 @@ function EncabezadoOrden({
   );
 }
 
+// Una subcuenta (empleado del estudio) dentro del desplegable de su titular. Read-only + clic para
+// abrir su ficha; las acciones (activar/impersonar/…) siguen disponibles en su fila propia del listado.
+function FilaEmpleado({
+  e,
+  onVerFicha,
+}: {
+  e: AdminUsuario;
+  onVerFicha: (id: number) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onVerFicha(e.id)}
+      className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left hover:bg-background/60"
+      title="Ver ficha del empleado"
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          {e.nombre} {e.apellido}
+          {e.rol === 'admin' && (
+            <Badge variant="default" className="text-[10px]">
+              <ShieldCheck className="h-3 w-3" /> admin
+            </Badge>
+          )}
+        </div>
+        <div className="break-all text-xs text-muted-foreground">{e.email}</div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="hidden whitespace-nowrap text-xs text-muted-foreground sm:inline">
+          {fechaHora(e.ultimo_acceso)}
+        </span>
+        {e.activo ? (
+          <Badge variant="success">Activa</Badge>
+        ) : (
+          <Badge variant="muted">Inhabilitada</Badge>
+        )}
+      </div>
+    </button>
+  );
+}
+
 function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () => void }) {
   const qc = useQueryClient();
   const {
@@ -510,6 +551,31 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
   const [accionando, setAccionando] = useState<number | null>(null);
   const [accionError, setAccionError] = useState('');
   const [fichaId, setFichaId] = useState<number | null>(null);
+  // Qué cuentas tienen desplegado su equipo (empleados). Clave = id del titular.
+  const [equipoAbierto, setEquipoAbierto] = useState<Record<number, boolean>>({});
+
+  // Empleados (subcuentas) agrupados por su titular. Los empleados ya vienen en la misma lista de
+  // cuentas (traen titular_id), así que la sublista se arma en el front sin pedir nada extra.
+  const empleadosPorTitular = useMemo(() => {
+    const mapa = new Map<number, AdminUsuario[]>();
+    for (const u of usuarios) {
+      if (u.titular_id != null) {
+        const arr = mapa.get(u.titular_id) ?? [];
+        arr.push(u);
+        mapa.set(u.titular_id, arr);
+      }
+    }
+    // Orden estable dentro del equipo: por nombre.
+    for (const arr of mapa.values()) {
+      arr.sort((a, b) =>
+        `${a.nombre} ${a.apellido}`.localeCompare(`${b.nombre} ${b.apellido}`, 'es')
+      );
+    }
+    return mapa;
+  }, [usuarios]);
+
+  const toggleEquipo = (id: number) =>
+    setEquipoAbierto(prev => ({ ...prev, [id]: !prev[id] }));
 
   // Ordenamiento por columna (clic en el encabezado alterna asc/desc). Default: últimos accesos
   // primero (los que nunca accedieron quedan al final por el manejo de nulos en valorOrden).
@@ -683,58 +749,97 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {ordenados.map(u => (
-              <TableRow key={u.id}>
-                <TableCell>
-                  <button
-                    type="button"
-                    onClick={() => setFichaId(u.id)}
-                    className="group text-left"
-                    title="Ver ficha del contador"
-                  >
-                    <div className="font-medium flex items-center gap-2 group-hover:text-primary">
-                      {u.nombre} {u.apellido}
-                      {u.rol === 'admin' && (
-                        <Badge variant="default" className="text-[10px]">
-                          <ShieldCheck className="h-3 w-3" /> admin
-                        </Badge>
+            {ordenados.map(u => {
+              const equipo = empleadosPorTitular.get(u.id) ?? [];
+              const abierto = !!equipoAbierto[u.id];
+              return (
+                <Fragment key={u.id}>
+                  <TableRow>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        {equipo.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleEquipo(u.id)}
+                            className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                            title={abierto ? 'Ocultar empleados' : 'Ver empleados del estudio'}
+                            aria-label={abierto ? 'Ocultar empleados' : 'Ver empleados del estudio'}
+                          >
+                            {abierto ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
+                          </button>
+                        ) : (
+                          <span className="w-5 shrink-0" aria-hidden />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setFichaId(u.id)}
+                          className="group min-w-0 text-left"
+                          title="Ver ficha del contador"
+                        >
+                          <div className="font-medium flex items-center gap-2 group-hover:text-primary">
+                            {u.nombre} {u.apellido}
+                            {u.rol === 'admin' && (
+                              <Badge variant="default" className="text-[10px]">
+                                <ShieldCheck className="h-3 w-3" /> admin
+                              </Badge>
+                            )}
+                            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100" />
+                          </div>
+                          <div className="text-xs text-muted-foreground">{u.email}</div>
+                        </button>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center tabular-nums">{u.clientes}</TableCell>
+                    <TableCell className="text-center tabular-nums">
+                      {u.empleados ? u.empleados : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="text-sm">{fechaCorta(u.creado_en)}</TableCell>
+                    <TableCell className="text-sm">{fechaHora(u.ultimo_acceso)}</TableCell>
+                    <TableCell className="text-sm">{fechaHora(u.ultimo_logout)}</TableCell>
+                    <TableCell className="text-center">
+                      <EmailConfirmadoBadge confirmado={u.email_confirmado} />
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {u.activo ? (
+                        <Badge variant="success">Activa</Badge>
+                      ) : (
+                        <Badge variant="muted">Inhabilitada</Badge>
                       )}
-                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100" />
-                    </div>
-                    <div className="text-xs text-muted-foreground">{u.email}</div>
-                  </button>
-                </TableCell>
-                <TableCell className="text-center tabular-nums">{u.clientes}</TableCell>
-                <TableCell className="text-center tabular-nums">
-                  {u.empleados ? u.empleados : <span className="text-muted-foreground">—</span>}
-                </TableCell>
-                <TableCell className="text-sm">{fechaCorta(u.creado_en)}</TableCell>
-                <TableCell className="text-sm">{fechaHora(u.ultimo_acceso)}</TableCell>
-                <TableCell className="text-sm">{fechaHora(u.ultimo_logout)}</TableCell>
-                <TableCell className="text-center">
-                  <EmailConfirmadoBadge confirmado={u.email_confirmado} />
-                </TableCell>
-                <TableCell className="text-center">
-                  {u.activo ? (
-                    <Badge variant="success">Activa</Badge>
-                  ) : (
-                    <Badge variant="muted">Inhabilitada</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end">
+                        <AccionesCuenta
+                          u={u}
+                          miId={miId}
+                          trabajando={accionando === u.id}
+                          onEntrarComo={u => void entrarComo(u)}
+                          onToggleActivo={u => void toggleActivo(u)}
+                          onToggleRol={u => void toggleRol(u)}
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  {abierto && equipo.length > 0 && (
+                    <TableRow className="bg-muted/30 hover:bg-muted/30">
+                      <TableCell colSpan={9} className="py-2">
+                        <div className="space-y-1 pl-7">
+                          <div className="text-xs font-medium text-muted-foreground">
+                            Empleados del estudio ({equipo.length})
+                          </div>
+                          {equipo.map(e => (
+                            <FilaEmpleado key={e.id} e={e} onVerFicha={setFichaId} />
+                          ))}
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   )}
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end">
-                    <AccionesCuenta
-                      u={u}
-                      miId={miId}
-                      trabajando={accionando === u.id}
-                      onEntrarComo={u => void entrarComo(u)}
-                      onToggleActivo={u => void toggleActivo(u)}
-                      onToggleRol={u => void toggleRol(u)}
-                    />
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                </Fragment>
+              );
+            })}
             {ordenados.length === 0 && (
               <TableRow>
                 <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
@@ -747,7 +852,10 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
       </Card>
 
       <div className="space-y-3 lg:hidden">
-        {ordenados.map(u => (
+        {ordenados.map(u => {
+          const equipo = empleadosPorTitular.get(u.id) ?? [];
+          const abierto = !!equipoAbierto[u.id];
+          return (
           <Card key={u.id} className="space-y-3 p-4">
             <button
               type="button"
@@ -779,12 +887,33 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
               <span className="text-xs text-muted-foreground tabular-nums">
                 {u.clientes} cliente(s)
               </span>
-              {!!u.empleados && (
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {u.empleados} empleado(s)
-                </span>
+              {equipo.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => toggleEquipo(u.id)}
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground tabular-nums hover:text-foreground"
+                  title={abierto ? 'Ocultar empleados' : 'Ver empleados del estudio'}
+                >
+                  {abierto ? (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  )}
+                  {equipo.length} empleado(s)
+                </button>
               )}
             </div>
+
+            {abierto && equipo.length > 0 && (
+              <div className="space-y-1 rounded-md bg-muted/30 p-2">
+                <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Empleados del estudio ({equipo.length})
+                </div>
+                {equipo.map(e => (
+                  <FilaEmpleado key={e.id} e={e} onVerFicha={setFichaId} />
+                ))}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
               <div>
@@ -812,7 +941,8 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
               />
             </div>
           </Card>
-        ))}
+          );
+        })}
         {ordenados.length === 0 && (
           <Card className="p-8 text-center text-sm text-muted-foreground">
             No hay cuentas que coincidan con la búsqueda.
