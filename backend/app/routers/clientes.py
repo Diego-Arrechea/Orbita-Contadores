@@ -51,10 +51,12 @@ def _iso_utc(d: dt.datetime) -> str:
     return d.isoformat()
 
 
-def _inicio_ventana_12m() -> dt.date:
-    """Primer día del primer mes de la ventana de 12 meses calendario (la misma que usa el front)."""
+def _inicio_ventana_12m(meses: int = 12) -> dt.date:
+    """Primer día del primer mes de una ventana de `meses` meses calendario que termina este mes (12
+    por defecto = la que usa la lista/front). La ficha pide MÁS meses para poder evaluar la
+    recategorización sobre períodos semestrales anteriores (que empiezan antes de los últimos 12)."""
     hoy = dt.date.today()
-    primer_mes_idx = hoy.year * 12 + (hoy.month - 1) - 11  # primer mes de la ventana de 12
+    primer_mes_idx = hoy.year * 12 + (hoy.month - 1) - (meses - 1)
     return dt.date(primer_mes_idx // 12, primer_mes_idx % 12 + 1, 1)
 
 
@@ -67,7 +69,9 @@ def _mes_expr(db: Session):
     return func.strftime("%Y-%m", col)
 
 
-def datos_cartera(db: Session, clientes: list[models.ClienteARCA]) -> dict[str, dict]:
+def datos_cartera(
+    db: Session, clientes: list[models.ClienteARCA], meses_historial: int = 12
+) -> dict[str, dict]:
     """Precalcula, en ~5 queries para TODA la lista, lo que construir_cliente_out necesita por
     cliente: historial 12m agregado por mes, si tiene comprobantes, los tipos emitidos, la última
     extracción y la facturación agro. Antes esto eran 4-5 queries POR cliente (y los comprobantes
@@ -80,7 +84,7 @@ def datos_cartera(db: Session, clientes: list[models.ClienteARCA]) -> dict[str, 
     cuits = list(datos)
     if not cuits:
         return datos
-    desde = _inicio_ventana_12m()
+    desde = _inicio_ventana_12m(meses_historial)
     comp = models.ComprobanteEmitido
     mes = _mes_expr(db).label("mes")
     es_nc = comp.cbte_tipo.in_(TIPOS_NOTA_CREDITO)
@@ -230,7 +234,9 @@ def _motivo_amigable(motivo: str | None) -> str | None:
     return motivo
 
 
-def construir_cliente_out(db: Session, c: models.ClienteARCA, datos: dict | None = None) -> ClienteOut:
+def construir_cliente_out(
+    db: Session, c: models.ClienteARCA, datos: dict | None = None, meses_historial: int = 12
+) -> ClienteOut:
     """Arma el ClienteOut de un cliente: combina el dato crudo de ARCA con el override manual del
     contador (edicion_json), el régimen resuelto, el historial 12m y la última extracción. Lo usan
     tanto la lista del contador (listar_clientes) como la vista global del panel superadmin.
@@ -238,7 +244,7 @@ def construir_cliente_out(db: Session, c: models.ClienteARCA, datos: dict | None
     `datos` es la entrada de este cliente en `datos_cartera()`: al armar una LISTA, calculala una
     vez para todos y pasala acá (sin eso, cada cliente dispara sus propias queries)."""
     if datos is None:
-        datos = datos_cartera(db, [c])[c.cuit]
+        datos = datos_cartera(db, [c], meses_historial=meses_historial)[c.cuit]
     ult = datos["ult"]  # (fecha, resultado, motivo) | None
     tipos_emit = datos["tipos"]
     # Ediciones manuales del contador (override): ganan sobre el dato crudo de ARCA. Viven en
@@ -324,7 +330,9 @@ def detalle_cliente(
     """Un cliente puntual con el MISMO dato que la lista. Lo usa la ficha: antes bajaba la cartera
     completa (con todo su costo) sólo para quedarse con uno."""
     cliente = _cliente_propio(db, cuit, usuario)
-    out = construir_cliente_out(db, cliente)
+    # La ficha pide 26 meses de historial (vs 12 de la lista): alcanza para evaluar la
+    # recategorización sobre períodos semestrales anteriores (que empiezan antes de los últimos 12).
+    out = construir_cliente_out(db, cliente, meses_historial=26)
     ids = ids_cartera(db, usuario)
     if len(ids) > 1:  # titular con equipo: anotar el responsable, igual que en la lista
         u = db.get(models.Usuario, cliente.usuario_id)

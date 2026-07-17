@@ -1,7 +1,14 @@
 import { useState } from 'react';
-import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Building2, Wheat, Clock, PencilLine, Briefcase } from 'lucide-react';
+import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Building2, Wheat, Clock, PencilLine, Briefcase, CalendarRange } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ProgresoTope } from '@/components/shared/ProgresoTope';
 import { cn, formatCurrency, formatDate, formatPercent } from '@/lib/utils';
 import { getCategoria } from '@/data/categorias';
@@ -10,7 +17,7 @@ import { esAdminReal } from '@/lib/cuenta';
 import { useConfig } from '@/context/ConfigContext';
 import { VerDetalle } from '@/components/cliente/VerDetalle';
 import { detallesSituacion } from '@/lib/trazabilidad';
-import type { CalculoCliente } from '@/lib/monotributo';
+import { facturadoEnVentana, cierreSemestreRecat, HOY, type CalculoCliente } from '@/lib/monotributo';
 import type { Cliente } from '@/types';
 
 interface Props {
@@ -25,6 +32,9 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
   // Toggle del visor del tope: "Hoy" vs "Ajustado por inflación" (declarado antes de cualquier
   // return para no romper el orden de hooks).
   const [verInflacion, setVerInflacion] = useState(false);
+  // Período para EVALUAR la recategorización: 'recat' (los 12 meses que cierran en el último semestre),
+  // 'rolling' (últimos 12 a hoy) o 'AAAA-M' (un mes de cierre elegido). Ver el evaluador al pie del card.
+  const [periodoSel, setPeriodoSel] = useState('recat');
   // Todavía no tenemos el dato del régimen (el alta no llegó a traerlo). NO afirmamos que no es
   // monotributista: mostramos un cartel de "en proceso" y, si la clave está mal cargada, cómo destrabarlo.
   if (regimenPendiente(cliente)) {
@@ -68,7 +78,6 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
   }
 
   const categoriaActual = getCategoria(cliente.categoria);
-  const debeRecategorizar = calc.categoriaCorresponde.codigo !== cliente.categoria;
   const ratioPct = calc.ratioGastosTopeCatK;
   const ratioUmbralStr = formatPercent(calc.ratioUmbralLegal);
   // Respaldo de gastos por relación de dependencia: cuánto del total comprado a "consumidor final"
@@ -117,6 +126,27 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
 
   // Trazabilidad: explicación de cada valor calculado de esta vista (ver botones ⓘ).
   const d = detallesSituacion(cliente, calc);
+
+  // Evaluador de recategorización (#3): facturado 12m del PERÍODO elegido + la categoría que le
+  // correspondería. El facturómetro OFICIAL de ARCA es sólo el rolling a hoy, así que para el período
+  // de recat (u otro) se calcula por comprobantes (historial, que ya incluye la carga manual).
+  const cierreRecat = cierreSemestreRecat();
+  const hastaEval =
+    periodoSel === 'rolling'
+      ? HOY
+      : periodoSel === 'recat'
+        ? cierreRecat
+        : new Date(Number(periodoSel.split('-')[0]), Number(periodoSel.split('-')[1]), 1);
+  const evalVentana = facturadoEnVentana(cliente, hastaEval);
+  const evalDebe = evalVentana.categoriaCorresponde.codigo !== cliente.categoria;
+  const mesCorto = (dd: Date) => dd.toLocaleDateString('es-AR', { month: 'short', year: 'numeric' });
+  const rangoEval = `${mesCorto(evalVentana.desde)} – ${mesCorto(evalVentana.hasta)}`;
+  // Opciones de "mes de cierre" custom: los últimos 12 meses (dentro de los 26 de historial que trae
+  // la ficha, así la ventana de 12 queda siempre cubierta).
+  const mesesEval = Array.from({ length: 12 }, (_, i) => {
+    const dd = new Date(HOY.getFullYear(), HOY.getMonth() - i, 1);
+    return { value: `${dd.getFullYear()}-${dd.getMonth()}`, label: `Cierre en ${mesCorto(dd)}` };
+  });
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -250,20 +280,59 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
           </div>
         )}
 
-        {!verInflacion && debeRecategorizar && (
-          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-warning/15 border border-warning/30 px-3 py-2.5 text-sm">
-            <TrendingUp className="h-4 w-4 text-warning-foreground" />
-            <span className="inline-flex items-center gap-1.5">
-              Con la facturación actual debería recategorizarse a
-              <VerDetalle detalle={d.recategorizacion} />
-            </span>
-            <Badge variant="warning" className="font-semibold">
-              Cat. {calc.categoriaCorresponde.codigo}
-            </Badge>
-            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground ml-auto" />
-            <span className="text-muted-foreground tabular-nums">
-              {formatCurrency(calc.categoriaCorresponde.topeAnual)}
-            </span>
+        {/* Evaluador de recategorización (#3): elegí el período (default: el semestre de recat) y ves el
+            facturado de ese período y la categoría que corresponde. Reemplaza el aviso fijo por uno
+            editable, para mirar exactamente el período que evalúa ARCA (ej. jul-2025 a jun-2026). El
+            facturómetro oficial es sólo rolling a hoy → acá se calcula por comprobantes. */}
+        {!verInflacion && (
+          <div className="mt-5 border-t border-border/60 pt-4">
+            <div className="flex items-center justify-between gap-2 mb-2.5">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1.5">
+                <CalendarRange className="h-3.5 w-3.5" />
+                Evaluar recategorización
+              </div>
+              <Select value={periodoSel} onValueChange={setPeriodoSel}>
+                <SelectTrigger className="h-8 w-auto gap-1.5 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="recat">Período de recategorización</SelectItem>
+                  <SelectItem value="rolling">Últimos 12 meses</SelectItem>
+                  {mesesEval.map(o => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div
+              className={cn(
+                'flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg px-3 py-2.5 text-sm',
+                evalDebe
+                  ? 'bg-warning/15 border border-warning/30'
+                  : 'bg-muted/40 border border-border',
+              )}
+            >
+              <span className="text-xs text-muted-foreground tabular-nums">{rangoEval}</span>
+              <span className="text-lg font-semibold tabular-nums">
+                {formatCurrency(evalVentana.facturado)}
+              </span>
+              <span className="inline-flex items-center gap-1.5 ml-auto">
+                {evalDebe && <TrendingUp className="h-4 w-4 text-warning-foreground" />}
+                corresponde
+                <Badge variant={evalDebe ? 'warning' : 'muted'} className="font-semibold">
+                  Cat. {evalVentana.categoriaCorresponde.codigo}
+                </Badge>
+              </span>
+            </div>
+            <div className="mt-1.5 text-[11px] text-muted-foreground">
+              Según los comprobantes del período
+              {evalDebe
+                ? ` · hoy figura en Cat. ${cliente.categoria}`
+                : ' · coincide con su categoría actual'}
+              .
+            </div>
           </div>
         )}
       </Card>

@@ -42,6 +42,22 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-17-ventana-recategorizacion',
+    fecha: '2026-07-17',
+    titulo: 'Evaluá la recategorización por período',
+    resumen: 'Elegí el período de 12 meses para evaluar la recategorización, no sólo los últimos 12.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En Situación actual, el bloque de recategorización ahora te deja elegir el período: el ' +
+          'semestre de recategorización (por ejemplo julio 2025 a junio 2026), los últimos 12 meses, ' +
+          'o cualquier mes de cierre. Te muestra el facturado de ese período y la categoría que ' +
+          'corresponde.',
+      },
+    ],
+  },
+  {
     id: '2026-07-17-constancia-inscripcion',
     fecha: '2026-07-17',
     titulo: 'Constancia de inscripción al instante',
