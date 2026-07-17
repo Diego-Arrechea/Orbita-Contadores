@@ -42,6 +42,20 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-17-totales-por-punto-de-venta',
+    fecha: '2026-07-17',
+    titulo: 'Totales por punto de venta',
+    resumen: 'Cuánto facturó cada punto de venta en los últimos 12 meses, de un vistazo.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En la solapa Facturación 12m, cuando el cliente factura desde más de un punto de venta, ' +
+          'ahora ves el facturado neto discriminado por cada punto de venta.',
+      },
+    ],
+  },
+  {
     id: '2026-07-17-actividades-declaradas',
     fecha: '2026-07-17',
     titulo: 'Actividades declaradas del cliente',
