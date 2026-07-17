@@ -22,6 +22,7 @@ export interface AdminUsuario {
   ultimo_acceso?: string | null;
   ultimo_logout?: string | null; // ISO: última vez que cerró la app
   clientes: number;
+  empleados?: number; // subcuentas de empleado que dependen de esta cuenta (equipo del estudio)
 }
 
 export interface AdminMetricas {

@@ -69,7 +69,7 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
     )
 
 
-def _admin_usuario_out(u: models.Usuario, clientes: int) -> AdminUsuarioOut:
+def _admin_usuario_out(u: models.Usuario, clientes: int, empleados: int = 0) -> AdminUsuarioOut:
     return AdminUsuarioOut(
         id=u.id,
         nombre=u.nombre,
@@ -86,6 +86,7 @@ def _admin_usuario_out(u: models.Usuario, clientes: int) -> AdminUsuarioOut:
         ultimo_acceso=_iso(u.ultimo_acceso),
         ultimo_logout=_iso(u.ultimo_logout),
         clientes=clientes,
+        empleados=empleados,
     )
 
 
@@ -111,7 +112,8 @@ def _registrar(
 
 @router.get("/usuarios", response_model=list[AdminUsuarioOut])
 def listar_usuarios(db: Session = Depends(get_db)):
-    """Todas las cuentas con su Nº de clientes cargados (más nuevas primero)."""
+    """Todas las cuentas con su Nº de clientes cargados y de empleados (subcuentas) que dependen de
+    ellas (más nuevas primero)."""
     # Conteo de clientes por usuario en una sola query (evita N+1).
     conteos = dict(
         db.execute(
@@ -120,10 +122,20 @@ def listar_usuarios(db: Session = Depends(get_db)):
             .group_by(models.ClienteARCA.usuario_id)
         ).all()
     )
+    # Conteo de empleados (subcuentas) por titular, en una sola query.
+    empleados = dict(
+        db.execute(
+            select(models.Usuario.titular_id, func.count())
+            .where(models.Usuario.titular_id.is_not(None))
+            .group_by(models.Usuario.titular_id)
+        ).all()
+    )
     usuarios = db.scalars(
         select(models.Usuario).order_by(models.Usuario.creado_en.desc())
     ).all()
-    return [_admin_usuario_out(u, conteos.get(u.id, 0)) for u in usuarios]
+    return [
+        _admin_usuario_out(u, conteos.get(u.id, 0), empleados.get(u.id, 0)) for u in usuarios
+    ]
 
 
 @router.get("/metricas", response_model=AdminMetricasOut)
@@ -442,8 +454,11 @@ def ficha_contador(usuario_id: int, db: Session = Depends(get_db)):
         syncs_problemas=problemas,
         whatsapp_activo=whatsapp_activo,
     )
+    empleados = (
+        db.scalar(select(func.count()).where(models.Usuario.titular_id == u.id)) or 0
+    )
     return AdminContadorFichaOut(
-        usuario=_admin_usuario_out(u, len(clientes_arca)),
+        usuario=_admin_usuario_out(u, len(clientes_arca), empleados),
         resumen=resumen,
         clientes=clientes_out,
     )
@@ -576,7 +591,10 @@ def editar_usuario(
         )
         or 0
     )
-    return _admin_usuario_out(target, clientes)
+    empleados = (
+        db.scalar(select(func.count()).where(models.Usuario.titular_id == target.id)) or 0
+    )
+    return _admin_usuario_out(target, clientes, empleados)
 
 
 @router.post(
