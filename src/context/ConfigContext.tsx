@@ -19,6 +19,7 @@ import { apiGet, apiPut } from '@/services/apiClient';
 import { CONFIGURACION_INICIAL } from '@/data/configuracion';
 import { aplicarMontosOficiales } from '@/data/categorias';
 import { ventanasRecategorizacion } from '@/lib/recategorizacion';
+import { semestreRecatActual } from '@/lib/monotributo';
 import type { Categoria, Configuracion, ConfigAlertas, InflacionMercado } from '@/types';
 
 interface ConfigContextValue {
@@ -89,6 +90,8 @@ function combinar(guardado: Partial<Configuracion> | null | undefined): Configur
     inflacionMensualProyeccion: num(viejo.inflacionMensualProyeccion, CONFIGURACION_INICIAL.inflacionMensualProyeccion),
     inflacionAuto: nb((limpio as Record<string, unknown>).inflacionAuto, CONFIGURACION_INICIAL.inflacionAuto),
     ventanas: (limpio.ventanas as Configuracion['ventanas']) ?? ventanasRecategorizacion(),
+    periodoRecat:
+      (limpio.periodoRecat as Configuracion['periodoRecat']) ?? semestreRecatActual(),
     alertas,
     notificaciones: {
       activo: nb(ng.activo, N.activo),

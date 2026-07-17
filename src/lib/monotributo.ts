@@ -50,14 +50,23 @@ export function facturacionManual12m(comprobantes: Comprobante[], hasta: Date = 
   }, 0);
 }
 
-/** Mes de cierre del último semestre de recategorización cerrado respecto de `hoy` (junio o
- *  diciembre). El período de recat son los 12 meses que cierran ahí: hoy jul-2026 → cierra jun-2026
- *  (período jul-2025 a jun-2026). Enero–junio → cierra en diciembre del año anterior; julio–diciembre
- *  → junio del mismo año. */
-export function cierreSemestreRecat(hoy: Date = HOY): Date {
+/** Semestre de recategorización del monotributo. El período de 12 meses que se evalúa cierra en junio
+ *  (semestre Enero-Junio) o en diciembre (semestre Julio-Diciembre). */
+export type Semestre = 'Enero-Junio' | 'Julio-Diciembre';
+
+/** Mes de cierre (día 1) del período de 12 meses que evalúa la recategorización de un semestre:
+ *  'Enero-Junio' <anio> cierra en junio de <anio> (evalúa jul<anio-1>–jun<anio>); 'Julio-Diciembre'
+ *  <anio> cierra en diciembre de <anio> (evalúa ene<anio>–dic<anio>). */
+export function hastaSemestreRecat(semestre: Semestre, anio: number): Date {
+  return semestre === 'Enero-Junio' ? new Date(anio, 5, 1) : new Date(anio, 11, 1);
+}
+
+/** Semestre de recategorización más reciente ya cerrado respecto de `hoy` (para el default). Jul–dic
+ *  → cerró junio de este año (Enero-Junio); ene–jun → cerró diciembre del año anterior (Julio-Diciembre). */
+export function semestreRecatActual(hoy: Date = HOY): { semestre: Semestre; anio: number } {
   return hoy.getMonth() >= 6
-    ? new Date(hoy.getFullYear(), 5, 1)
-    : new Date(hoy.getFullYear() - 1, 11, 1);
+    ? { semestre: 'Enero-Junio', anio: hoy.getFullYear() }
+    : { semestre: 'Julio-Diciembre', anio: hoy.getFullYear() - 1 };
 }
 
 export interface FacturadoVentana {

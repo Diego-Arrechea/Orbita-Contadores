@@ -1,10 +1,13 @@
 import type { Configuracion } from '@/types';
 import { ventanasRecategorizacion } from '@/lib/recategorizacion';
+import { semestreRecatActual } from '@/lib/monotributo';
 
 export const CONFIGURACION_INICIAL: Configuracion = {
   // Ventanas de recategorización oficiales (vencen 5/8 y 5/2), generadas a partir de la fecha
   // actual para que nunca queden vencidas. Ver src/lib/recategorizacion.ts.
   ventanas: ventanasRecategorizacion(),
+  // Semestre de recat a evaluar por defecto: el más reciente cerrado (jun/dic) según hoy.
+  periodoRecat: semestreRecatActual(),
   // Inflación mensual para proyectar la facturación a 12 meses (compuesta). Por defecto la app usa la
   // inflación esperada del mercado (inflacionAuto = true); este valor MANUAL es el fallback / override
   // que el contador puede fijar. 0.02 = 2%/mes; 0 = sin inflación.
