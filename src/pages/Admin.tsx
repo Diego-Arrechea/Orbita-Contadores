@@ -574,9 +574,6 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
     return mapa;
   }, [usuarios]);
 
-  const toggleEquipo = (id: number) =>
-    setEquipoAbierto(prev => ({ ...prev, [id]: !prev[id] }));
-
   // Ordenamiento por columna (clic en el encabezado alterna asc/desc). Default: últimos accesos
   // primero (los que nunca accedieron quedan al final por el manejo de nulos en valorOrden).
   const [orden, setOrden] = useState<{ col: ColumnaOrden; dir: 'asc' | 'desc' } | null>({
@@ -584,19 +581,48 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
     dir: 'desc',
   });
 
-  const filtrados = useMemo(() => {
+  // Sólo se listan sueltas las cuentas PRINCIPALES (titulares/independientes/admins): los empleados
+  // aparecen únicamente anidados dentro del equipo de su titular. Un empleado huérfano (cuyo titular
+  // no está en la lista) se muestra suelto para no perderlo.
+  const idsExistentes = useMemo(() => new Set(usuarios.map(u => u.id)), [usuarios]);
+
+  // `filtrados` = cuentas principales que matchean la búsqueda. Si un EMPLEADO matchea, traemos a su
+  // titular (aunque el titular no matchee) y lo marcamos para desplegar solo (autoExpandIds), así el
+  // empleado sigue siendo encontrable pese a no estar suelto en la lista.
+  const { filtrados, autoExpandIds } = useMemo(() => {
+    const esPrincipal = (u: AdminUsuario) =>
+      u.titular_id == null || !idsExistentes.has(u.titular_id);
+    const principales = usuarios.filter(esPrincipal);
+    const tokens = busqueda.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) {
+      return { filtrados: principales, autoExpandIds: new Set<number>() };
+    }
     // Cada palabra de la búsqueda debe aparecer en el texto combinado de la cuenta. Así "Juan Pérez"
     // matchea aunque nombre y apellido sean campos distintos (con .some() por campo fallaba).
-    const tokens = busqueda.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) return usuarios;
-    return usuarios.filter(u => {
+    const coincide = (u: AdminUsuario) => {
       const heno = [u.nombre, u.apellido, u.email, u.estudio, u.cuit]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
       return tokens.every(t => heno.includes(t));
-    });
-  }, [usuarios, busqueda]);
+    };
+    const ids = new Set<number>();
+    const auto = new Set<number>();
+    for (const u of principales) if (coincide(u)) ids.add(u.id);
+    for (const u of usuarios) {
+      if (u.titular_id != null && idsExistentes.has(u.titular_id) && coincide(u)) {
+        ids.add(u.titular_id);
+        auto.add(u.titular_id);
+      }
+    }
+    return { filtrados: principales.filter(u => ids.has(u.id)), autoExpandIds: auto };
+  }, [usuarios, busqueda, idsExistentes]);
+
+  // Estado efectivo del desplegable: el toggle explícito del admin manda; si no lo tocó, respeta el
+  // auto-despliegue por búsqueda. El toggle invierte ese estado efectivo (no el crudo).
+  const efectivoAbierto = (id: number) => equipoAbierto[id] ?? autoExpandIds.has(id);
+  const toggleEquipo = (id: number) =>
+    setEquipoAbierto(prev => ({ ...prev, [id]: !(prev[id] ?? autoExpandIds.has(id)) }));
 
   const ordenados = useMemo(() => {
     if (!orden) return filtrados;
@@ -751,7 +777,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
           <TableBody>
             {ordenados.map(u => {
               const equipo = empleadosPorTitular.get(u.id) ?? [];
-              const abierto = !!equipoAbierto[u.id];
+              const abierto = efectivoAbierto(u.id);
               return (
                 <Fragment key={u.id}>
                   <TableRow>
@@ -854,7 +880,7 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
       <div className="space-y-3 lg:hidden">
         {ordenados.map(u => {
           const equipo = empleadosPorTitular.get(u.id) ?? [];
-          const abierto = !!equipoAbierto[u.id];
+          const abierto = efectivoAbierto(u.id);
           return (
           <Card key={u.id} className="space-y-3 p-4">
             <button
