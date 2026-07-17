@@ -42,6 +42,21 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-17-ver-clave-guardada',
+    fecha: '2026-07-17',
+    titulo: 'Recuperá la clave fiscal que tenías cargada',
+    resumen: 'Cuando la clave de un cliente deja de funcionar, mostramos la que tenías guardada.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Si la clave fiscal de un cliente deja de funcionar (o le pidieron cambiarla), al abrir ' +
+          '"Actualizar clave fiscal" ahora ves la que tenías guardada, para usarla de referencia al ' +
+          'cargar la nueva.',
+      },
+    ],
+  },
+  {
     id: '2026-07-17-ventana-recategorizacion',
     fecha: '2026-07-17',
     titulo: 'Evaluá la recategorización por período',
