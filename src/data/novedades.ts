@@ -42,21 +42,6 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
-    id: '2026-07-20-boton-actualizar-cliente',
-    fecha: '2026-07-20',
-    titulo: 'Actualizá un cliente cuando quieras',
-    resumen: 'Cada cliente de tu lista tiene un botón para actualizar su información al instante.',
-    items: [
-      {
-        tipo: 'nuevo',
-        texto:
-          'Sumamos un botón de actualizar en cada cliente de la lista: al tocarlo, ponemos al día su ' +
-          'información en el momento, sin esperar a la actualización automática. Mientras trabaja ves ' +
-          'un indicador en el cliente y te avisamos cuando queda al día.',
-      },
-    ],
-  },
-  {
     id: '2026-07-17-ver-clave-guardada',
     fecha: '2026-07-17',
     titulo: 'Recuperá la clave fiscal que tenías cargada',
