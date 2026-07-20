@@ -940,6 +940,15 @@ class AFIP:
             referer,
         )
         if gen.get("estado") != "ok":
+            # ARCA rechaza un fechaDesde anterior al alta del contribuyente con
+            # "Rango de fechas inválido" (campo del calendario), en vez de devolver vacío.
+            # En la PRIMERA sync el histórico arranca ~4 años atrás y puede caer antes del
+            # alta de un cliente recién inscripto: esa ventana no existe para este CUIT →
+            # la tratamos como vacía y seguimos con las ventanas más nuevas (que sí traen
+            # datos), en vez de abortar toda la sync y dejarlo "sin resolver".
+            if "btnCalendarioFechaEmision" in (gen.get("camposErrores") or {}):
+                self.log.info("Ventana %s previa al alta del contribuyente; la salteo", rango)
+                return []
             raise AFIPError(f"generarConsulta falló: {gen}")
         qid = gen["datos"]["idConsulta"]
 
