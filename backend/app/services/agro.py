@@ -165,26 +165,66 @@ def sincronizar_agro_si_corresponde(
     return sincronizar_agro(db, cuit, sector=sector, marcar_flag=False, con_importe=True)
 
 
+# Backoff entre reintentos de la consulta LSP (servicio `serviciosjava2/lsp-web` del agro). ARCA
+# rate-limitea ese host por VOLUMEN de IP; el diseño anterior reintentaba la consulta fallida en CADA
+# pasada del worker, así que la detección pendiente de toda la cartera (cientos de clientes que nunca
+# llegaban a marcarse "chequeado" porque la consulta fallaba) martillaba el servicio y mantenía el
+# bloqueo permanente → los agropecuarios legítimos nunca bajaban sus liquidaciones. El backoff corta
+# ese bucle: un intento fallido no se reintenta hasta pasado el cooldown, bajando el volumen por debajo
+# del umbral del WAF. Marcados (el contador los espera) reintentan diario; la detección masiva, semanal.
+COOLDOWN_MARCADO = dt.timedelta(days=1)
+COOLDOWN_DETECCION = dt.timedelta(days=7)
+
+
+def _en_cooldown(ultimo: dt.datetime | None, ahora: dt.datetime, ventana: dt.timedelta) -> bool:
+    """True si `ultimo` (última consulta LSP, éxito o fallo) cae dentro de `ventana` desde `ahora`."""
+    if ultimo is None:
+        return False
+    if ultimo.tzinfo is None:  # Postgres aware; SQLite naive → normalizamos a UTC
+        ultimo = ultimo.replace(tzinfo=dt.timezone.utc)
+    return ultimo > ahora - ventana
+
+
 def paso_worker(db: Session, cuit: str, *, sector: str = "hacienda") -> dict | None:
     """Entrada del motor 24/7 para el agro: DETECCIÓN GRADUAL + mantenimiento, repartido en el ciclo
     normal (reemplaza la barrida masiva, que gatillaba el rate-limit del WAF de ARCA).
 
-    - Cliente marcado (`factura_agro`) → mantenimiento semanal (sincronizar_agro_si_corresponde).
-    - Nunca chequeado (`agro_chequeado_en` NULL) → DETECCIÓN una vez, LIVIANA (sólo grilla, sin PDFs
-      → no gatilla el WAF). Marca la fecha SÓLO si la consulta salió bien; si falla (bloqueo/ARCA),
-      queda NULL y se reintenta en la próxima pasada (auto-sanador). Si detecta liquidaciones, prende
-      el flag y sus importes se llenan en la próxima visita (gate `pendiente_importe`).
+    Todo intento de consulta LSP sella `agro_ultimo_intento` (éxito o fallo) y respeta un cooldown
+    (ver COOLDOWN_*): así un fallo por bloqueo de ARCA NO se reintenta en la próxima pasada sino recién
+    pasado el cooldown. Esto evita que la detección pendiente de toda la cartera martille el servicio y
+    lo mantenga bloqueado (era la causa de que los agropecuarios legítimos no bajaran sus liquidaciones).
+
+    - Cliente marcado (`factura_agro`) → mantenimiento (sincronizar_agro_si_corresponde). Si todavía le
+      faltan los importes (total 0) reintenta como mucho cada COOLDOWN_MARCADO (antes: cada pasada).
+    - Nunca chequeado (`agro_chequeado_en` NULL) → DETECCIÓN una vez, LIVIANA (sólo grilla, sin PDFs).
+      Marca la fecha SÓLO si salió bien; si falla, queda NULL pero no se reintenta hasta COOLDOWN_DETECCION.
     - Ya chequeado y sin liquidaciones → no hace nada (no vuelve a chequear).
     """
     cliente = db.get(models.ClienteARCA, cuit)
     if cliente is None:
         return None
+    ahora = dt.datetime.now(dt.timezone.utc)
+
     if cliente.factura_agro:
+        # Marcado: mantenimiento. Mientras siga sin importes (total 0) el mantenimiento reintenta en
+        # cada pasada → bajo bloqueo eso martilla; backoff diario. Con importes ya al día, el gate
+        # semanal de sincronizar_agro_si_corresponde manda (no lo tocamos).
+        if _total_bruto(db, cuit) == 0 and _en_cooldown(cliente.agro_ultimo_intento, ahora, COOLDOWN_MARCADO):
+            return None
+        cliente.agro_ultimo_intento = ahora
+        db.commit()
         return sincronizar_agro_si_corresponde(db, cuit, sector=sector)
+
     if cliente.agro_chequeado_en is not None:
         return None  # ya se chequeó y no es agropecuario
-    # Detección liviana. Si sincronizar_agro levanta (bloqueo/ARCA), NO marcamos la fecha → reintenta.
+    # Detección liviana. Backoff: no reintentar la detección hasta pasado el cooldown (el reintento en
+    # cada pasada de toda la cartera pendiente era lo que auto-gatillaba el bloqueo de ARCA).
+    if _en_cooldown(cliente.agro_ultimo_intento, ahora, COOLDOWN_DETECCION):
+        return None
+    cliente.agro_ultimo_intento = ahora
+    db.commit()
+    # Si sincronizar_agro levanta (bloqueo/ARCA), NO marcamos chequeado → reintenta pasado el cooldown.
     res = sincronizar_agro(db, cuit, sector=sector, marcar_flag=True, con_importe=False)
-    cliente.agro_chequeado_en = dt.datetime.now(dt.timezone.utc)
+    cliente.agro_chequeado_en = ahora
     db.commit()
     return res

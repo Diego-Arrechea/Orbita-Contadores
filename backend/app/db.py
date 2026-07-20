@@ -252,6 +252,12 @@ def _migrar_clientes_arca(conn) -> None:
     if "agro_chequeado_en" not in cols:
         tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
         conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN agro_chequeado_en {tipo}"))
+    # Cuándo se INTENTÓ por última vez consultar el agro (con éxito o fallo). Habilita el backoff que
+    # evita reintentar la consulta LSP en cada pasada del worker cuando ARCA rate-limitea (el reintento
+    # constante de las detecciones fallidas auto-gatillaba el bloqueo). TIMESTAMP portable SQLite + Postgres.
+    if "agro_ultimo_intento" not in cols:
+        tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
+        conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN agro_ultimo_intento {tipo}"))
     # Remuneración en relación de dependencia ("Aportes en Línea"), JSON serializado. TEXT portable.
     if "remuneraciones_json" not in cols:
         conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN remuneraciones_json TEXT"))

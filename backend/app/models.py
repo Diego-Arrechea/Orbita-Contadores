@@ -280,6 +280,13 @@ class ClienteARCA(Base):
     agro_chequeado_en: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Cuándo se INTENTÓ por última vez consultar el agro (éxito o fallo). Lo usa el backoff de
+    # services/agro.py::paso_worker: ante un fallo (ARCA rate-limitea el servicio LSP) NO se reintenta
+    # en la próxima pasada sino recién pasado un cooldown (detección semanal, marcados diario). Corta el
+    # bucle de reintentos que, multiplicado por toda la cartera, auto-gatillaba el bloqueo de ARCA.
+    agro_ultimo_intento: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # ¿El contador tiene activo el monitoreo de este cliente? En False el cliente queda "pausado": el
     # motor de sincronización lo saltea (deja de traer sus datos) y en la lista del contador aparece
     # atenuado como "Desactivado". Lo prende/apaga el propio contador desde la ficha. Default True
