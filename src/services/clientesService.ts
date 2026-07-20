@@ -57,6 +57,7 @@ interface ClienteBackend {
   tiene_facturacion?: boolean | null;
   clave_requiere_cambio?: boolean | null; // ARCA le pide al cliente cambiar su Clave Fiscal
   clave_invalida?: boolean | null; // la Clave Fiscal guardada no es válida (hay que corregirla)
+  contribuyente_irregular?: boolean | null; // registra irregularidades en el padrón (regulariza en la dependencia)
   factura_agro?: boolean | null; // factura por el sector agropecuario (Liquidaciones Electrónicas)
   facturacion_agro_12m?: number | null; // suma de liquidaciones agro de los últimos 12 meses
   facturacion_agro_total?: number | null; // histórico de liquidaciones agro
@@ -177,6 +178,7 @@ function construirCliente(
     tieneFacturacion: bk.tiene_facturacion ?? false,
     claveRequiereCambio: bk.clave_requiere_cambio ?? false,
     claveInvalida: bk.clave_invalida ?? false,
+    contribuyenteIrregular: bk.contribuyente_irregular ?? false,
     facturaAgro: bk.factura_agro ?? false,
     facturacionAgro12m: bk.facturacion_agro_12m ?? 0,
     facturacionAgroTotal: bk.facturacion_agro_total ?? 0,

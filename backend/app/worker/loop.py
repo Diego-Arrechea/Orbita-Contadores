@@ -97,6 +97,9 @@ def _clientes_vencidos(db, limite: dt.datetime, limite_fallidos: dt.datetime):
             # puede resolver (p. ej. Blanco Omar José reintentando en vano).
             ClienteARCA.clave_invalida.is_(False),
             ClienteARCA.clave_requiere_cambio.is_(False),
+            # Igual criterio si registra irregularidades en el padrón: reintentar es en vano hasta que
+            # el cliente regularice en la dependencia. Una sync exitosa (cuando regularice) apaga el flag.
+            ClienteARCA.contribuyente_irregular.is_(False),
             or_(
                 ult.c.fecha.is_(None),                                            # nunca sincronizado
                 ult.c.fecha < limite,                                             # vencido normal

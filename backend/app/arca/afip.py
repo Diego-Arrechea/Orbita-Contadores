@@ -367,6 +367,16 @@ class LoginSinJWTError(AFIPError):
     incluye una pista de lo que ARCA devolvió (para diagnosticar cómo proceder)."""
 
 
+class ContribuyenteIrregularError(AFIPError):
+    """El contribuyente registra irregularidades en el padrón de ARCA. Al fijar el contribuyente
+    (setearContribuyente), ARCA devuelve una pantalla de error ("La CUIT ... registra irregularidades.
+    Deberá dirigirse a la dependencia a la cual se encuentra inscripto. Err: 002") en vez de habilitar
+    la consulta. Sin detectarlo, el flujo seguía hasta generarConsulta y fallaba con el mensaje
+    críptico 'Rango de fechas inválido'. NO se puede sincronizar hasta que el cliente regularice su
+    situación en la dependencia — no es un fallo transitorio ni algo que resolvamos nosotros. Subclase
+    propia para que el caller marque el cliente y le avise al contador con un motivo claro."""
+
+
 class AFIP:
     """Cliente de Clave Fiscal de AFIP/ARCA.
 
@@ -799,8 +809,24 @@ class AFIP:
             self._abrir_o_relogin()  # resetea _contribuyente_set y fes_exp
         if not self._contribuyente_set:
             idc = self._idcontribuyente_objetivo()
-            self._fes_get(f"{FES_BASE}/setearContribuyente.do?idContribuyente={idc}")
+            r = self._fes_get(f"{FES_BASE}/setearContribuyente.do?idContribuyente={idc}")
+            self._chequear_irregularidades(r.text)
             self._contribuyente_set = True
+
+    @staticmethod
+    def _chequear_irregularidades(html: str) -> None:
+        """Levanta ContribuyenteIrregularError si setearContribuyente devolvió la pantalla de error de
+        ARCA por irregularidades en el padrón ("La CUIT ... registra irregularidades. Deberá dirigirse
+        a la dependencia... Err: 002"). Es lo que hace fallar después a generarConsulta con el mensaje
+        críptico 'Rango de fechas inválido': el contribuyente no quedó habilitado para la consulta.
+        Las firmas ("registra irregularidades", "Err: 002") no tienen acentos → la búsqueda es inmune
+        al encoding (la página viene en iso-8859-1)."""
+        if re.search(r"registra\s+irregularidades", html, re.I) or "Err: 002" in html:
+            raise ContribuyenteIrregularError(
+                "El cliente registra irregularidades en su inscripción fiscal. Debe regularizar su "
+                "situación en la dependencia donde se encuentra inscripto para poder consultar su "
+                "información."
+            )
 
     def _idcontribuyente_objetivo(self) -> str:
         """Índice de contribuyente para setearContribuyente.do.
@@ -940,15 +966,6 @@ class AFIP:
             referer,
         )
         if gen.get("estado") != "ok":
-            # ARCA rechaza un fechaDesde anterior al alta del contribuyente con
-            # "Rango de fechas inválido" (campo del calendario), en vez de devolver vacío.
-            # En la PRIMERA sync el histórico arranca ~4 años atrás y puede caer antes del
-            # alta de un cliente recién inscripto: esa ventana no existe para este CUIT →
-            # la tratamos como vacía y seguimos con las ventanas más nuevas (que sí traen
-            # datos), en vez de abortar toda la sync y dejarlo "sin resolver".
-            if "btnCalendarioFechaEmision" in (gen.get("camposErrores") or {}):
-                self.log.info("Ventana %s previa al alta del contribuyente; la salteo", rango)
-                return []
             raise AFIPError(f"generarConsulta falló: {gen}")
         qid = gen["datos"]["idConsulta"]
 

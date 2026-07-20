@@ -263,6 +263,10 @@ class ClienteOut(BaseModel):
     # contador la corrige cargando la correcta desde la ficha. Distinto de clave_requiere_cambio (que es
     # el cambio forzado por AFIP, que sólo puede hacer el cliente).
     clave_invalida: bool = False
+    # El cliente registra irregularidades en su inscripción ante ARCA: la consulta de su información
+    # queda bloqueada hasta que regularice su situación en la dependencia donde está inscripto. No lo
+    # resolvemos nosotros ni el contador: es un trámite del cliente.
+    contribuyente_irregular: bool = False
     # Facturación agropecuaria (Liquidaciones Electrónicas del sector primario): si el cliente factura
     # así, `factura_agro` está en true y `facturacion_agro_12m` es la suma de esas liquidaciones en los
     # últimos 12 meses (para SUMARLA a la facturación 12m del cliente, que no las trae de otra fuente).
