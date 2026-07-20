@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, type ReactNode } from 'react';
 import { CargasProvider } from '@/context/CargasContext';
+import { SyncManualProvider } from '@/context/SyncManualContext';
 import { PreparacionesProvider } from '@/context/PreparacionesContext';
 import { ConfigProvider } from '@/context/ConfigContext';
 import { AppLayout } from '@/components/layout/AppLayout';
@@ -21,6 +22,7 @@ import {
 import { getMe, registrarLogout } from '@/services/authService';
 import { InvalidadorCache } from '@/components/shared/InvalidadorCache';
 import { CargasToasts } from '@/components/shared/CargasToasts';
+import { SyncManualToasts } from '@/components/shared/SyncManualToasts';
 
 /** Sin sesión → al login. (Cuentas demo en el front; ver src/lib/cuenta.ts). */
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -85,9 +87,11 @@ export default function App() {
 
   return (
     <CargasProvider>
+      <SyncManualProvider>
       <PreparacionesProvider>
       <InvalidadorCache />
       <CargasToasts />
+      <SyncManualToasts />
       <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/registro" element={<Registro />} />
@@ -158,6 +162,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </PreparacionesProvider>
+      </SyncManualProvider>
     </CargasProvider>
   );
 }

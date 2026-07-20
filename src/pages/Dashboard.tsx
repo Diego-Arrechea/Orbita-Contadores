@@ -47,6 +47,7 @@ import { esMonotributista, etiquetaRegimenCorta } from '@/lib/regimen';
 import { derivarAlertas, estadoDesdeAlertas } from '@/lib/alertas';
 import { useClientesReales } from '@/lib/queries';
 import { useCargas } from '@/context/CargasContext';
+import { useSyncManual } from '@/context/SyncManualContext';
 import { cuentaActual, tienePermiso } from '@/lib/cuenta';
 import { formatCuit, formatPercent, formatDate } from '@/lib/utils';
 import type { EstadoAlerta, TipoActividad } from '@/types';
@@ -396,7 +397,7 @@ export function Dashboard() {
               <HeadOrdenable col="meses" label="Meses adeud." {...propsOrden} />
               <HeadOrdenable col="estado" label="Estado" {...propsOrden} />
               <HeadOrdenable col="extraccion" label="Última extracción" {...propsOrden} />
-              <TableHead className="w-[40px]" />
+              <TableHead className="w-[76px]" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -550,12 +551,15 @@ export function Dashboard() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <Link
-                    to={`/clientes/${cliente.id}`}
-                    className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </Link>
+                  <div className="flex items-center justify-end gap-0.5">
+                    <BotonSincronizar cuit={cliente.cuit} nombre={cliente.nombre} />
+                    <Link
+                      to={`/clientes/${cliente.id}`}
+                      className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Link>
+                  </div>
                 </TableCell>
               </TableRow>
               );
@@ -620,7 +624,10 @@ export function Dashboard() {
                       {cliente.contribuyenteIrregular && <AvisoContribuyenteIrregular />}
                     </div>
                   </div>
-                  <AlertaBadge estado={estado} />
+                  <div className="flex shrink-0 items-center gap-1">
+                    <AlertaBadge estado={estado} />
+                    <BotonSincronizar cuit={cliente.cuit} nombre={cliente.nombre} />
+                  </div>
                 </div>
 
                 {noMono ? (
@@ -730,6 +737,35 @@ function AvisoClaveInvalida() {
       <KeyRound className="h-3 w-3 shrink-0" />
       Revisá su Clave Fiscal
     </div>
+  );
+}
+
+// Botón para re-sincronizar A MANO un cliente desde la lista. Dispara la actualización en segundo
+// plano (SyncManualContext); mientras corre muestra un spinner y queda deshabilitado, y al terminar
+// el contexto refresca la cartera y muestra un aviso. `stopPropagation`/`preventDefault` para no
+// navegar a la ficha (la fila/tarjeta es clickeable).
+function BotonSincronizar({ cuit, nombre, className }: { cuit: string; nombre: string; className?: string }) {
+  const { sincronizar, estaSincronizando } = useSyncManual();
+  const activo = estaSincronizando(cuit);
+  return (
+    <button
+      type="button"
+      onClick={e => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!activo) sincronizar(cuit, nombre);
+      }}
+      disabled={activo}
+      title={activo ? 'Actualizando…' : 'Actualizar la información de este cliente'}
+      aria-label="Actualizar cliente"
+      className={`inline-flex items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground ${className ?? ''}`}
+    >
+      {activo ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <RefreshCcw className="h-4 w-4" />
+      )}
+    </button>
   );
 }
 
