@@ -42,23 +42,6 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
-    id: '2026-07-20-aviso-irregularidades',
-    fecha: '2026-07-20',
-    titulo: 'Te avisamos cuando un cliente registra irregularidades',
-    resumen:
-      'Si no podemos consultar a un cliente porque registra irregularidades en su inscripción, ahora lo ves claro en la lista.',
-    items: [
-      {
-        tipo: 'nuevo',
-        texto:
-          'Cuando un cliente registra irregularidades en su inscripción, su información no puede ' +
-          'consultarse hasta que regularice su situación en la dependencia donde está inscripto. ' +
-          'Ahora lo detectamos y te lo mostramos con un aviso claro en la lista de clientes, en vez ' +
-          'de dejarlo como un error sin explicación.',
-      },
-    ],
-  },
-  {
     id: '2026-07-17-ver-clave-guardada',
     fecha: '2026-07-17',
     titulo: 'Recuperá la clave fiscal que tenías cargada',
