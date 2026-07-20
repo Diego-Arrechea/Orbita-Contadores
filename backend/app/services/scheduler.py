@@ -13,6 +13,12 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import select
 
 from .. import models
+from ..arca.afip import (
+    ClaveInvalidaError,
+    ClaveVencidaError,
+    ContribuyenteIrregularError,
+    LoginDesafiadoError,
+)
 from ..db import SessionLocal
 from .alertas import evaluar_y_notificar
 from .sincronizacion import sincronizar
@@ -28,15 +34,31 @@ _scheduler: BackgroundScheduler | None = None
 SYNC_REINTENTOS = 2
 SYNC_BACKOFF_SEG = (30, 90)
 
+# Errores que NO son transitorios: la pelota está en el contador (clave a corregir) o en el cliente
+# (irregularidades a regularizar en la dependencia), o ARCA está pidiendo un captcha. Reintentarlos
+# con backoff no arregla nada y encima suma accesos seguidos que pueden gatillar el captcha de ARCA.
+# `sincronizar()` ya marcó el cliente y registró la extracción fallida en su except → acá los
+# propagamos de una, sin gastar reintentos. Vale para el sync diario y para el worker continuo (ambos
+# pasan por esta función). LoginSinJWTError queda AFUERA a propósito: puede ser un hipo transitorio.
+_NO_REINTENTABLES = (
+    ClaveVencidaError,
+    ClaveInvalidaError,
+    LoginDesafiadoError,
+    ContribuyenteIrregularError,
+)
+
 
 def _sincronizar_con_reintento(db, cuit: str) -> int:
     """Sincroniza un cliente reintentando ante fallos (cada fallo deja su fila en `extracciones`;
     el panel marca la falla como resuelta si un intento posterior sale bien). Propaga el último
-    error si se agotan los intentos."""
+    error si se agotan los intentos. Los errores no transitorios (`_NO_REINTENTABLES`) se propagan
+    sin reintentar: el cliente ya quedó marcado y reintentar sería en vano."""
     ultimo: Exception | None = None
     for intento in range(SYNC_REINTENTOS + 1):
         try:
             return sincronizar(db, cuit)
+        except _NO_REINTENTABLES:
+            raise
         except Exception as e:  # noqa: BLE001
             ultimo = e
             if intento < SYNC_REINTENTOS:
