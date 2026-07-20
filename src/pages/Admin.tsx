@@ -2082,8 +2082,75 @@ function TabClientes() {
   );
 }
 
+// Botón para SINCRONIZAR a mano un cliente desde el panel (superadmin). Reusa el endpoint admin
+// reintentar-sync (dispara la sync completa en background, para cualquier cliente) y poolea hasta que
+// termina; al terminar revalida las vistas del panel para reflejar la nueva "última sincronización".
+// Autónomo (estado propio) para que puedan convivir varios corriendo a la vez en la tabla.
+function BotonSincronizarAdmin({ cuit }: { cuit: string }) {
+  const qc = useQueryClient();
+  const [corriendo, setCorriendo] = useState(false);
+  const [error, setError] = useState('');
+
+  async function sincronizar() {
+    setCorriendo(true);
+    setError('');
+    try {
+      const { job_id } = await reintentarSync(cuit);
+      // El sync es pesado (puede tardar varios minutos): pooleamos cada 3s hasta que termine.
+      for (let i = 0; i < 140; i++) {
+        await sleep(3000);
+        const j = await estadoSync(job_id);
+        if (j.estado === 'terminado') break;
+        if (j.estado === 'error') {
+          setError(j.error || 'No se pudo sincronizar.');
+          break;
+        }
+      }
+      // Revalida lo afectado: la fila actualiza su "última sincronización" y cambian métricas/motor.
+      void qc.invalidateQueries({ queryKey: ['admin', 'clientes'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'metricas'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'motor'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'fallidas'] });
+    } catch (e) {
+      setError(mensajeDeError(e));
+    } finally {
+      setCorriendo(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={corriendo}
+        onClick={e => {
+          e.stopPropagation();
+          void sincronizar();
+        }}
+        title="Sincronizar este cliente ahora"
+      >
+        {corriendo ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" /> Sincronizando…
+          </>
+        ) : (
+          <>
+            <RotateCw className="h-4 w-4" /> Sincronizar
+          </>
+        )}
+      </Button>
+      {error && (
+        <span className="max-w-[180px] truncate text-[11px] text-danger" title={error}>
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** Tabla de clientes reutilizable: la usa la vista global (con columna Contador) y la ficha de un
- * contador (sin esa columna). Read-only. */
+ * contador (sin esa columna). Read-only salvo el botón de sincronizar (acción de superadmin). */
 function TablaClientes({
   clientes,
   mostrarContador,
@@ -2097,7 +2164,7 @@ function TablaClientes({
   orden?: Orden;
   onOrden?: (o: Orden) => void;
 }) {
-  const cols = mostrarContador ? 7 : 6;
+  const cols = mostrarContador ? 8 : 7;
   // Si el padre no controla el orden (p.ej. la ficha del contador), lo manejamos acá: las columnas
   // quedan igual de clickeables.
   const [ordenLocal, setOrdenLocal] = useState<Orden>({ campo: 'estado', dir: 'asc' });
@@ -2161,6 +2228,7 @@ function TablaClientes({
               <TableHead className="text-center">{th('Comprob.', 'comprob')}</TableHead>
               <TableHead className="text-center">{th('Cuota', 'cuota')}</TableHead>
               <TableHead>{th('Última sincronización', 'estado')}</TableHead>
+              <TableHead className="text-right">Acción</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -2184,6 +2252,9 @@ function TablaClientes({
                 </TableCell>
                 <TableCell className="text-sm">
                   <EstadoSync c={c} />
+                </TableCell>
+                <TableCell className="text-right">
+                  <BotonSincronizarAdmin cuit={c.cuit} />
                 </TableCell>
               </TableRow>
             ))}
@@ -2241,6 +2312,9 @@ function TablaClientes({
                 Última sincronización
               </span>
               <EstadoSync c={c} />
+            </div>
+            <div className="flex justify-end">
+              <BotonSincronizarAdmin cuit={c.cuit} />
             </div>
           </Card>
         ))}
