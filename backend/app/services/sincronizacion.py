@@ -20,6 +20,7 @@ from ..arca import motor
 from ..arca.afip import (
     ClaveInvalidaError,
     ClaveVencidaError,
+    ContribuyenteIrregularError,
     LoginDesafiadoError,
     LoginSinJWTError,
 )
@@ -246,6 +247,9 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
             cliente.clave_requiere_cambio = False
         if cliente.clave_invalida:
             cliente.clave_invalida = False
+        # Si estaba marcado por irregularidades en el padrón y ahora la consulta entró, ya regularizó.
+        if cliente.contribuyente_irregular:
+            cliente.contribuyente_irregular = False
         nuevos = 0
         for direccion, crudos in datos.items():
             _, nv = _upsert(db, cuit, direccion, crudos)
@@ -266,6 +270,15 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
         # el aviso solo.
         db.rollback()
         cliente.clave_invalida = True
+        db.commit()
+        _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
+        raise
+    except ContribuyenteIrregularError as e:
+        # El contribuyente registra irregularidades en el padrón de ARCA: la consulta queda bloqueada
+        # hasta que regularice su situación en la dependencia. No es transitorio ni lo arreglamos
+        # nosotros (ni el contador): marcamos el cliente para avisarle y NO reintentamos en vano.
+        db.rollback()
+        cliente.contribuyente_irregular = True
         db.commit()
         _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
         raise

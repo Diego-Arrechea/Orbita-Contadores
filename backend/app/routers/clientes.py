@@ -296,6 +296,7 @@ def construir_cliente_out(
         tiene_facturacion=bool(c.cert_cifrado and c.key_cifrado),
         clave_requiere_cambio=bool(c.clave_requiere_cambio),
         clave_invalida=bool(c.clave_invalida),
+        contribuyente_irregular=bool(c.contribuyente_irregular),
         factura_agro=bool(c.factura_agro),
         facturacion_agro_12m=agro_12m,
         facturacion_agro_total=agro_total,

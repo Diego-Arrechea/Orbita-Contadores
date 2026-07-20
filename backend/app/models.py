@@ -256,6 +256,14 @@ class ClienteARCA(Base):
     clave_invalida: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False
     )
+    # El contribuyente registra irregularidades en el padrón de ARCA: al fijar el contribuyente, ARCA
+    # devuelve una pantalla de error ("registra irregularidades... dirigirse a la dependencia... Err:
+    # 002") en vez de habilitar la consulta de comprobantes. La sync lo detecta y lo prende (ver
+    # services/sincronizacion.py); una sync exitosa lo apaga solo. Se muestra en la lista de clientes
+    # para que el contador le avise al cliente que regularice en la dependencia. No lo arreglamos nosotros.
+    contribuyente_irregular: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
     # Línea de base del Domicilio Fiscal Electrónico: cuándo el motor "fotografió" por primera vez las
     # comunicaciones de este cliente. NULL = todavía no se baselineó → la primera pasada guarda las
     # comunicaciones vigentes como YA VISTAS (sin punto rojo ni alerta); sólo las que aparezcan después

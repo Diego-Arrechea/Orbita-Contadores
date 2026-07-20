@@ -287,6 +287,7 @@ def sincronizaciones_fallidas(db: Session = Depends(get_db), horas: int = 48, li
             models.Usuario.email,
             models.ClienteARCA.clave_requiere_cambio,
             models.ClienteARCA.clave_invalida,
+            models.ClienteARCA.contribuyente_irregular,
         )
         .outerjoin(models.ClienteARCA, models.ClienteARCA.cuit == models.Extraccion.cuit)
         .outerjoin(models.Usuario, models.Usuario.id == models.ClienteARCA.usuario_id)
@@ -299,7 +300,7 @@ def sincronizaciones_fallidas(db: Session = Depends(get_db), horas: int = 48, li
     ).all()
 
     # Para resolver "¿se sincronizó bien después?": última extracción EXITOSA por cuit (una query).
-    cuits = {e.cuit for e, _, _, _, _ in filas}
+    cuits = {e.cuit for e, _, _, _, _, _ in filas}
     ultima_ok: dict[str, dt.datetime] = {}
     if cuits:
         ultima_ok = dict(
@@ -314,7 +315,7 @@ def sincronizaciones_fallidas(db: Session = Depends(get_db), horas: int = 48, li
         )
 
     out = []
-    for e, nombre, email, clave_requiere_cambio, clave_invalida in filas:
+    for e, nombre, email, clave_requiere_cambio, clave_invalida, contribuyente_irregular in filas:
         ok_fecha = ultima_ok.get(e.cuit)
         out.append(
             AdminSyncFallidaOut(
@@ -325,13 +326,15 @@ def sincronizaciones_fallidas(db: Session = Depends(get_db), horas: int = 48, li
                 motivo=e.motivo,
                 duracion_ms=e.duracion_ms,
                 # Resuelto si hubo una sync exitosa POSTERIOR, o si el cliente está en un estado
-                # CONOCIDO y ya avisado al contador (AFIP le pide cambiar la Clave Fiscal, o su clave no
-                # es válida y hay que corregirla): no es un incidente abierto de ops, la pelota está en
-                # el contador/cliente. Ver clave_requiere_cambio / clave_invalida.
+                # CONOCIDO y ya avisado al contador (AFIP le pide cambiar la Clave Fiscal, su clave no
+                # es válida y hay que corregirla, o registra irregularidades en el padrón y debe
+                # regularizar en la dependencia): no es un incidente abierto de ops, la pelota está en
+                # el contador/cliente. Ver clave_requiere_cambio / clave_invalida / contribuyente_irregular.
                 resuelto=(
                     (ok_fecha is not None and ok_fecha > e.fecha)
                     or bool(clave_requiere_cambio)
                     or bool(clave_invalida)
+                    or bool(contribuyente_irregular)
                 ),
                 ultima_sync_ok=_iso(ok_fecha),
             )

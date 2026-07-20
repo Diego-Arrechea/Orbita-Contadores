@@ -447,6 +447,7 @@ export function Dashboard() {
                       )}
                       {cliente.claveRequiereCambio && <AvisoClaveFiscal />}
                       {cliente.claveInvalida && <AvisoClaveInvalida />}
+                      {cliente.contribuyenteIrregular && <AvisoContribuyenteIrregular />}
                     </div>
                   </Link>
                 </TableCell>
@@ -616,6 +617,7 @@ export function Dashboard() {
                       )}
                       {cliente.claveRequiereCambio && <AvisoClaveFiscal />}
                       {cliente.claveInvalida && <AvisoClaveInvalida />}
+                      {cliente.contribuyenteIrregular && <AvisoContribuyenteIrregular />}
                     </div>
                   </div>
                   <AlertaBadge estado={estado} />
@@ -727,6 +729,23 @@ function AvisoClaveInvalida() {
     >
       <KeyRound className="h-3 w-3 shrink-0" />
       Revisá su Clave Fiscal
+    </div>
+  );
+}
+
+// Aviso, en la fila/tarjeta del cliente, de que su información no puede consultarse porque registra
+// irregularidades en su inscripción. Lo resuelve el CLIENTE regularizando su situación en la
+// dependencia donde está inscripto (no el contador); el aviso se apaga solo cuando la info se
+// actualiza. NO menciona el mecanismo: se redacta como un hecho de la situación fiscal del cliente.
+function AvisoContribuyenteIrregular() {
+  return (
+    <div
+      className="mt-1 inline-flex items-center gap-1 rounded-md bg-destructive/15 px-1.5 py-0.5 text-[11px] font-medium text-destructive"
+      title="No pudimos actualizar la información de este cliente porque registra irregularidades en su inscripción. Debe regularizar su situación en la dependencia donde se encuentra inscripto."
+      onClick={e => e.preventDefault()}
+    >
+      <AlertTriangle className="h-3 w-3 shrink-0" />
+      Registra irregularidades
     </div>
   );
 }
