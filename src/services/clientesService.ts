@@ -10,9 +10,8 @@ import type {
 import { CATEGORIAS } from '@/data/categorias';
 import { derivarHistorial } from '@/lib/derivarHistorial';
 import { ventana12Meses } from '@/lib/monotributo';
-import { ApiError, apiGet, apiGetBlob, apiPost, apiPut, apiDelete } from './apiClient';
+import { ApiError, apiGet, apiGetBlob, apiPut, apiDelete } from './apiClient';
 import { getComprobantesReales } from './comprobantesService';
-import type { JobProgreso } from './onboardingService';
 
 interface ClienteBackend {
   cuit: string;
@@ -221,17 +220,6 @@ export async function getClienteReal(cuit: string): Promise<Cliente | null> {
 /** El historial de sincronizaciones (extracciones) de un cliente real, más reciente primero. */
 export async function getExtraccionesReales(cuit: string): Promise<Extraccion[]> {
   return apiGet<Extraccion[]>(`/clientes/${cuit.replace(/\D/g, '')}/extracciones`);
-}
-
-/** Dispara una re-sincronización manual de un cliente (comprobantes + padrón). Corre en segundo
- *  plano en el backend; devuelve el job_id para seguir el progreso con `getProgresoSync`. */
-export async function sincronizarClienteManual(cuit: string): Promise<{ job_id: string }> {
-  return apiPost<{ job_id: string }>(`/clientes/${cuit.replace(/\D/g, '')}/sincronizar`);
-}
-
-/** Progreso de una sincronización en curso (misma forma de job que el alta). */
-export async function getProgresoSync(jobId: string): Promise<JobProgreso> {
-  return apiGet<JobProgreso>(`/sincronizaciones/${jobId}`);
 }
 
 /** Elimina un cliente real del backend (borra el cliente y su cache de comprobantes). */
