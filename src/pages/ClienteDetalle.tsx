@@ -9,7 +9,6 @@ import {
   FileText,
   FileSpreadsheet,
   FilePlus2,
-  UserPlus,
   MoreVertical,
   KeyRound,
   Wheat,
@@ -185,11 +184,6 @@ export function ClienteDetalle() {
         >
           <ChevronLeft className="h-4 w-4" /> Volver al dashboard
         </Button>
-        {tienePermiso('nuevo_cliente') && (
-          <Button variant="outline" size="sm" onClick={() => navigate('/clientes/nuevo')}>
-            <UserPlus className="h-4 w-4" /> Agregar otro cliente
-          </Button>
-        )}
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="space-y-5">
