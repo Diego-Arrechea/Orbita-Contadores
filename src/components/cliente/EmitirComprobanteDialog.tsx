@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Loader2, CheckCircle2, AlertTriangle, ArrowRight, FileKey2, Store, Download } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertTriangle, ArrowRight, FileKey2, Store, Download, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -54,6 +54,13 @@ function nombreComprobante(cbteTipo: number): string {
   return cbteTipo === 13 ? 'Nota de Crédito C' : 'Factura C';
 }
 
+/** Renglón del detalle, con los importes como texto (el usuario los tipea). */
+type ItemRow = { descripcion: string; cantidad: string; precio: string };
+const nuevoItem = (): ItemRow => ({ descripcion: '', cantidad: '1', precio: '' });
+
+/** '1.234,56' → 1234.56 (formato AR). '' → 0. */
+const parseMonto = (s: string): number => Number(s.replace(/\./g, '').replace(',', '.')) || 0;
+
 type Paso = 'cargando' | 'preparar' | 'preparando' | 'sin-pv' | 'form' | 'confirm' | 'emitiendo' | 'ok';
 
 interface Props {
@@ -79,6 +86,8 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
   const [condicion, setCondicion] = useState(5);
   const [cuitReceptor, setCuitReceptor] = useState('');
   const [importe, setImporte] = useState('');
+  const [detallar, setDetallar] = useState(false);
+  const [items, setItems] = useState<ItemRow[]>([nuevoItem()]);
   const [ncPv, setNcPv] = useState('');
   const [ncNumero, setNcNumero] = useState('');
   const [error, setError] = useState('');
@@ -146,6 +155,8 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
     setCondicion(5);
     setCuitReceptor('');
     setImporte(prefill?.importe ? String(Math.round(prefill.importe)) : '');
+    setDetallar(false);
+    setItems([nuevoItem()]);
     setNcPv('');
     setNcNumero('');
     setError('');
@@ -159,20 +170,66 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
   }, [open, cliente.cuit, prefill?.importe]);
 
   const cond = CONDICIONES.find(c => c.value === condicion)!;
-  const importeNum = Number(importe.replace(/\./g, '').replace(',', '.'));
+  // Detalle → cada renglón parseado a números (para total, validación y payload).
+  const itemsParsed = items.map(it => ({
+    descripcion: it.descripcion.trim(),
+    cantidad: parseMonto(it.cantidad),
+    precio_unitario: parseMonto(it.precio),
+  }));
+  const totalItems = itemsParsed.reduce((s, it) => s + it.cantidad * it.precio_unitario, 0);
+  // Con detalle, el importe es la suma de renglones; sin detalle, el campo único.
+  const importeNum = detallar
+    ? Number(totalItems.toFixed(2))
+    : Number(importe.replace(/\./g, '').replace(',', '.'));
+  const itemsOk =
+    itemsParsed.every(it => it.descripcion.length > 0 && it.cantidad > 0 && it.precio_unitario >= 0) &&
+    totalItems > 0;
   const cuitDigits = cuitReceptor.replace(/\D/g, '');
   const formOk =
-    importeNum > 0 &&
+    (detallar ? itemsOk : importeNum > 0) &&
     (!cond.requiereCuit || cuitDigits.length === 11) &&
     (tipo === 'factura' || Number(ncNumero) > 0);
 
   // El precio unitario máximo sólo aplica a la venta de productos (concepto 1 o 3), no a servicios,
-  // y no tiene sentido en una nota de crédito. Es un aviso NO bloqueante: como acá se carga un
-  // importe total (sin desglose de unidades), no sabemos si es un único producto o varios; por eso
-  // sólo advertimos y dejamos que el contador decida.
+  // y no tiene sentido en una nota de crédito. Es un aviso NO bloqueante. Con detalle lo evaluamos
+  // por renglón (P. unitario real); sin detalle, contra el importe total (no sabemos las unidades).
   const esVentaProductos = concepto === 1 || concepto === 3;
   const superaPrecioUnitario =
-    tipo === 'factura' && esVentaProductos && importeNum > TOPE_PRECIO_UNITARIO;
+    tipo === 'factura' &&
+    esVentaProductos &&
+    (detallar
+      ? itemsParsed.some(it => it.precio_unitario > TOPE_PRECIO_UNITARIO)
+      : importeNum > TOPE_PRECIO_UNITARIO);
+
+  const setItem = (i: number, patch: Partial<ItemRow>) =>
+    setItems(prev => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+  const agregarItem = () => setItems(prev => [...prev, nuevoItem()]);
+  const quitarItem = (i: number) =>
+    setItems(prev => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+
+  const pvField = (
+    <div className="space-y-1.5">
+      <Label>Punto de venta</Label>
+      {puntosVenta && puntosVenta.length > 1 ? (
+        <Select value={String(pvSel ?? '')} onValueChange={v => setPvSel(Number(v))}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {puntosVenta.map(p => (
+              <SelectItem key={p.nro} value={String(p.nro)}>
+                {p.nro}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : (
+        <div className="flex h-9 items-center rounded-md border border-border/60 bg-muted/40 px-3 text-sm text-muted-foreground">
+          {pvSel ?? 'automático'}
+        </div>
+      )}
+    </div>
+  );
 
   const cerrar = (o: boolean) => {
     if (!o && paso === 'emitiendo') return; // una emisión en curso no se interrumpe
@@ -237,6 +294,7 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
         tipo === 'nc'
           ? { tipo: 11, punto_venta: Number(ncPv) || pvSel || 0, numero: Number(ncNumero) }
           : null,
+      items: detallar ? itemsParsed : null,
     };
     try {
       const res = await facturar(cliente.cuit, payload);
@@ -441,42 +499,95 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="fc-importe">Importe total</Label>
-                  <Input
-                    id="fc-importe"
-                    inputMode="decimal"
-                    placeholder="0"
-                    value={importe}
-                    onChange={e => setImporte(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Punto de venta</Label>
-                  {puntosVenta && puntosVenta.length > 1 ? (
-                    <Select
-                      value={String(pvSel ?? '')}
-                      onValueChange={v => setPvSel(Number(v))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {puntosVenta.map(p => (
-                          <SelectItem key={p.nro} value={String(p.nro)}>
-                            {p.nro}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <div className="flex h-9 items-center rounded-md border border-border/60 bg-muted/40 px-3 text-sm text-muted-foreground">
-                      {pvSel ?? 'automático'}
-                    </div>
-                  )}
-                </div>
+              <div className="flex items-center justify-between">
+                <Label>{detallar ? 'Detalle' : 'Importe'}</Label>
+                <button
+                  type="button"
+                  onClick={() => setDetallar(v => !v)}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  {detallar ? 'Cargar un importe total' : 'Detallar por ítem'}
+                </button>
               </div>
+
+              {!detallar ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="fc-importe" className="text-muted-foreground text-xs">
+                      Importe total
+                    </Label>
+                    <Input
+                      id="fc-importe"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={importe}
+                      onChange={e => setImporte(e.target.value)}
+                    />
+                  </div>
+                  {pvField}
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    {items.map((it, i) => (
+                      <div key={i} className="flex items-end gap-2">
+                        <div className="flex-1 space-y-1">
+                          {i === 0 && <Label className="text-muted-foreground text-xs">Descripción</Label>}
+                          <Input
+                            placeholder="Detalle del producto o servicio"
+                            value={it.descripcion}
+                            onChange={e => setItem(i, { descripcion: e.target.value })}
+                          />
+                        </div>
+                        <div className="w-16 space-y-1">
+                          {i === 0 && <Label className="text-muted-foreground text-xs">Cant.</Label>}
+                          <Input
+                            inputMode="decimal"
+                            placeholder="1"
+                            className="text-right"
+                            value={it.cantidad}
+                            onChange={e => setItem(i, { cantidad: e.target.value })}
+                          />
+                        </div>
+                        <div className="w-28 space-y-1">
+                          {i === 0 && <Label className="text-muted-foreground text-xs">P. unitario</Label>}
+                          <Input
+                            inputMode="decimal"
+                            placeholder="0"
+                            className="text-right"
+                            value={it.precio}
+                            onChange={e => setItem(i, { precio: e.target.value })}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 shrink-0 text-muted-foreground"
+                          disabled={items.length === 1}
+                          onClick={() => quitarItem(i)}
+                          aria-label="Quitar ítem"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <Button type="button" variant="soft" size="sm" onClick={agregarItem}>
+                      <Plus className="h-4 w-4" /> Agregar ítem
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 items-end">
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground text-xs">Importe total</Label>
+                      <div className="flex h-9 items-center rounded-md border border-border/60 bg-muted/40 px-3 text-sm font-semibold tabular-nums">
+                        {formatCurrency(totalItems)}
+                      </div>
+                    </div>
+                    {pvField}
+                  </div>
+                </>
+              )}
 
               {superaPrecioUnitario && <AvisoPrecioUnitario />}
             </div>
@@ -521,6 +632,20 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
               {tipo === 'nc' && <Fila k="Corrige" v={`${ncPv || pvSel}-${ncNumero}`} />}
               <Fila k="Concepto" v={CONCEPTOS.find(c => c.value === concepto)?.label ?? ''} />
               {pvSel != null && <Fila k="Punto de venta" v={String(pvSel)} />}
+              {detallar && (
+                <div className="space-y-1 border-t border-border/50 pt-2">
+                  {itemsParsed.map((it, i) => (
+                    <div key={i} className="flex items-baseline justify-between gap-3 text-xs">
+                      <span className="text-muted-foreground truncate">
+                        {it.descripcion} · {it.cantidad} × {formatCurrency(it.precio_unitario)}
+                      </span>
+                      <span className="tabular-nums shrink-0">
+                        {formatCurrency(it.cantidad * it.precio_unitario)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <Fila k="Importe" v={formatCurrency(importeNum)} destacado />
             </div>
 

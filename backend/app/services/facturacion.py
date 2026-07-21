@@ -8,6 +8,7 @@ el titular), sin delegación ni certificado de contador. Con ese cert emitimos s
 from __future__ import annotations
 
 import datetime as dt
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -174,13 +175,24 @@ def emitir(
     doc_nro: str = "0",
     condicion_iva_receptor: int = 5,
     comprobante_asociado: dict | None = None,
+    items: list[dict] | None = None,
     on_progress: ProgressCb | None = None,
 ) -> dict:
     """Emite una Factura C (11) o Nota de Crédito C (13) a nombre del cliente y persiste el
-    comprobante (aparece en la lista de comprobantes y en Facturación 12m). Devuelve el CAE."""
+    comprobante (aparece en la lista de comprobantes y en Facturación 12m). Devuelve el CAE.
+
+    `items` (opcional) es el detalle de renglones [{descripcion, cantidad, precio_unitario}]. Si
+    viene, el importe total se recalcula de los ítems (Σ cantidad × precio) —fuente de verdad— e
+    ignora `importe_total`. WSFEv1 (clase C) no transmite líneas: el detalle es sólo para el PDF."""
     cliente = db.get(models.ClienteARCA, cuit)
     if cliente is None:
         raise ValueError(f"Cliente {cuit} no registrado")
+
+    # El detalle manda: recalculamos el total del servidor para que coincida con lo que se imprime.
+    if items:
+        importe_total = round(
+            sum(float(i["cantidad"]) * float(i["precio_unitario"]) for i in items), 2
+        )
 
     cert_bytes, key_bytes, cuit_emisor = _cert_y_emisor(db, cuit, on_progress)
 
@@ -232,6 +244,7 @@ def emitir(
             cae=resultado["cae"],
             cae_vto=resultado.get("cae_vto", ""),
             condicion_iva_receptor=condicion_iva_receptor,
+            items_json=json.dumps(items, ensure_ascii=False) if items else None,
         )
     )
     db.commit()

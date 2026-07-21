@@ -55,6 +55,23 @@ def _money(v) -> str:
     return "$ " + s.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _cantidad(v) -> str:
+    """2 -> '2,00' (formato AR, sin signo pesos)."""
+    return f"{float(v or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _parse_items(raw) -> list[dict]:
+    """Detalle de renglones persistido (JSON [{descripcion, cantidad, precio_unitario}]).
+    [] si no hay desglose o el JSON es inválido → el PDF cae al renglón único por importe total."""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    return data if isinstance(data, list) else []
+
+
 def _fecha_ddmmyyyy(d: dt.date) -> str:
     return d.strftime("%d/%m/%Y")
 
@@ -254,16 +271,32 @@ def generar(comp: models.ComprobanteEmitido, cliente: models.ClienteARCA) -> byt
     c.drawRightString(x_cant, ty, "CANTIDAD")
     c.drawRightString(x_punit, ty, "P. UNITARIO")
     c.drawRightString(x_imp, ty, "IMPORTE")
-    # renglón
-    fila_y = tab_top - head_h - 7 * mm
-    _set(c, _INK)
-    c.setFont("Helvetica", 9.5)
-    c.drawString(M + 4 * mm, fila_y, "Productos y/o servicios")
-    c.setFont("Helvetica", 9)
-    c.drawRightString(x_cant, fila_y, "1,00")
-    c.drawRightString(x_punit, fila_y, _money(comp.imp_total))
-    c.drawRightString(x_imp, fila_y, _money(comp.imp_total))
-    # línea fina bajo el renglón
+    # renglones — si hay detalle persistido, uno por ítem; si no, el renglón único por importe total.
+    items = _parse_items(comp.items_json)
+    fila0 = tab_top - head_h - 7 * mm
+    if items:
+        for i, it in enumerate(items):
+            fila_y = fila0 - i * 6 * mm
+            cant = float(it.get("cantidad") or 0)
+            punit = float(it.get("precio_unitario") or 0)
+            _set(c, _INK)
+            c.setFont("Helvetica", 9.5)
+            c.drawString(M + 4 * mm, fila_y, str(it.get("descripcion") or "")[:60])
+            c.setFont("Helvetica", 9)
+            c.drawRightString(x_cant, fila_y, _cantidad(cant))
+            c.drawRightString(x_punit, fila_y, _money(punit))
+            c.drawRightString(x_imp, fila_y, _money(round(cant * punit, 2)))
+        fila_y = fila0 - (len(items) - 1) * 6 * mm  # y del último renglón (para línea/totales)
+    else:
+        fila_y = fila0
+        _set(c, _INK)
+        c.setFont("Helvetica", 9.5)
+        c.drawString(M + 4 * mm, fila_y, "Productos y/o servicios")
+        c.setFont("Helvetica", 9)
+        c.drawRightString(x_cant, fila_y, "1,00")
+        c.drawRightString(x_punit, fila_y, _money(comp.imp_total))
+        c.drawRightString(x_imp, fila_y, _money(comp.imp_total))
+    # línea fina bajo el último renglón
     _set(c, _HAIR)
     c.setStrokeColorRGB(*_HAIR)
     c.setLineWidth(0.5)

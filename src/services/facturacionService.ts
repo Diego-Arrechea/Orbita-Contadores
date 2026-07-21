@@ -27,6 +27,13 @@ export interface ComprobanteAsociado {
   numero: number;
 }
 
+/** Renglón del detalle. Sólo cambia la representación impresa: del detalle sale el importe total. */
+export interface ItemComprobante {
+  descripcion: string;
+  cantidad: number;
+  precio_unitario: number;
+}
+
 export interface FacturarPayload {
   cbte_tipo: number; // 11 = Factura C · 13 = Nota de Crédito C
   importe_total: number;
@@ -36,6 +43,8 @@ export interface FacturarPayload {
   doc_nro: string;
   condicion_iva_receptor: number; // RG 5616: 5 CF · 1 RI · 4 Exento · 6 Monotributo
   comprobante_asociado?: ComprobanteAsociado | null;
+  /** Detalle opcional. Si viene, el backend recalcula importe_total como Σ cantidad × precio. */
+  items?: ItemComprobante[] | null;
 }
 
 export interface ComprobanteEmitidoResp {

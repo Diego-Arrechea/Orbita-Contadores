@@ -50,6 +50,14 @@ class ComprobanteAsociado(BaseModel):
     numero: int
 
 
+class ItemComprobante(BaseModel):
+    """Renglón del detalle del comprobante. Sólo afecta la representación impresa (WSFEv1 no lleva
+    líneas): del detalle sale el importe total que se envía a ARCA."""
+    descripcion: str = Field(..., min_length=1, max_length=200)
+    cantidad: float = Field(..., gt=0)
+    precio_unitario: float = Field(..., ge=0)
+
+
 def _emitir_o_http(**kwargs):
     """Llama al motor de emisión traduciendo los errores a HTTP legibles."""
     try:
@@ -142,6 +150,9 @@ class FacturarIn(BaseModel):
     doc_nro: str = "0"
     condicion_iva_receptor: int = Field(5, description="RG 5616: 5 Consumidor Final · 1 RI · 4 Exento · 6 Monotributo")
     comprobante_asociado: ComprobanteAsociado | None = None
+    # Detalle opcional. Si viene, el importe total se calcula de los ítems (Σ cantidad × precio) e
+    # ignora `importe_total`; sólo cambia la representación impresa (WSFEv1 va por total).
+    items: list[ItemComprobante] | None = None
 
 
 @router.post("/clientes/{cuit}/facturar")
@@ -156,6 +167,7 @@ def facturar(
     _exigir_habilitado(usuario)
     _cliente_propio(db, cuit, usuario)
     asociado = body.comprobante_asociado.model_dump() if body.comprobante_asociado else None
+    items = [i.model_dump() for i in body.items] if body.items else None
     try:
         return facturacion_svc.emitir(
             db,
@@ -168,6 +180,7 @@ def facturar(
             doc_nro=body.doc_nro,
             condicion_iva_receptor=body.condicion_iva_receptor,
             comprobante_asociado=asociado,
+            items=items,
         )
     except facturacion_svc.SinPuntoVenta:
         raise HTTPException(
