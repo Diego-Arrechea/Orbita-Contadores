@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import time
 
+import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import select
 
@@ -42,7 +43,11 @@ SYNC_BACKOFF_SEG = (30, 90)
 #  - Throttle transitorio de ARCA (RespuestaPaginaError: el ajax devolvió la página estática 403
 #    'sesión expirada' en vez del JSON). NO se destraba reabriendo/re-logueando en el momento
 #    (probado); sí en la pasada siguiente. Reintentar acá sólo ocupaba el slot del worker minutos
-#    (3 intentos × ~200s con el hueco de requests colgadas) por un cliente que igual no iba a entrar.
+#    por un cliente que igual no iba a entrar.
+#  - Timeout de request a ARCA (requests.Timeout): ARCA colgada por el mismo throttle no responde en
+#    `arca_timeout_seg` (60s). Reintentar en el momento cae en el mismo cuelgue. Si el timeout fue en
+#    el login, `login()` ya reintentó 3× internamente antes de llegar acá. En ambos casos el
+#    despachador re-despacha el cliente a los 30 min (reintento rápido), sin martillar en caliente.
 # `sincronizar()` ya registró la extracción fallida en su except → acá propagamos de una. Vale para
 # el sync diario y para el worker continuo (ambos pasan por esta función). LoginSinJWTError queda
 # AFUERA a propósito: puede ser un hipo transitorio que un reintento inmediato sí resuelve.
@@ -52,6 +57,7 @@ _NO_REINTENTABLES = (
     LoginDesafiadoError,
     ContribuyenteIrregularError,
     RespuestaPaginaError,
+    requests.Timeout,
 )
 
 
