@@ -75,10 +75,26 @@ def estado_motor(db: Session = Depends(get_db)):
         r.cuit: r for r in db.execute(select(sub).where(sub.c.rn == 1)).all()
     }
 
-    # Cobertura: clasifico cada cliente según su última extracción.
+    # Sólo los clientes que el motor REALMENTE sincroniza: activos y sin bloqueo (clave inválida / a
+    # cambiar / irregularidades en el padrón). Espeja el WHERE de worker._clientes_vencidos para que el
+    # panel no cuente como "pendiente/próximo" a un cliente que el worker NUNCA va a tomar (está
+    # desactivado, o bloqueado hasta que el contador/cliente actúe). Esos ya se ven en "Clientes con
+    # problemas" y en la ficha; acá sólo inflaban los pendientes y encabezaban "Próximos a sincronizar".
+    elegibles = set(
+        db.scalars(
+            select(models.ClienteARCA.cuit).where(
+                models.ClienteARCA.activo.is_(True),
+                models.ClienteARCA.clave_invalida.is_(False),
+                models.ClienteARCA.clave_requiere_cambio.is_(False),
+                models.ClienteARCA.contribuyente_irregular.is_(False),
+            )
+        ).all()
+    )
+
+    # Cobertura: clasifico cada cliente EN EL CICLO según su última extracción.
     total = frescos = pendientes = nunca = con_falla = 0
     vencidos: list[tuple[dt.datetime | None, str]] = []
-    for cuit in info:
+    for cuit in elegibles:
         total += 1
         u = ultimas.get(cuit)
         if u is None:

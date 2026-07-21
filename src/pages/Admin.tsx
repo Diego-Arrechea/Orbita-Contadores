@@ -1243,7 +1243,7 @@ function TabMotor() {
       <div>
         <h2 className="text-sm font-semibold mb-3">Cobertura</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          <MetricaCard icon={Building2} label="Clientes totales" valor={m.total_clientes} />
+          <MetricaCard icon={Building2} label="En el ciclo" valor={m.total_clientes} hint="activos, sin bloqueo" />
           <MetricaCard icon={CheckCircle2} label="Al día (<12h)" valor={m.frescos} />
           <MetricaCard icon={Clock} label="Pendientes" valor={m.pendientes} />
           <MetricaCard icon={RefreshCcw} label="Nunca sincronizados" valor={m.nunca} />
