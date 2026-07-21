@@ -85,8 +85,9 @@ export function Dashboard() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroAlerta, setFiltroAlerta] = useState<EstadoAlerta | 'todos'>('todos');
   const [filtroActividad, setFiltroActividad] = useState<TipoActividad | 'todos'>('todos');
-  // Filtro por estado de monitoreo: todos, sólo activos o sólo desactivados por el contador.
-  const [filtroEstadoActivo, setFiltroEstadoActivo] = useState<'todos' | 'activos' | 'desactivados'>('todos');
+  // Filtro por estado de monitoreo: todos, sólo activos, sólo desactivados por el contador, o sólo
+  // los que facturan por el sector agropecuario.
+  const [filtroEstadoActivo, setFiltroEstadoActivo] = useState<'todos' | 'activos' | 'desactivados' | 'agropecuarios'>('todos');
   // Filtro "deudores crónicos": sólo clientes que arrastran deuda de al menos `umbralCronico` meses.
   const [soloCronicos, setSoloCronicos] = useState(false);
   // Filtro "claves a revisar": sólo clientes cuya Clave Fiscal hay que actualizar (mal cargada, el
@@ -138,6 +139,7 @@ export function Dashboard() {
         const activo = cliente.activo !== false;
         if (filtroEstadoActivo === 'activos' && !activo) return false;
         if (filtroEstadoActivo === 'desactivados' && activo) return false;
+        if (filtroEstadoActivo === 'agropecuarios' && !cliente.facturaAgro) return false;
         if (soloCronicos && (cliente.mesesAdeudados ?? 0) < umbralCronico) return false;
         if (soloClaves && !(cliente.claveInvalida || cliente.claveRequiereCambio)) return false;
         if (busqueda) {
@@ -358,7 +360,7 @@ export function Dashboard() {
             </Select>
             <Select
               value={filtroEstadoActivo}
-              onValueChange={(v) => setFiltroEstadoActivo(v as 'todos' | 'activos' | 'desactivados')}
+              onValueChange={(v) => setFiltroEstadoActivo(v as 'todos' | 'activos' | 'desactivados' | 'agropecuarios')}
             >
               <SelectTrigger className="flex-1 md:w-[185px] md:flex-none bg-card">
                 <SelectValue placeholder="Monitoreo" />
@@ -367,6 +369,7 @@ export function Dashboard() {
                 <SelectItem value="todos">Todos los clientes</SelectItem>
                 <SelectItem value="activos">Sólo activos</SelectItem>
                 <SelectItem value="desactivados">Sólo desactivados</SelectItem>
+                <SelectItem value="agropecuarios">Sólo agropecuarios</SelectItem>
               </SelectContent>
             </Select>
             <Button
