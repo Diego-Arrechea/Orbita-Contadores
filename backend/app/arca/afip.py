@@ -113,6 +113,25 @@ class _LegacyTLSAdapter(HTTPAdapter):
         return super().proxy_manager_for(*a, **k)
 
 
+class _SesionConTimeout(requests.Session):
+    """requests.Session con un timeout por defecto en CADA request (si el caller no pasa uno).
+
+    Sin esto una request a ARCA que se cuelga (server degradado por el throttle) bloquea el hilo del
+    worker minutos — se midió un hueco de ~3.5 min en la preparación de sesión (setearContribuyente/
+    seleccionIngreso) antes de que ARCA devolviera el 403. El cap hace fallar rápido; qué se hace con
+    el `requests.Timeout` lo decide el caller: `login()` reintenta (lo trata como transitorio de red),
+    y la sync lo trata como NO reintentable (ver `_NO_REINTENTABLES` en services/scheduler) para no
+    volver a martillar un ARCA que no responde."""
+
+    def __init__(self, timeout: float) -> None:
+        super().__init__()
+        self._timeout_default = timeout
+
+    def request(self, *args, **kwargs):
+        kwargs.setdefault("timeout", self._timeout_default)
+        return super().request(*args, **kwargs)
+
+
 # --- URLs ---------------------------------------------------------------------
 BASE_AUTH = "https://auth.afip.gob.ar"
 URL_LOGIN = f"{BASE_AUTH}/contribuyente_/login.xhtml"
@@ -404,7 +423,7 @@ class AFIP:
         self.password = password
         self.logged_in = False
 
-        self.session = requests.Session()
+        self.session = _SesionConTimeout(settings.arca_timeout_seg)
         self.session.headers.update(
             {
                 "User-Agent": USER_AGENT,

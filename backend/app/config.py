@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     sync_max_reintentos_rapidos: int = 3
     # Cada cuánto el despachador revisa qué clientes están vencidos y los encola (segundos).
     sync_poll_segundos: int = 60
+    # Timeout HTTP (segundos) por request a ARCA. Sin esto, un request colgado (ARCA degradada por su
+    # throttle) bloquea el hilo del worker minutos (se midió un hueco de ~3.5 min). 60s deja pasar los
+    # requests lentos legítimos pero corta los colgados. El caller decide: login reintenta; la sync lo
+    # trata como no-reintentable (requests.Timeout en services/scheduler._NO_REINTENTABLES).
+    arca_timeout_seg: int = 60
     # Envío automático de alertas por WhatsApp desde el motor continuo. Default APAGADO: el motor
     # sincroniza igual, pero NO manda mensajes a contadores reales hasta que se active explícitamente
     # (SYNC_ALERTAS_ENABLED=true en el .env). Evita sorprender a los usuarios al encender el motor.
