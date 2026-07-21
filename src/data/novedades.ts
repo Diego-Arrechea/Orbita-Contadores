@@ -42,6 +42,26 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-21-facturar-por-items',
+    fecha: '2026-07-21',
+    titulo: 'Facturá con el detalle de ítems',
+    resumen: 'Al emitir un comprobante ahora podés desglosar productos y servicios renglón por renglón.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En la pantalla de emisión, tocá "Detallar por ítem" para cargar varios renglones con ' +
+          'descripción, cantidad y precio unitario. El importe total se calcula solo y cada ítem ' +
+          'aparece en el comprobante impreso.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Si preferís lo de siempre, seguís cargando un único importe total con un clic: el detalle es opcional.',
+      },
+    ],
+  },
+  {
     id: '2026-07-17-ver-clave-guardada',
     fecha: '2026-07-17',
     titulo: 'Recuperá la clave fiscal que tenías cargada',

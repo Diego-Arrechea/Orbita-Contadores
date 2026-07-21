@@ -350,6 +350,11 @@ class ComprobanteEmitido(Base):
     # Sólo en comprobantes emitidos desde la app (es el dato que se eligió al emitir); se imprime en la
     # representación del comprobante. NULL = no registrada (filas previas a esta columna).
     condicion_iva_receptor: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Detalle de renglones del comprobante emitido desde la app: JSON [{descripcion, cantidad,
+    # precio_unitario}]. NULL = sin desglose (se facturó por importe total, un único renglón). OJO:
+    # WSFEv1 (clase C) NO transmite líneas a ARCA —el comprobante ante ARCA es sólo el total—; este
+    # detalle es exclusivamente para la representación impresa (PDF).
+    items_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Origen del dato: 'arca' (traído de Mis Comprobantes o emitido por WSFEv1) | 'manual' (cargado a
     # mano por el contador: factura de talonario en papel, ticket de gasto que no figura en ARCA). El
     # sync PROTEGE los manuales (no los pisa ni los borra) y sólo se eliminan desde la app.

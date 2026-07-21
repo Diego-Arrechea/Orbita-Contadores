@@ -316,6 +316,9 @@ def _migrar_comprobantes_emitidos(conn) -> None:
         conn.execute(
             text("ALTER TABLE comprobantes_emitidos ADD COLUMN origen VARCHAR(10) DEFAULT 'arca'")
         )
+    # Detalle de renglones (ítems) del comprobante emitido desde la app. JSON serializado, TEXT portable.
+    if "items_json" not in cols:
+        conn.execute(text("ALTER TABLE comprobantes_emitidos ADD COLUMN items_json TEXT"))
 
 
 def asegurar_columnas() -> None:
