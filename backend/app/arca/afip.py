@@ -181,6 +181,11 @@ MISAPORTES_BASE = "https://serviciossegsoc.afip.gob.ar/MisAportes/app"
 # declaradas y el código verificador + vigencia. Ver constancia_html()/actividades().
 SETI_PADRON_BASE = "https://seti.afip.gob.ar/padron-puc-consulta-internet"
 
+# "Mis Facilidades" (planes de facilidades de pago) en serviciossegsoc (ASP.NET WebForms). La página de
+# SEGUIMIENTO lista TODOS los planes del contribuyente (nº, tipo, cuotas, total, situación vigente/
+# caduco). El entry SSO es default.aspx. Ver el método facilidades().
+MISFACIL_BASE = "https://serviciossegsoc.afip.gob.ar/tramites_con_clave_fiscal/MisFacilidadesNet"
+
 # Entry point (paso c de abrir_servicio) de servicios conocidos. Tenerlo acá
 # permite saltar el GET de metadata (que solo servía para descubrir esta URL).
 SERVICIOS_ENTRY = {
@@ -198,6 +203,8 @@ SERVICIOS_ENTRY = {
     "mis_aportes": f"{MISAPORTES_BASE}/default.aspx",
     # Sistema Registral (constancia + actividades). Universal: todo CUIT lo tiene (no auto-adherir).
     "padron-puc-consulta-internet": f"{SETI_PADRON_BASE}/AccessPointAction.do",
+    # Mis Facilidades (planes de facilidades de pago).
+    "misfacilidades": f"{MISFACIL_BASE}/default.aspx",
 }
 
 # Comprobantes en Línea (rcel) en fe.afip.gob.ar. NO es mcmp: rcel es el facturador web, y su
@@ -1970,6 +1977,69 @@ class AFIP:
             desc = re.sub(r"\s+", " ", desc).strip(" - ")
             if desc:
                 out.append({"codigo": codigo, "descripcion": desc, "periodo": None})
+        return out
+
+    def facilidades(self, cuit: str | None = None) -> list[dict]:
+        """Planes de facilidades de pago del contribuyente ("Mis Facilidades"). Cada plan:
+        {nro, tipo, fecha, total, cuotas_total, estado_envio, situacion, vigente}. [] si no tiene o no
+        se pudo. Sólo TITULAR (el servicio es personal). Nota: la cantidad de cuotas IMPAGAS no está en
+        este listado (vive en el 'Detalle' de cada plan); `cuit` es informativo (consulta al logueado)."""
+        if not self.logged_in:
+            self.login()
+        try:
+            self.abrir_servicio("misfacilidades")
+            r = self.session.get(
+                f"{MISFACIL_BASE}/app/contribuyente/seguimiento_presentacion.aspx",
+                headers={"Referer": "https://portalcf.cloud.afip.gob.ar/"},
+            )
+            r.encoding = "utf-8"  # la página no declara charset y requests cae a latin-1 (mojibake)
+            out = self._parsear_facilidades(r.text)
+            self.log.info("facilidades: %d plan(es) para %s", len(out), cuit or self.cuit)
+            return out
+        except Exception:  # noqa: BLE001
+            self.log.info("facilidades: no se pudo", exc_info=True)
+            return []
+
+    @staticmethod
+    def _parsear_facilidades(html: str) -> list[dict]:
+        """Parsea la tabla de seguimiento de Mis Facilidades. Cada fila de plan trae las celdas:
+        [fecha, nº, cant_cuotas, tipo, total_consolidado, estado_envío, situación, (detalle)]."""
+        import html as _htmlmod
+
+        def _celdas(row: str) -> list[str]:
+            return [
+                _htmlmod.unescape(re.sub(r"<[^>]+>", " ", c)).strip()
+                for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S | re.I)
+            ]
+
+        def _monto(s: str) -> float | None:
+            s = re.sub(r"[^\d,.-]", "", s or "")
+            if not s:
+                return None
+            s = s.replace(".", "").replace(",", ".")  # AR: '.' miles, ',' decimales
+            try:
+                return round(float(s), 2)
+            except ValueError:
+                return None
+
+        out: list[dict] = []
+        for row in re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S | re.I):
+            cs = _celdas(row)
+            # Fila de plan: nº de plan tipo 'P873344' (letra + dígitos) en la 2da celda.
+            if len(cs) < 7 or not re.match(r"^[A-Z]\d{5,}$", cs[1] or ""):
+                continue
+            out.append(
+                {
+                    "nro": cs[1].strip(),
+                    "fecha": cs[0].strip() or None,
+                    "cuotas_total": int(cs[2]) if cs[2].strip().isdigit() else None,
+                    "tipo": cs[3].strip() or None,
+                    "total": _monto(cs[4]),
+                    "estado_envio": cs[5].strip() or None,
+                    "situacion": re.sub(r"^Plan\s+", "", cs[6], flags=re.I).strip() or cs[6].strip(),
+                    "vigente": "vigente" in cs[6].lower(),
+                }
+            )
         return out
 
     @staticmethod
