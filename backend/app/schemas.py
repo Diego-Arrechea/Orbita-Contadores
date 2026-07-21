@@ -24,6 +24,8 @@ TIPO_COMPROBANTE: dict[int, str] = {
     19: "Factura E", 20: "Nota Débito E", 21: "Nota Crédito E",
     # Controlador fiscal (tiques)
     81: "Tique Factura A", 82: "Tique Factura B", 83: "Tique",
+    # Controlador fiscal VIEJO (una sola serie por clase; la NC no discrimina A/B/C).
+    109: "Tique C", 110: "Tique Nota Crédito",
     111: "Tique Factura C",
     112: "Tique Nota Crédito A", 113: "Tique Nota Crédito B", 114: "Tique Nota Crédito C",
     115: "Tique Nota Débito A", 116: "Tique Nota Débito B", 117: "Tique Nota Débito C",
@@ -34,14 +36,16 @@ def nombre_tipo(cbte_tipo: int) -> str:
     return TIPO_COMPROBANTE.get(cbte_tipo, f"Tipo {cbte_tipo}")
 
 
-# Comprobantes clase C (+ FCE C + tiques C): los ÚNICOS que puede emitir un monotributista.
-# Si un contribuyente EMITE algún comprobante fuera de este set (clase A/B/M/E), es RI.
-TIPOS_MONOTRIBUTO: set[int] = {11, 12, 13, 15, 211, 212, 213, 111, 114, 117}
+# Comprobantes clase C (+ FCE C + tiques C, incluido el controlador fiscal VIEJO 109/110): los
+# ÚNICOS que puede emitir un monotributista. Si EMITE algo fuera de este set (clase A/B/M/E), es RI.
+# OJO 109 "Tique C": lo emite el monotributista con controlador viejo; sin él la inferencia lo
+# marcaba RI cuando el padrón no traía el régimen (caso GARCIA 27316644614).
+TIPOS_MONOTRIBUTO: set[int] = {11, 12, 13, 15, 211, 212, 213, 109, 110, 111, 114, 117}
 
 
 # cbte_tipos de Notas de Crédito (todas las clases + FCE + tiques): se RESTAN al netear el mes,
 # igual que hace derivarHistorial en el front (que usa el nombre 'Nota Crédito' para detectarlas).
-TIPOS_NOTA_CREDITO: set[int] = {3, 8, 13, 21, 53, 112, 113, 114, 203, 208, 213}
+TIPOS_NOTA_CREDITO: set[int] = {3, 8, 13, 21, 53, 110, 112, 113, 114, 203, 208, 213}
 
 
 def clasificar_regimen(cbte_tipos_emitidos: set[int]) -> str | None:

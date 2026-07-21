@@ -42,6 +42,22 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-21-regimen-controlador-fiscal',
+    fecha: '2026-07-21',
+    titulo: 'Régimen más preciso para quien emite con controlador fiscal',
+    resumen:
+      'Algunos monotributistas que facturan con controlador fiscal podían figurar como Responsables Inscriptos. Ya se muestran bien.',
+    items: [
+      {
+        tipo: 'arreglo',
+        texto:
+          'Afinamos la detección del régimen: un monotributista que emite tiques con controlador ' +
+          'fiscal ya no aparece como Responsable Inscripto. Vuelven a mostrarse su categoría, el ' +
+          'facturómetro y las alertas de monotributo para esos clientes.',
+      },
+    ],
+  },
+  {
     id: '2026-07-21-facturar-por-items',
     fecha: '2026-07-21',
     titulo: 'Facturá con el detalle de ítems',
