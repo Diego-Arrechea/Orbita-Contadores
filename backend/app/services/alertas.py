@@ -178,13 +178,19 @@ def derivar_alertas(cliente, calc: monotributo.CalculoCliente, a: dict, hoy: dt.
     elif a["tope"].get("proyeccionCruce", True) and calc.fecha_proyectada_cruce_tope is not None:
         add("aviso", "tope", f"al ritmo actual cruzaría el tope el {_fecha_larga(calc.fecha_proyectada_cruce_tope)}", pct)
 
+    # ¿La facturación lo pone en otra categoría? Condición para que la recategorización (y su ventana)
+    # sean relevantes: si ya está en la categoría correcta, no tiene que hacer nada.
+    debe_recategorizar = bool(calc.categoria_norm) and calc.categoria_corresponde != calc.categoria_norm
+
     # Recategorización.
-    if calc.categoria_norm and calc.categoria_corresponde != calc.categoria_norm:
+    if debe_recategorizar:
         add("aviso", "recategorizacion", f"debería recategorizarse (le corresponde la Cat. {calc.categoria_corresponde})")
 
-    # Ventana de recategorización.
+    # Ventana de recategorización. SÓLO para quien realmente tiene que recategorizar: al que ya está en
+    # su categoría, el cierre de la ventana no le cambia nada y no lo marcamos (si no, el vencimiento
+    # —el mismo día para toda la cartera— teñiría de urgente a todos los monotributistas a la vez).
     dias = calc.dias_para_proxima_ventana
-    if dias != float("inf") and calc.proxima_ventana is not None:
+    if debe_recategorizar and dias != float("inf") and calc.proxima_ventana is not None:
         d = int(dias)
         if d <= a["ventana"]["urgenteDias"]:
             add("urgente", "ventana", f"cierra la ventana de recategorización en {d} días")

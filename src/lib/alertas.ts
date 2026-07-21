@@ -83,8 +83,14 @@ export function derivarAlertas(
     );
   }
 
+  // ¿La facturación lo pone en otra categoría? Es la condición que hace que la recategorización sea
+  // relevante para este cliente: si ya está en la categoría que le corresponde, no tiene que hacer
+  // nada aunque la ventana esté por cerrar.
+  const debeRecategorizar =
+    !!cliente.categoria && calc.categoriaCorresponde.codigo !== cliente.categoria;
+
   // Recategorización sugerida (la facturación encaja en otra categoría).
-  if (cliente.categoria && calc.categoriaCorresponde.codigo !== cliente.categoria) {
+  if (debeRecategorizar) {
     add(
       'aviso',
       'recategorizacion',
@@ -93,9 +99,12 @@ export function derivarAlertas(
     );
   }
 
-  // Ventana de recategorización próxima.
+  // Ventana de recategorización próxima. SÓLO aplica a quien realmente tiene que recategorizar: si el
+  // cliente ya está en su categoría correcta, que se cierre la ventana no le cambia nada y no lo
+  // marcamos (si no, el vencimiento —que es el mismo día para toda la cartera— teñiría de urgente a
+  // todos los monotributistas a la vez, vaciando de sentido el semáforo).
   const dias = calc.diasParaProximaVentana;
-  if (Number.isFinite(dias) && calc.proximaVentana) {
+  if (debeRecategorizar && Number.isFinite(dias) && calc.proximaVentana) {
     if (dias <= config.alertas.ventana.urgenteDias) {
       add(
         'urgente',
