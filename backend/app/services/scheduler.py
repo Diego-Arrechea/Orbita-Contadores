@@ -18,6 +18,7 @@ from ..arca.afip import (
     ClaveVencidaError,
     ContribuyenteIrregularError,
     LoginDesafiadoError,
+    RespuestaPaginaError,
 )
 from ..db import SessionLocal
 from .alertas import evaluar_y_notificar
@@ -34,17 +35,23 @@ _scheduler: BackgroundScheduler | None = None
 SYNC_REINTENTOS = 2
 SYNC_BACKOFF_SEG = (30, 90)
 
-# Errores que NO son transitorios: la pelota está en el contador (clave a corregir) o en el cliente
-# (irregularidades a regularizar en la dependencia), o ARCA está pidiendo un captcha. Reintentarlos
-# con backoff no arregla nada y encima suma accesos seguidos que pueden gatillar el captcha de ARCA.
-# `sincronizar()` ya marcó el cliente y registró la extracción fallida en su except → acá los
-# propagamos de una, sin gastar reintentos. Vale para el sync diario y para el worker continuo (ambos
-# pasan por esta función). LoginSinJWTError queda AFUERA a propósito: puede ser un hipo transitorio.
+# Errores que NO se reintentan acá. Dos familias, misma conclusión (reintentar en el momento no
+# ayuda y encima martilla a ARCA):
+#  - Barrera de acceso: la pelota está en el contador (clave a corregir) o en el cliente
+#    (irregularidades a regularizar), o ARCA pide un captcha. `sincronizar()` ya marcó el cliente.
+#  - Throttle transitorio de ARCA (RespuestaPaginaError: el ajax devolvió la página estática 403
+#    'sesión expirada' en vez del JSON). NO se destraba reabriendo/re-logueando en el momento
+#    (probado); sí en la pasada siguiente. Reintentar acá sólo ocupaba el slot del worker minutos
+#    (3 intentos × ~200s con el hueco de requests colgadas) por un cliente que igual no iba a entrar.
+# `sincronizar()` ya registró la extracción fallida en su except → acá propagamos de una. Vale para
+# el sync diario y para el worker continuo (ambos pasan por esta función). LoginSinJWTError queda
+# AFUERA a propósito: puede ser un hipo transitorio que un reintento inmediato sí resuelve.
 _NO_REINTENTABLES = (
     ClaveVencidaError,
     ClaveInvalidaError,
     LoginDesafiadoError,
     ContribuyenteIrregularError,
+    RespuestaPaginaError,
 )
 
 

@@ -380,6 +380,16 @@ class ContribuyenteIrregularError(AFIPError):
     propia para que el caller marque el cliente y le avise al contador con un motivo claro."""
 
 
+class RespuestaPaginaError(AFIPError):
+    """ARCA respondió un ajax.do con una PÁGINA HTML completa (ej. la estática 403 'Su sesión ha
+    expirado') en vez del JSON esperado. NO es el token 'BL' del anti-bot (recuperable reabriendo la
+    sesión) ni el 'sesión expirada' en JSON (HTTP 200, recuperable): es el servidor rechazando la
+    request ANTES de la lógica de sesión. Reabrir/re-loguear NO lo destraba en el momento (probado:
+    reabrir 4× + 3 logins completos fallaban todos); es un throttle transitorio de ARCA que se
+    destraba solo en la pasada siguiente. Subclase propia para que el scheduler NO gaste reintentos
+    (que sólo martillan y ocupan el slot minutos) — ver `_NO_REINTENTABLES`."""
+
+
 class AFIP:
     """Cliente de Clave Fiscal de AFIP/ARCA.
 
@@ -908,7 +918,7 @@ class AFIP:
                 #    siguiente del motor, no un reintento inmediato reabriendo la sesión.
                 if _RE_ES_PAGINA.match(r.text or ""):
                     self._dump_ajax_html(params.get("f"), r)
-                    raise AFIPError(
+                    raise RespuestaPaginaError(
                         f"ajax.do {params.get('f')} devolvió una página (HTTP {r.status_code}): "
                         f"{_pista_pantalla(r.text)}"
                     )
