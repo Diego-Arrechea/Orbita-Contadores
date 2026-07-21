@@ -40,7 +40,9 @@ def _primer_dia_mes_hace(ref: dt.date, meses: int) -> dt.date:
     return dt.date(total // 12, total % 12 + 1, 1)
 
 
-def _ventanas(db: Session, cuit: str, direccion: str) -> list[tuple[str, str]]:
+def _ventanas(
+    db: Session, cuit: str, direccion: str, *, historico_hecho: bool
+) -> list[tuple[str, str]]:
     """Ventanas (dd/mm/aaaa) a consultar para una dirección, hasta ayer.
 
     Primera vez: histórico de N años. Incremental: re-barre SIEMPRE los últimos
@@ -49,7 +51,14 @@ def _ventanas(db: Session, cuit: str, direccion: str) -> list[tuple[str, str]]:
     siempre los que ARCA carga tarde con fecha de emisión vieja (o las correcciones de monto en
     meses pasados) — la causa de que el 'facturado 12m' calculado quedara por debajo del de ARCA. El
     upsert deduplica/actualiza el solapamiento; el histórico previo a la ventana de revisión ya
-    quedó cacheado en la primera sync y no se vuelve a tocar."""
+    quedó cacheado en la primera sync y no se vuelve a tocar.
+
+    Dirección SIN comprobantes guardados: sólo se re-barren los N años de histórico si el cliente
+    NUNCA completó una sync exitosa (`historico_hecho=False`, primera corrida). Si ya la completó,
+    el barrido histórico de esa dirección ya se hizo y dio cero, así que miramos SÓLO la ventana de
+    revisión (14 meses), igual que un cliente incremental — un cliente que sólo emite (o sólo
+    recibe) re-barría 4 años (5 ventanas) de la dirección vacía en CADA corrida, al pedo. Un
+    late-load reciente lo captura igual la revisión; uno viejo ya estaría en la DB del primer barrido."""
     ultima = db.scalar(
         select(func.max(models.ComprobanteEmitido.fecha)).where(
             models.ComprobanteEmitido.cuit == cuit,
@@ -58,13 +67,17 @@ def _ventanas(db: Session, cuit: str, direccion: str) -> list[tuple[str, str]]:
     )
     hoy = dt.date.today()
     ayer = hoy - dt.timedelta(days=1)
+    revision = _primer_dia_mes_hace(hoy, settings.sync_meses_revision)
     if ultima:
-        revision = _primer_dia_mes_hace(hoy, settings.sync_meses_revision)
         margen = ultima - dt.timedelta(days=settings.sync_margen_dias)
         # El más viejo de los dos: la ventana de revisión (caso normal) o, si el cliente no se
         # sincroniza hace más de N meses, desde su última fecha − margen (para no dejar hueco).
         desde = min(revision, margen)
+    elif historico_hecho:
+        # Dirección vacía en un cliente ya barrido: sólo la ventana de revisión (no 4 años de vacío).
+        desde = revision
     else:
+        # Primera sync del cliente: barrido histórico de N años (descubre el inicio de la cuenta).
         desde = dt.date(hoy.year - settings.sync_anios_historico, 1, 1)
     if desde > ayer:
         desde = ayer
@@ -230,9 +243,21 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
     if not _intentar_lock_cuit(db, cuit):
         return 0
 
+    # ¿El cliente ya completó al menos una sync exitosa? Entonces el barrido histórico de N años ya
+    # corrió (una sync exitosa hace TODAS las ventanas de ambas direcciones). Una dirección que quedó
+    # vacía no necesita re-escanear los 4 años en cada corrida — mira sólo la ventana de revisión.
+    historico_hecho = (
+        db.scalar(
+            select(models.Extraccion.id)
+            .where(models.Extraccion.cuit == cuit, models.Extraccion.resultado == "exitosa")
+            .limit(1)
+        )
+        is not None
+    )
+
     plan = [
-        {**miscomprobantes.PLAN_EMITIDOS, "rangos": _ventanas(db, cuit, "emitido")},
-        {**miscomprobantes.PLAN_RECIBIDOS, "rangos": _ventanas(db, cuit, "recibido")},
+        {**miscomprobantes.PLAN_EMITIDOS, "rangos": _ventanas(db, cuit, "emitido", historico_hecho=historico_hecho)},
+        {**miscomprobantes.PLAN_RECIBIDOS, "rangos": _ventanas(db, cuit, "recibido", historico_hecho=historico_hecho)},
     ]
     inicio = time.monotonic()
     try:
