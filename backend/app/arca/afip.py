@@ -90,7 +90,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.ssl_ import create_urllib3_context
 
-from ..config import settings
+from ..config import DATA_DIR, settings
 
 
 class _LegacyTLSAdapter(HTTPAdapter):
@@ -252,6 +252,9 @@ _RE_ASPNET_VS = re.compile(
 _RE_SCRIPT_STYLE = re.compile(r"<(script|style)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
 _RE_TAG = re.compile(r"<[^>]+>")
 _RE_WS = re.compile(r"\s+")
+# Una respuesta de ajax.do que arranca con <!doctype/<html es una PÁGINA de ARCA (error de
+# infra/gateway/WAF/mantenimiento), no el JSON de la grilla ni el token 'BL' del anti-bot.
+_RE_ES_PAGINA = re.compile(r"\s*<(?:!doctype|html)\b", re.IGNORECASE)
 
 
 def _num_ars(s: str) -> float:
@@ -877,6 +880,10 @@ class AFIP:
             expirado' / 'no está logueado' / 'Error DB'}. Sin esto, una consulta a mitad de un
             sync largo (entre ventanas) fallaba sin recuperarse (era el fallo #1 del motor HTTP).
         Un error JSON que NO sea de sesión se devuelve tal cual (lo interpreta el caller).
+
+        En cambio, si ARCA devuelve una PÁGINA HTML (error de infra/gateway/WAF), NO se reintenta
+        acá: reabrir la sesión no arregla una página del servidor y golpear escala el bloqueo. Se
+        corta con un motivo legible + dump (ver el bloque `_RE_ES_PAGINA` abajo).
         """
         hdr = {
             "Accept": "application/json, text/javascript, */*; q=0.01",
@@ -889,7 +896,23 @@ class AFIP:
             try:
                 data = r.json()
             except ValueError:
-                last = r.text[:80]  # no-JSON (bloqueo BL)
+                # No es JSON. Dos sub-casos MUY distintos:
+                #  - Token 'BL…' del anti-bot: la sesión de fes quedó invalidada; se recupera
+                #    reabriéndola y reintentando (sigue el flujo de abajo).
+                #  - PÁGINA HTML completa: ARCA respondió con una página (error de infra/gateway/WAF/
+                #    mantenimiento…), no con la grilla. Reabrir la sesión SSO NO arregla una página del
+                #    servidor y martillarla puede escalar el bloqueo (regla de oro del catálogo: se
+                #    destraba dejando de golpear). Cortamos acá con un motivo LEGIBLE (título+texto de
+                #    la página, no los 80 chars del doctype) y dejamos el dump para diagnóstico; la
+                #    recuperación real la hace el reintento espaciado del scheduler / la pasada
+                #    siguiente del motor, no un reintento inmediato reabriendo la sesión.
+                if _RE_ES_PAGINA.match(r.text or ""):
+                    self._dump_ajax_html(params.get("f"), r)
+                    raise AFIPError(
+                        f"ajax.do {params.get('f')} devolvió una página (HTTP {r.status_code}): "
+                        f"{_pista_pantalla(r.text)}"
+                    )
+                last = r.text[:80]  # no-JSON transitorio (token 'BL' del anti-bot)
             else:
                 msg = str(data.get("mensajeError", "")) if isinstance(data, dict) else ""
                 if not (isinstance(data, dict) and data.get("estado") == "error"
@@ -905,6 +928,23 @@ class AFIP:
             self._mcmp_preparar(forzar=True)
             self._fes_get(referer)
         raise AFIPError(f"ajax.do {params.get('f')} sin recuperar tras {retries}: {last!r}")
+
+    def _dump_ajax_html(self, f: str | None, r) -> None:
+        """Vuelca a data/diag/ la PÁGINA que ARCA devolvió en un ajax.do (cuando esperábamos JSON),
+        con el status y las cabeceras (Server/CF-Ray/etc. delatan si es gateway/WAF/mantenimiento).
+        Se pisa por (cuit, f): queda SIEMPRE la última (no crece el disco). Nunca rompe la sync: si el
+        guardado falla, se ignora. Respeta el interruptor `scraping_trazas`."""
+        if not settings.scraping_trazas:
+            return
+        try:
+            diag = DATA_DIR / "diag"
+            diag.mkdir(parents=True, exist_ok=True)
+            cabeceras = "\n".join(f"{k}: {v}" for k, v in r.headers.items())
+            (diag / f"ajax_{self.cuit}_{f}.html").write_text(
+                f"<!-- HTTP {r.status_code} {r.url}\n{cabeceras}\n-->\n{r.text}", encoding="utf-8"
+            )
+        except Exception:  # noqa: BLE001 — el diagnóstico jamás debe romper la sync
+            self.log.debug("no se pudo volcar el dump de ajax.do", exc_info=True)
 
     @staticmethod
     def _parse_fila(row: list, tipo: str = "E") -> dict:
