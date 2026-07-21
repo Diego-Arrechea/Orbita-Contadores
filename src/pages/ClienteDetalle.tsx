@@ -47,7 +47,7 @@ import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
 import { formatCuit, formatDate, cn } from '@/lib/utils';
 import { derivarAlertas } from '@/lib/alertas';
 import { descargarReporteExcel } from '@/lib/reporteExcel';
-import { puedeFacturar, tienePermiso } from '@/lib/cuenta';
+import { esAdminReal, puedeFacturar, tienePermiso } from '@/lib/cuenta';
 import { getMovimientos } from '@/services/movimientosService';
 import { useQueryClient } from '@tanstack/react-query';
 import { useClienteReal, useComunicaciones, qkClientes } from '@/lib/queries';
@@ -96,6 +96,10 @@ export function ClienteDetalle() {
 
   const esReal = cliente?.fuente === 'arca';
   const facturarHabilitado = esReal && puedeFacturar();
+  // El historial de sincronizaciones es diagnóstico interno (resultados/motivos técnicos): sólo lo ve
+  // el superadmin, incluso cuando está mirando la cartera de un contador impersonado. El contador NO
+  // lo ve (para él la app "simplemente tiene" el dato).
+  const verExtracciones = esAdminReal();
   const clienteActivo = cliente?.activo !== false; // undefined (mock) = activo
 
   // Prende/apaga el monitoreo del cliente. Al desactivarlo deja de actualizarse su información y en
@@ -413,7 +417,9 @@ export function ClienteDetalle() {
               </TabsTrigger>
               {/* Causales de exclusión: oculta por ahora (vacía para clientes reales). Reactivar cuando un contador la pida. */}
               {/* <TabsTrigger value="causales" className={tabTriggerClass}>Causales de exclusión</TabsTrigger> */}
-              <TabsTrigger value="notas" className={tabTriggerClass}>Notas y extracciones</TabsTrigger>
+              <TabsTrigger value="notas" className={tabTriggerClass}>
+                {verExtracciones ? 'Notas y extracciones' : 'Notas'}
+              </TabsTrigger>
             </TabsList>
           </div>
         </Card>
@@ -457,9 +463,9 @@ export function ClienteDetalle() {
           <CausalesList cliente={cliente} />
         </TabsContent> */}
         <TabsContent value="notas" className="mt-0">
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className={cn('grid gap-4', verExtracciones && 'lg:grid-cols-2')}>
             <NotasContador cliente={cliente} />
-            <HistorialExtracciones cliente={cliente} />
+            {verExtracciones && <HistorialExtracciones cliente={cliente} />}
           </div>
         </TabsContent>
       </Tabs>
