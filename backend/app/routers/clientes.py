@@ -441,6 +441,23 @@ def actualizar_clave_cliente(
         raise HTTPException(status_code=400, detail="La clave no puede estar vacía.")
     cuit_cred = cliente.cuit_credencial
     credencial = db.get(models.CredencialARCA, cuit_cred)
+    # Guard anti-reintento: si el cliente YA está marcado por un problema de clave y el contador
+    # re-guarda la MISMA clave que ya estaba cargada (p. ej. le da a "Guardar" sin corregirla —el
+    # diálogo muestra la clave guardada como referencia), no re-sincronizamos. La clave ya se probó y
+    # no funcionó; reintentar con la misma sólo acumula intentos de login fallidos seguidos, que es
+    # justo lo que gatilla la verificación de seguridad/bloqueo de ARCA. Cortamos y avisamos.
+    en_error = bool(cliente.clave_invalida or cliente.clave_requiere_cambio)
+    if credencial is not None and en_error:
+        try:
+            clave_actual = descifrar(credencial.clave_cifrada).decode()
+        except Exception:  # noqa: BLE001 — clave ilegible: seguimos como si fuera nueva
+            clave_actual = None
+        if clave_actual is not None and clave == clave_actual:
+            raise HTTPException(
+                status_code=400,
+                detail="Esa clave es la misma que ya estaba cargada y no funcionó. "
+                "Ingresá la clave corregida para volver a intentar.",
+            )
     if credencial is None:
         db.add(models.CredencialARCA(cuit=cuit_cred, clave_cifrada=cifrar(clave.encode())))
     else:
