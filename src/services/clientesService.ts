@@ -22,6 +22,11 @@ interface ClienteBackend {
   // Actividades económicas DECLARADAS en el padrón (código AFIP + descripción + período). La principal
   // primero. Distinto de `actividad` (comercio/servicios, clasificación gruesa).
   actividades?: { codigo?: string | null; descripcion?: string | null; periodo?: string | null }[] | null;
+  // Planes de facilidades de pago ("Mis Facilidades") con su situación.
+  facilidades?: {
+    nro: string; tipo?: string | null; fecha?: string | null; total?: number | null;
+    cuotasTotal?: number | null; estadoEnvio?: string | null; situacion?: string | null; vigente?: boolean | null;
+  }[] | null;
   prox_recategorizacion?: string | null;
   recat_ventana_desde?: string | null; // ventana de recategorización real (ISO), fecha de apertura
   recat_ventana_hasta?: string | null; // ídem, fecha LÍMITE (reemplaza el calendario hardcodeado)
@@ -134,6 +139,17 @@ function construirCliente(
           }]
         : [],
     ),
+    // Planes de facilidades de pago (con su situación vigente/caduco/…).
+    facilidades: (bk.facilidades ?? []).map(p => ({
+      nro: p.nro,
+      tipo: p.tipo ?? undefined,
+      fecha: p.fecha ?? undefined,
+      total: p.total ?? undefined,
+      cuotasTotal: p.cuotasTotal ?? undefined,
+      estadoEnvio: p.estadoEnvio ?? undefined,
+      situacion: p.situacion ?? undefined,
+      vigente: Boolean(p.vigente),
+    })),
     // Override del contador (guardado en la cuenta) o el derivado: la fecha del primer comprobante.
     fechaInicio: bk.fecha_inicio ?? (primerMes ? `${primerMes}-01` : '2020-01-01'),
     notas: bk.notas ?? '',

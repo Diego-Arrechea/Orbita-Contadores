@@ -119,6 +119,14 @@ def constancia(cuit_login: str, clave: str, cuit_objetivo: str | None = None) ->
     return motor_http.constancia(cuit_login, clave, cuit_objetivo=cuit_objetivo)
 
 
+# --- Planes de facilidades (Mis Facilidades) — SÓLO HTTP (afip.py) ------------
+def facilidades(cuit_login: str, clave: str, cuit_objetivo: str | None = None) -> list[dict]:
+    """Planes de facilidades de pago del titular. Sólo HTTP. [] si no tiene o no se pudo."""
+    from . import motor_http
+
+    return motor_http.facilidades(cuit_login, clave, cuit_objetivo=cuit_objetivo)
+
+
 # --- Domicilio Fiscal Electrónico / e-ventanilla — SÓLO HTTP (afip.py) --------
 def comunicaciones(
     cuit_login: str, clave: str, cuit_objetivo: str | None = None, desde=None, hasta=None

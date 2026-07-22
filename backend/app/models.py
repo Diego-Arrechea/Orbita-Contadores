@@ -223,6 +223,15 @@ class ClienteARCA(Base):
     # (orden 1) es la actividad principal. Se muestra en la ficha ("Situación actual"). Distinto de la
     # columna `actividad` (comercio/servicios, clasificación gruesa). Nullable = todavía no se trajo.
     actividades_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Planes de facilidades de pago del cliente ("Mis Facilidades"), traídos en baja cadencia. JSON:
+    # [{nro, tipo, fecha, total, cuotas_total, estado_envio, situacion, vigente}]. Nullable = todavía no
+    # se consultó; '[]' = se consultó y no tiene planes. Ver services/facilidades.py.
+    facilidades_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Cuándo se consultó por última vez Mis Facilidades (NULL = nunca). El worker lo re-chequea con baja
+    # cadencia (los planes casi no cambian). Mismo patrón que agro_chequeado_en / aportes_chequeado_en.
+    facilidades_chequeado_en: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Línea de base de alertas: cuándo el motor "fotografió" por primera vez el estado de alertas de
     # este cliente. NULL = todavía no se baselineó → la próxima pasada registra sus alertas vigentes
     # como ya conocidas SIN avisar (anti-spam al alta). Ver services/alertas.py::evaluar_y_notificar.

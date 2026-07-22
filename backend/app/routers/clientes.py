@@ -25,6 +25,7 @@ from ..schemas import (
     EdicionClienteIn,
     EstadoClienteIn,
     ExtraccionOut,
+    FacilidadOut,
     HistorialMesOut,
     JobOut,
     LiquidacionAgroOut,
@@ -210,6 +211,32 @@ def _actividades(c: models.ClienteARCA) -> list[ActividadOut]:
     ]
 
 
+def _facilidades(c: models.ClienteARCA) -> list[FacilidadOut]:
+    """Planes de facilidades desde `facilidades_json`. [] si no hay o el JSON está roto."""
+    if not c.facilidades_json:
+        return []
+    try:
+        data = json.loads(c.facilidades_json)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return [
+        FacilidadOut(
+            nro=str(p.get("nro") or ""),
+            tipo=p.get("tipo"),
+            fecha=p.get("fecha"),
+            total=p.get("total"),
+            cuotasTotal=p.get("cuotas_total"),
+            estadoEnvio=p.get("estado_envio"),
+            situacion=p.get("situacion"),
+            vigente=bool(p.get("vigente")),
+        )
+        for p in data
+        if isinstance(p, dict) and p.get("nro")
+    ]
+
+
 def _cliente_propio(db: Session, cuit: str, usuario: models.Usuario) -> models.ClienteARCA:
     """Devuelve el cliente sólo si está en la cartera visible del usuario logueado (los propios y,
     para un titular con equipo, los de sus empleados); si no, 404 (sin revelar que existe)."""
@@ -264,6 +291,7 @@ def construir_cliente_out(
         categoria=edic.get("categoria") or c.categoria,
         actividad=edic.get("tipoActividad") or c.actividad,
         actividades=_actividades(c),
+        facilidades=_facilidades(c),
         prox_recategorizacion=c.prox_recategorizacion,
         recat_ventana_desde=c.recat_ventana_desde,
         recat_ventana_hasta=c.recat_ventana_hasta,

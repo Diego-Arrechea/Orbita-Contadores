@@ -42,6 +42,26 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-22-planes-de-facilidades',
+    fecha: '2026-07-22',
+    titulo: 'Planes de facilidades de pago del cliente',
+    resumen: 'Mirá los planes de facilidades de cada cliente y si alguno caducó, desde su ficha.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Si un cliente tiene planes de facilidades de pago, ahora aparece la solapa "Planes de ' +
+          'facilidades" en su ficha, con cada plan y su situación (vigente, caduco o cancelado).',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'En Situación actual te avisamos cuando un cliente tiene planes caducos, para que sepas que ' +
+          'la deuda financiada volvió a estar activa.',
+      },
+    ],
+  },
+  {
     id: '2026-07-21-regimen-controlador-fiscal',
     fecha: '2026-07-21',
     titulo: 'Régimen más preciso para quien emite con controlador fiscal',

@@ -1981,24 +1981,21 @@ class AFIP:
 
     def facilidades(self, cuit: str | None = None) -> list[dict]:
         """Planes de facilidades de pago del contribuyente ("Mis Facilidades"). Cada plan:
-        {nro, tipo, fecha, total, cuotas_total, estado_envio, situacion, vigente}. [] si no tiene o no
-        se pudo. Sólo TITULAR (el servicio es personal). Nota: la cantidad de cuotas IMPAGAS no está en
-        este listado (vive en el 'Detalle' de cada plan); `cuit` es informativo (consulta al logueado)."""
+        {nro, tipo, fecha, total, cuotas_total, estado_envio, situacion, vigente}. [] = no tiene planes
+        (la página cargó pero sin filas). LEVANTA si falla el SSO/fetch (para que el gate del worker
+        distinga "sin planes" de "falló" y reintente). Sólo TITULAR (el servicio es personal); la
+        cantidad de cuotas IMPAGAS no está en este listado (vive en el 'Detalle' de cada plan)."""
         if not self.logged_in:
             self.login()
-        try:
-            self.abrir_servicio("misfacilidades")
-            r = self.session.get(
-                f"{MISFACIL_BASE}/app/contribuyente/seguimiento_presentacion.aspx",
-                headers={"Referer": "https://portalcf.cloud.afip.gob.ar/"},
-            )
-            r.encoding = "utf-8"  # la página no declara charset y requests cae a latin-1 (mojibake)
-            out = self._parsear_facilidades(r.text)
-            self.log.info("facilidades: %d plan(es) para %s", len(out), cuit or self.cuit)
-            return out
-        except Exception:  # noqa: BLE001
-            self.log.info("facilidades: no se pudo", exc_info=True)
-            return []
+        self.abrir_servicio("misfacilidades")
+        r = self.session.get(
+            f"{MISFACIL_BASE}/app/contribuyente/seguimiento_presentacion.aspx",
+            headers={"Referer": "https://portalcf.cloud.afip.gob.ar/"},
+        )
+        r.encoding = "utf-8"  # la página no declara charset y requests cae a latin-1 (mojibake)
+        out = self._parsear_facilidades(r.text)
+        self.log.info("facilidades: %d plan(es) para %s", len(out), cuit or self.cuit)
+        return out
 
     @staticmethod
     def _parsear_facilidades(html: str) -> list[dict]:
