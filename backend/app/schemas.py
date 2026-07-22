@@ -217,6 +217,19 @@ class ActividadOut(BaseModel):
     periodo: str | None = None  # período de alta (MM/AAAA)
 
 
+class FacilidadOut(BaseModel):
+    """Un plan de facilidades de pago del cliente ("Mis Facilidades")."""
+
+    nro: str  # número de presentación (ej. P873344)
+    tipo: str | None = None  # tipo de plan (RG/Ley)
+    fecha: str | None = None  # fecha de consolidación (dd/mm/aaaa)
+    total: float | None = None  # total consolidado
+    cuotasTotal: int | None = None  # noqa: N815 — cantidad total de cuotas del plan
+    estadoEnvio: str | None = None  # noqa: N815
+    situacion: str | None = None  # Vigente | Caduco | Cancelado | Refinanciado | …
+    vigente: bool = False
+
+
 class ClienteOut(BaseModel):
     cuit: str
     nombre: str
@@ -226,6 +239,9 @@ class ClienteOut(BaseModel):
     # Actividades económicas DECLARADAS en el padrón (código + descripción + período). La principal
     # primero. Distinto de `actividad` (comercio/servicios, clasificación gruesa). Vacío = sin dato aún.
     actividades: list[ActividadOut] = []
+    # Planes de facilidades de pago ("Mis Facilidades") con su situación (vigente/caduco/…). Vacío =
+    # sin planes o todavía no se consultó.
+    facilidades: list[FacilidadOut] = []
     prox_recategorizacion: str | None = None
     # Ventana de recategorización REAL del padrón de ARCA (ISO aaaa-mm-dd): abre en `recat_ventana_desde`
     # y cierra (fecha límite) en `recat_ventana_hasta`. El front la usa como fecha límite oficial en vez

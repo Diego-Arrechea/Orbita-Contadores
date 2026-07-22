@@ -376,6 +376,14 @@ def constancia(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: str | Non
     return html.replace("iso-8859-1", "utf-8").replace("ISO-8859-1", "utf-8")
 
 
+# --- Planes de facilidades (Mis Facilidades) ----------------------------------
+@_con_sesion
+def facilidades(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: str | None = None) -> list[dict]:
+    """Planes de facilidades de pago del titular (listado + situación). Sólo titular (el servicio es
+    personal). Ver afip.facilidades()."""
+    return afip.facilidades(cuit_objetivo or cuit_login)
+
+
 # --- Puntos de venta (ABM pvel) — sólo HTTP (afip.py; el browser nunca lo hizo) -
 @_con_sesion
 def puntos_venta_pvel(afip: AFIP, cuit_login: str, clave: str) -> list[dict]:

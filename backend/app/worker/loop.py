@@ -29,6 +29,7 @@ from ..db import SessionLocal
 from ..models import ClienteARCA, Extraccion, WorkerHeartbeat
 from ..services.agro import paso_worker as agro_paso_worker
 from ..services.aportes import paso_worker as aportes_paso_worker
+from ..services.facilidades import paso_worker as facilidades_paso_worker
 from ..services.alertas import evaluar_y_notificar
 from ..services.scheduler import _sincronizar_con_reintento
 from ..services.sincronizacion import sincronizar_padron
@@ -170,6 +171,15 @@ def _worker(idx: int) -> None:
                 if rap:
                     logger.info("[w%d] %s aportes -> rel_dep=%s total=%.0f", idx, cuit,
                                 rap.get("es_relacion_dependencia"), rap.get("total_bruto") or 0)
+            except Exception:  # noqa: BLE001
+                pass
+            # Planes de facilidades (Mis Facilidades): consulta gateada de baja cadencia (~14 días).
+            # best-effort: un fallo no tumba la sync ya hecha y deja el cliente sin marcar para reintentar.
+            try:
+                rf = facilidades_paso_worker(db, cuit)
+                if rf is not None:
+                    vig = sum(1 for p in rf if p.get("vigente"))
+                    logger.info("[w%d] %s facilidades -> %s plan(es) (%s vigentes)", idx, cuit, len(rf), vig)
             except Exception:  # noqa: BLE001
                 pass
             logger.info("[w%d] %s OK -> %s comprobantes nuevos", idx, cuit, n)

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Building2, Wheat, Clock, PencilLine, Briefcase, CalendarRange } from 'lucide-react';
+import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Building2, Wheat, Clock, PencilLine, Briefcase, CalendarRange, Landmark } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ProgresoTope } from '@/components/shared/ProgresoTope';
@@ -448,6 +448,48 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
           </ul>
         </Card>
       )}
+
+      {/* Planes de facilidades de pago: señal al toque (caducos = deuda que volvió). El cuadro completo
+          está en la solapa "Planes de facilidades". */}
+      {cliente.facilidades && cliente.facilidades.length > 0 && (() => {
+        const caducos = cliente.facilidades.filter(p => (p.situacion || '').toLowerCase().includes('caduc')).length;
+        const vigentes = cliente.facilidades.filter(p => p.vigente).length;
+        return (
+          <Card className="p-5 sm:p-7">
+            <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1 inline-flex items-center gap-1.5">
+              <Landmark className="h-3.5 w-3.5" />
+              Planes de facilidades
+            </div>
+            {caducos > 0 ? (
+              <>
+                <div className="flex items-baseline gap-2">
+                  <div className="text-3xl font-semibold tabular-nums text-danger">{caducos}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {caducos === 1 ? 'plan caduco' : 'planes caducos'}
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground leading-relaxed">
+                  Se cayó {caducos === 1 ? 'un plan' : 'un o más planes'} por falta de pago: la deuda
+                  financiada volvió a estar activa.
+                  {vigentes > 0 ? ` Además tiene ${vigentes} vigente${vigentes === 1 ? '' : 's'}.` : ''}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-baseline gap-2">
+                  <div className="text-3xl font-semibold tabular-nums">{vigentes}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {vigentes === 1 ? 'plan vigente' : 'planes vigentes'}
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Detalle en la solapa «Planes de facilidades».
+                </div>
+              </>
+            )}
+          </Card>
+        );
+      })()}
     </div>
   );
 }

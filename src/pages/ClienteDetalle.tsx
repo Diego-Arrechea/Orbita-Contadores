@@ -13,6 +13,7 @@ import {
   KeyRound,
   Wheat,
   Briefcase,
+  Landmark,
   Power,
   ScrollText,
 } from 'lucide-react';
@@ -30,6 +31,7 @@ import {
 import { AlertaBadge } from '@/components/shared/AlertaBadge';
 import { SituacionActual } from '@/components/cliente/SituacionActual';
 import { EstadoCuenta } from '@/components/cliente/EstadoCuenta';
+import { PlanesFacilidades } from '@/components/cliente/PlanesFacilidades';
 import { HistoricoMensual } from '@/components/cliente/HistoricoMensual';
 import { FacturacionDetalle } from '@/components/cliente/FacturacionDetalle';
 import { FacturacionAgropecuaria } from '@/components/cliente/FacturacionAgropecuaria';
@@ -386,6 +388,11 @@ export function ClienteDetalle() {
             <TabsList className={tabsListClass}>
               <TabsTrigger value="situacion" className={tabTriggerClass}>Situación actual</TabsTrigger>
               <TabsTrigger value="estado-cuenta" className={tabTriggerClass}>Estado de cuenta</TabsTrigger>
+              {!!cliente.facilidades?.length && (
+                <TabsTrigger value="facilidades" className={cn(tabTriggerClass, 'inline-flex items-center gap-1.5')}>
+                  <Landmark className="h-3.5 w-3.5" /> Planes de facilidades
+                </TabsTrigger>
+              )}
               <TabsTrigger value="historico" className={tabTriggerClass}>Histórico mensual</TabsTrigger>
               <TabsTrigger value="facturacion" className={tabTriggerClass}>Facturación 12m</TabsTrigger>
               {cliente.facturaAgro && (
@@ -434,6 +441,11 @@ export function ClienteDetalle() {
         <TabsContent value="estado-cuenta" className="mt-0">
           <EstadoCuenta cliente={cliente} />
         </TabsContent>
+        {!!cliente.facilidades?.length && (
+          <TabsContent value="facilidades" className="mt-0">
+            <PlanesFacilidades cliente={cliente} />
+          </TabsContent>
+        )}
         <TabsContent value="historico" className="mt-0">
           <HistoricoMensual cliente={cliente} />
         </TabsContent>

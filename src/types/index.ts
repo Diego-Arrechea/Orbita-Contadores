@@ -141,6 +141,20 @@ export interface Actividad {
   periodo?: string;
 }
 
+/** Un plan de facilidades de pago del cliente ("Mis Facilidades"). */
+export interface Facilidad {
+  nro: string;
+  tipo?: string;
+  /** Fecha de consolidación (dd/mm/aaaa). */
+  fecha?: string;
+  total?: number;
+  cuotasTotal?: number;
+  estadoEnvio?: string;
+  /** Vigente | Caduco | Cancelado | Refinanciado | … */
+  situacion?: string;
+  vigente: boolean;
+}
+
 export interface Cliente {
   id: string;
   nombre: string;
@@ -153,6 +167,9 @@ export interface Cliente {
   /** Actividades económicas declaradas en el padrón (código + descripción + período). La principal
    *  primero. Vacío/ausente = todavía no se trajo del padrón. */
   actividades?: Actividad[];
+  /** Planes de facilidades de pago ("Mis Facilidades") con su situación. Vacío/ausente = sin planes o
+   *  todavía no se consultó. */
+  facilidades?: Facilidad[];
   fechaInicio: string;
   notas: string;
   /** ¿Tiene relación de dependencia (trabajo en blanco)? Lo marca el contador (o se auto-detecta).
