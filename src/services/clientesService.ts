@@ -10,7 +10,7 @@ import type {
 import { CATEGORIAS } from '@/data/categorias';
 import { derivarHistorial } from '@/lib/derivarHistorial';
 import { ventana12Meses } from '@/lib/monotributo';
-import { ApiError, apiGet, apiGetBlob, apiPut, apiDelete } from './apiClient';
+import { ApiError, apiGet, apiGetBlob, apiPost, apiPut, apiDelete } from './apiClient';
 import { getComprobantesReales } from './comprobantesService';
 
 interface ClienteBackend {
@@ -67,6 +67,9 @@ interface ClienteBackend {
   facturacion_agro_12m?: number | null; // suma de liquidaciones agro de los últimos 12 meses
   facturacion_agro_total?: number | null; // histórico de liquidaciones agro
   activo?: boolean | null; // ¿el contador tiene activo el monitoreo del cliente?
+  email_cliente?: string | null; // contacto del cliente final (recordatorio de vencimientos)
+  telefono_cliente?: string | null;
+  venc_avisos?: boolean | null; // false = excluido del recordatorio de vencimientos
   responsable_id?: number | null; // responsable asignado (sólo para un titular con equipo)
   responsable?: string | null;
 }
@@ -199,6 +202,9 @@ function construirCliente(
     facturacionAgro12m: bk.facturacion_agro_12m ?? 0,
     facturacionAgroTotal: bk.facturacion_agro_total ?? 0,
     activo: bk.activo ?? true,
+    emailCliente: bk.email_cliente ?? undefined,
+    telefonoCliente: bk.telefono_cliente ?? undefined,
+    vencAvisos: bk.venc_avisos ?? undefined,
     causales: [],
     extracciones,
     fuente: 'arca',
@@ -256,6 +262,9 @@ export type CamposEdicion = Partial<
     | 'notas'
     | 'relacionDependencia'
     | 'facturaAgro'
+    | 'emailCliente'
+    | 'telefonoCliente'
+    | 'vencAvisos'
   >
 >;
 
@@ -263,6 +272,64 @@ export type CamposEdicion = Partial<
  *  sólo lo que cambió. El backend las re-aplica sobre el dato de ARCA al devolver el cliente. */
 export async function editarCliente(cuit: string, campos: CamposEdicion): Promise<void> {
   await apiPut(`/clientes/${cuit.replace(/\D/g, '')}/edicion`, campos);
+}
+
+/** Una fila de la planilla de contactos (ya parseada en el browser). email/telefono opcionales. */
+export interface FilaContacto {
+  cuit: string;
+  email?: string;
+  telefono?: string;
+}
+
+export interface ImportarContactosResumen {
+  actualizados: number;
+  errores: { fila: number; cuit: string; motivo: string }[];
+}
+
+/** Carga masiva de contactos (email/teléfono) de los clientes, para el recordatorio de vencimientos.
+ *  El archivo se parsea en el browser; acá sólo viajan las filas. El backend ignora celdas vacías y
+ *  reporta las filas con problemas (CUIT ajeno o email mal escrito) sin frenar el resto. */
+export async function importarContactosClientes(
+  filas: FilaContacto[],
+): Promise<ImportarContactosResumen> {
+  return apiPost('/vencimientos/contactos/importar', { filas });
+}
+
+export interface PruebaVencimiento {
+  enviado: boolean;
+  destino?: string | null;
+  asunto?: string | null;
+  html?: string | null;
+  texto?: string | null;
+  motivo?: string | null;
+}
+
+/** Envía a la casilla del contador el recordatorio de vencimiento de un cliente, tal como le
+ *  llegaría, y devuelve el contenido para previsualizarlo (aunque el envío real no esté disponible). */
+export async function enviarPruebaVencimiento(cuit: string): Promise<PruebaVencimiento> {
+  return apiPost('/vencimientos/prueba', { cuit: cuit.replace(/\D/g, '') });
+}
+
+export interface VencimientoCliente {
+  cuit: string;
+  nombre: string;
+  email: string | null; // null = todavía sin email cargado
+  fecha: string;
+  importe: number | null; // null = degradado a solo-fecha (dato viejo) o sin importe
+  importe_fresco: boolean;
+  avisos_activos: boolean; // false = el contador lo excluyó
+}
+
+export interface PrevisualizacionVencimientos {
+  mes: string;
+  clientes: VencimientoCliente[];
+  sin_vencimiento_total: number;
+}
+
+/** Previsualiza a quién le llegaría el recordatorio de vencimiento este mes (y quién queda afuera).
+ *  Solo lectura: no envía nada. */
+export async function previsualizarVencimientos(): Promise<PrevisualizacionVencimientos> {
+  return apiGet('/vencimientos/previsualizar');
 }
 
 /** Actualiza la clave fiscal con la que se sincroniza el cliente (cuando la cambia en ARCA). Se

@@ -233,6 +233,12 @@ export interface Cliente {
   /** ¿El contador tiene activo el monitoreo de este cliente? En false queda "pausado": no se le
    *  actualizan los datos y en la lista aparece atenuado como "Desactivado". Default true. */
   activo?: boolean;
+  /** Contacto del cliente FINAL (para el recordatorio mensual de vencimientos por mail). Lo carga el
+   *  contador (a mano en la ficha o por importación masiva); ARCA no lo trae. Sólo se usa el mail; el
+   *  teléfono se guarda para un canal futuro. `vencAvisos` false = excluido del recordatorio. */
+  emailCliente?: string;
+  telefonoCliente?: string;
+  vencAvisos?: boolean;
   causales: EstadoCausalCliente[];
   extracciones: Extraccion[];
   /** 'arca' = los comprobantes se traen reales del backend (WSFEv1); 'mock'/undefined = datos de prueba. */
@@ -319,6 +325,10 @@ export interface Configuracion {
   notificaciones: ConfigNotificaciones;
   /** Personalización del reporte imprimible del cliente (preferencia global del contador). */
   reporte: ConfigReporte;
+  /** Recordatorios de vencimiento al cliente final. `activo` = interruptor maestro del envío
+   *  automático mensual de todo el estudio (default false; opt-in). Las excepciones por cliente van
+   *  en `Cliente.vencAvisos`. */
+  vencimientos: { activo: boolean };
 }
 
 /** Qué secciones del reporte imprimible del cliente se incluyen, y con cuánto historial. Preferencia

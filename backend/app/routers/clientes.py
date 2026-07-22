@@ -311,6 +311,9 @@ def construir_cliente_out(
         motivo_ultima_extraccion=_motivo_amigable(ult[2]) if ult else None,
         notas=edic.get("notas"),
         fecha_inicio=edic.get("fechaInicio"),
+        email_cliente=c.email_cliente,
+        telefono_cliente=c.telefono_cliente,
+        venc_avisos=c.venc_avisos,
         # Relación de dependencia: el override manual del contador (True/False) gana; si no lo marcó
         # (None), cae al valor auto-detectado de la columna. None final = no se sabe.
         relacion_dependencia=(
@@ -394,6 +397,14 @@ def editar_cliente(
         cliente.factura_agro = bool(factura_agro)
         if not factura_agro and cliente.agro_chequeado_en is None:
             cliente.agro_chequeado_en = dt.datetime.now(dt.timezone.utc)
+    # Contacto del cliente final: columnas reales (el motor de vencimientos las consulta por SQL),
+    # no override en edicion_json. Cadena vacía = borrar el dato (se guarda NULL).
+    if "emailCliente" in payload:
+        cliente.email_cliente = (payload.pop("emailCliente") or "").strip() or None
+    if "telefonoCliente" in payload:
+        cliente.telefono_cliente = (payload.pop("telefonoCliente") or "").strip() or None
+    if "vencAvisos" in payload:
+        cliente.venc_avisos = bool(payload.pop("vencAvisos"))
     actual: dict = json.loads(cliente.edicion_json) if cliente.edicion_json else {}
     actual.update(payload)
     cliente.edicion_json = json.dumps(actual, ensure_ascii=False)

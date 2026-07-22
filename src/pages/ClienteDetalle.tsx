@@ -32,6 +32,7 @@ import { AlertaBadge } from '@/components/shared/AlertaBadge';
 import { SituacionActual } from '@/components/cliente/SituacionActual';
 import { EstadoCuenta } from '@/components/cliente/EstadoCuenta';
 import { PlanesFacilidades } from '@/components/cliente/PlanesFacilidades';
+import { VistaPreviaVencimiento } from '@/components/cliente/VistaPreviaVencimiento';
 import { HistoricoMensual } from '@/components/cliente/HistoricoMensual';
 import { FacturacionDetalle } from '@/components/cliente/FacturacionDetalle';
 import { FacturacionAgropecuaria } from '@/components/cliente/FacturacionAgropecuaria';
@@ -438,7 +439,8 @@ export function ClienteDetalle() {
             onVerComprobantes={() => setTab('facturacion')}
           />
         </TabsContent>
-        <TabsContent value="estado-cuenta" className="mt-0">
+        <TabsContent value="estado-cuenta" className="mt-0 space-y-4">
+          {tienePermiso('editar_cliente') && <VistaPreviaVencimiento cliente={cliente} />}
           <EstadoCuenta cliente={cliente} />
         </TabsContent>
         {!!cliente.facilidades?.length && (

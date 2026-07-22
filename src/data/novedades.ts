@@ -42,6 +42,32 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-22-recordatorios-vencimiento',
+    fecha: '2026-07-22',
+    titulo: 'Recordatorios de vencimiento automáticos para tus clientes',
+    resumen:
+      'Órbita puede avisarle por mail a cada cliente cuándo vence su cuota, a principio de cada mes. Vos lo activás una vez.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'A principio de cada mes le enviamos por mail a cada cliente el recordatorio de su próximo ' +
+          'vencimiento de monotributo, con la fecha y —si lo tenemos al día— el importe a pagar. Te ' +
+          'ahorra el recordatorio manual uno por uno, y el mail sale a nombre de tu estudio.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Cómo activarlo, en 3 pasos: (1) Cargá el email de tus clientes: en "Mi cartera" te aparece ' +
+          'un aviso para descargar una planilla con tu cartera, completar los mails y volver a subirla ' +
+          '—también podés cargarlo en la ficha de cada cliente. (2) Entrá a Configuración → ' +
+          'Vencimientos y activá "Enviar recordatorios automáticamente". (3) ¡Listo! En esa misma ' +
+          'pantalla ves a quién le llega este mes y podés apagar el aviso de cualquier cliente con su ' +
+          'interruptor.',
+      },
+    ],
+  },
+  {
     id: '2026-07-22-planes-de-facilidades',
     fecha: '2026-07-22',
     titulo: 'Planes de facilidades de pago del cliente',

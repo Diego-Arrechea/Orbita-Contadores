@@ -85,6 +85,12 @@ function combinar(guardado: Partial<Configuracion> | null | undefined): Configur
     mesesHistorial: num(rg.mesesHistorial, R.mesesHistorial),
   };
 
+  // Recordatorios de vencimiento: master del envío automático (default OFF).
+  const vg = (limpio.vencimientos ?? {}) as Partial<Configuracion['vencimientos']>;
+  const vencimientos: Configuracion['vencimientos'] = {
+    activo: nb(vg.activo, CONFIGURACION_INICIAL.vencimientos.activo),
+  };
+
   return {
     ...CONFIGURACION_INICIAL,
     inflacionMensualProyeccion: num(viejo.inflacionMensualProyeccion, CONFIGURACION_INICIAL.inflacionMensualProyeccion),
@@ -99,6 +105,7 @@ function combinar(guardado: Partial<Configuracion> | null | undefined): Configur
       horaHasta: num(ng.horaHasta, N.horaHasta),
     },
     reporte,
+    vencimientos,
   };
 }
 

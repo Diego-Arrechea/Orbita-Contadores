@@ -265,6 +265,11 @@ class ClienteOut(BaseModel):
     # Editables por el contador (override manual guardado en la cuenta; ver edicion_json):
     notas: str | None = None
     fecha_inicio: str | None = None
+    # Contacto del cliente final (columnas propias, no edicion_json). Para el recordatorio de
+    # vencimientos por mail. `venc_avisos` None/True = incluido; False = excluido por el contador.
+    email_cliente: str | None = None
+    telefono_cliente: str | None = None
+    venc_avisos: bool | None = None
     # ¿Tiene relación de dependencia (trabajo en blanco)? Efectivo = override manual del contador si
     # lo marcó, si no el auto-detectado. None = no se sabe. Relevante para justificar gastos.
     relacion_dependencia: bool | None = None
@@ -327,6 +332,9 @@ class ConfiguracionIn(BaseModel):
     # Personalización del reporte imprimible (secciones on/off, meses de historial, observaciones).
     # Dict tolerante (forma = ReporteConfig del front). Se pisa entero en cada guardado.
     reporte: dict | None = None
+    # Recordatorios de vencimiento al cliente final: {activo} = master del envío automático mensual
+    # del estudio. Dict tolerante (forma = Configuracion.vencimientos del front). Lo lee el job del motor.
+    vencimientos: dict | None = None
     # --- Back-compat: umbrales globales VIEJOS. El front ya no los manda (usa `alertas`), pero se
     # conservan acá para que un config_json viejo sobreviva el round-trip y el front los mapee. ---
     umbralAmarilloPorcentaje: float | None = None  # noqa: N815
@@ -351,6 +359,77 @@ class EdicionClienteIn(BaseModel):
     notas: str | None = None
     relacionDependencia: bool | None = None  # noqa: N815 — el contador marca si tiene trabajo en blanco
     facturaAgro: bool | None = None  # noqa: N815 — el contador marca/desmarca la facturación agropecuaria
+    # Contacto del cliente final (para el recordatorio de vencimientos). Cadena vacía = borrar el dato.
+    emailCliente: str | None = None  # noqa: N815
+    telefonoCliente: str | None = None  # noqa: N815
+    vencAvisos: bool | None = None  # noqa: N815 — incluir al cliente en el recordatorio de vencimientos
+
+
+class ContactoClienteIn(BaseModel):
+    """Una fila del Excel de contactos ya parseada por el front: CUIT + email/teléfono del cliente
+    final. email/telefono opcionales (una celda vacía es válida: no se toca ese campo)."""
+
+    cuit: str
+    email: str | None = None
+    telefono: str | None = None
+
+
+class ImportarContactosIn(BaseModel):
+    """Carga masiva de contactos de clientes (filas del Excel ya parseadas por el front)."""
+
+    filas: list[ContactoClienteIn]
+
+
+class ErrorFilaContacto(BaseModel):
+    fila: int  # posición de la fila con datos (1-based) para que el contador la ubique
+    cuit: str
+    motivo: str
+
+
+class ImportarContactosResumenOut(BaseModel):
+    actualizados: int  # cuántos clientes quedaron con al menos un contacto nuevo/actualizado
+    errores: list[ErrorFilaContacto]
+
+
+class VencimientoClienteOut(BaseModel):
+    """Un cliente al que aplica el recordatorio (monotributista con próximo vencimiento), con su
+    estado para el panel: si tiene email, el importe (degradado a None si el dato está viejo) y si el
+    contador lo tiene activado o excluido."""
+
+    cuit: str
+    nombre: str
+    email: str | None = None  # None = todavía sin email cargado
+    fecha: str  # próximo vencimiento (tal como lo informa ARCA)
+    importe: float | None = None  # None si degradó a solo-fecha (dato viejo) o no hay importe
+    importe_fresco: bool = False
+    avisos_activos: bool = True  # False = el contador lo excluyó (venc_avisos)
+
+
+class PrevisualizarVencimientosOut(BaseModel):
+    """Clientes a los que aplica el recordatorio (los que tienen un vencimiento próximo), con su
+    estado y su toggle, más el conteo de los que no tienen vencimiento. Solo lectura, no envía nada."""
+
+    mes: str  # nombre del mes actual, para el título
+    clientes: list[VencimientoClienteOut]
+    sin_vencimiento_total: int  # agregado: no monotributistas / todavía sin próximo vencimiento
+
+
+class PruebaVencimientoIn(BaseModel):
+    """Pide un mail de prueba del recordatorio de vencimiento de un cliente."""
+
+    cuit: str
+
+
+class PruebaVencimientoOut(BaseModel):
+    """El mail de prueba se manda a la casilla del CONTADOR (no al cliente) y además se devuelve el
+    contenido armado para previsualizarlo en la app sin depender del envío real."""
+
+    enviado: bool
+    destino: str | None = None
+    asunto: str | None = None
+    html: str | None = None
+    texto: str | None = None
+    motivo: str | None = None  # por qué no se envió (sin vencimiento para recordar, o falló el mail)
 
 
 class EstadoClienteIn(BaseModel):
