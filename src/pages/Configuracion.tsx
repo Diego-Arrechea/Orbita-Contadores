@@ -64,6 +64,7 @@ import {
 } from '@/services/authService';
 import { actualizarUsuarioGuardado, logoutCuenta, usuarioActual } from '@/lib/cuenta';
 import { enviarPruebaWhatsapp } from '@/services/notificacionesService';
+import { PrevisualizacionVencimientos } from '@/components/shared/PrevisualizacionVencimientos';
 import type { ConfigAlertas, ConfigNotificaciones } from '@/types';
 
 // Interruptor del apartado de alertas por WhatsApp en la UI. En false muestra "Próximamente" y NO
@@ -338,6 +339,7 @@ export function Configuracion() {
           <TabsTrigger value="ventanas" className="shrink-0"><Calendar className="h-3.5 w-3.5" />Ventanas</TabsTrigger>
           <TabsTrigger value="umbrales" className="shrink-0"><Bell className="h-3.5 w-3.5" />Alertas</TabsTrigger>
           <TabsTrigger value="notificaciones" className="shrink-0"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
+          <TabsTrigger value="vencimientos" className="shrink-0"><MailCheck className="h-3.5 w-3.5" />Vencimientos</TabsTrigger>
           <TabsTrigger value="categorias" className="shrink-0"><Database className="h-3.5 w-3.5" />Categorías</TabsTrigger>
           <TabsTrigger value="causales" className="shrink-0"><Info className="h-3.5 w-3.5" />Causales</TabsTrigger>
           <TabsTrigger value="cuenta" className="shrink-0"><UserCog className="h-3.5 w-3.5" />Cuenta</TabsTrigger>
@@ -682,6 +684,10 @@ export function Configuracion() {
               </Button>
             </div>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="vencimientos" className="mt-0">
+          <PrevisualizacionVencimientos />
         </TabsContent>
 
         <TabsContent value="categorias">

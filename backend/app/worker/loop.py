@@ -33,6 +33,7 @@ from ..services.facilidades import paso_worker as facilidades_paso_worker
 from ..services.alertas import evaluar_y_notificar
 from ..services.scheduler import _sincronizar_con_reintento
 from ..services.sincronizacion import sincronizar_padron
+from ..services.vencimientos import pasar_vencimientos
 from .janitor import limpiar_perfiles_viejos
 
 logging.basicConfig(
@@ -250,6 +251,33 @@ def _latir() -> None:
         db.close()
 
 
+_ultimo_vencimientos = 0.0
+
+
+def _quizas_vencimientos() -> None:
+    """Entre el 1 y `venc_dia_hasta` de cada mes, envía el recordatorio de vencimiento a los clientes
+    elegibles (una vez por hora alcanza; el envío es idempotente por período). Gate global
+    `venc_mail_enabled`: apagado por defecto, el motor no manda nada hasta activarlo en el .env."""
+    global _ultimo_vencimientos
+    if not settings.venc_mail_enabled:
+        return
+    hoy = dt.datetime.now()  # el contenedor corre en TZ Argentina
+    if not (1 <= hoy.day <= settings.venc_dia_hasta):
+        return
+    if time.monotonic() - _ultimo_vencimientos < 3600:
+        return
+    _ultimo_vencimientos = time.monotonic()
+    db = SessionLocal()
+    try:
+        res = pasar_vencimientos(db)
+        if res["enviados"]:
+            logger.info("vencimientos: %s", res)
+    except Exception:  # noqa: BLE001
+        logger.warning("pasar_vencimientos falló", exc_info=True)
+    finally:
+        db.close()
+
+
 _ultimo_janitor = 0.0
 
 
@@ -303,6 +331,7 @@ def main() -> None:
             logger.warning("despachar falló", exc_info=True)
         _latir()  # registra el latido (vivo + en vuelo) para el panel admin
         _quizas_pasar_alertas()
+        _quizas_vencimientos()
         _quizas_janitor()
         _stop.wait(settings.sync_poll_segundos)
 

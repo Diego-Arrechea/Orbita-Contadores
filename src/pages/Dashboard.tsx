@@ -46,6 +46,7 @@ import { calcularCliente } from '@/lib/monotributo';
 import { esMonotributista, etiquetaRegimenCorta } from '@/lib/regimen';
 import { derivarAlertas, estadoDesdeAlertas } from '@/lib/alertas';
 import { useClientesReales } from '@/lib/queries';
+import { RecordatoriosContactosBanner } from '@/components/shared/RecordatoriosContactosBanner';
 import { useCargas } from '@/context/CargasContext';
 import { cuentaActual, tienePermiso } from '@/lib/cuenta';
 import { formatCuit, formatPercent, formatDate } from '@/lib/utils';
@@ -273,6 +274,10 @@ export function Dashboard() {
           </div>
           <ChevronRight className="h-5 w-5 shrink-0 text-danger transition-transform group-hover:translate-x-0.5" />
         </button>
+      )}
+
+      {tienePermiso('editar_cliente') && (
+        <RecordatoriosContactosBanner clientes={reales} onImported={() => void refetch()} />
       )}
 
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">

@@ -85,6 +85,15 @@ class Settings(BaseSettings):
     sync_quiet_inicio: int = 0
     sync_quiet_fin: int = 8
 
+    # Recordatorio mensual de vencimientos al cliente final (por mail). Master del job automático:
+    # default APAGADO (igual que las alertas), se enciende con VENC_MAIL_ENABLED=true cuando el piloto
+    # esté validado. `venc_dia_hasta` = último día del mes en que puede salir el recordatorio (sale
+    # entre el 1 y este día). `venc_frescura_dias` = si la última sincronización exitosa del cliente es
+    # más vieja que esto, el importe se considera desactualizado y el mail sale SÓLO con la fecha.
+    venc_mail_enabled: bool = False
+    venc_dia_hasta: int = 7
+    venc_frescura_dias: int = 35
+
     # Motor de obtención de datos de ARCA:
     #   "http"    = motor nuevo por requests (app/arca/afip.py vía app/arca/motor.py). Default.
     #   "browser" = scrapers por navegador (app/scraping/*). Fallback INSTANTÁNEO: poné

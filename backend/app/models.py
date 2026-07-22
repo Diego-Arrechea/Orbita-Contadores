@@ -209,6 +209,18 @@ class ClienteARCA(Base):
     # Detalle de deuda de la CCMA (JSON serializado): totales, desglose capital/intereses y el
     # ledger de movimientos por período. Lo llena scraping/ccma.py vía sincronización. Nullable.
     deuda_detalle: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Contacto del cliente FINAL (no confundir con el email/teléfono del CONTADOR, que viven en
+    # Usuario). Lo carga el contador a mano (en la ficha) o por importación masiva desde un Excel;
+    # ARCA no lo provee. Alimenta el recordatorio mensual de vencimientos por mail. Sólo se usa el
+    # mail; el teléfono se guarda para un canal futuro (hoy no se envía nada por ahí). `venc_avisos`
+    # = opt-out por cliente: None/True lo incluye en los recordatorios, False lo excluye. Nullable.
+    email_cliente: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    telefono_cliente: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    venc_avisos: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Último período (aaaa-mm) en que se le envió el recordatorio de vencimiento. Hace idempotente el
+    # job mensual: si ya se avisó este mes, no se reenvía (sobrevive reinicios/redeploys del worker,
+    # a diferencia de un contador en memoria). NULL = nunca se le avisó. Ver services/vencimientos.py.
+    venc_notificado_periodo: Mapped[str | None] = mapped_column(String(7), nullable=True)
     # Ediciones MANUALES del contador (nombre/categoría/actividad/fecha inicio/estado cuota/notas) en
     # JSON. Va SEPARADO de las columnas crudas a propósito: la sincronización de ARCA pisa nombre/
     # categoría/etc., pero el override del contador vive acá y se re-aplica al devolver el cliente

@@ -57,6 +57,10 @@ export function EditarClienteDialog({
   const [notas, setNotas] = useState(cliente.notas ?? '');
   const [relacionDependencia, setRelacionDependencia] = useState(cliente.relacionDependencia);
   const [facturaAgro, setFacturaAgro] = useState(cliente.facturaAgro ?? false);
+  const [emailCliente, setEmailCliente] = useState(cliente.emailCliente ?? '');
+  const [telefonoCliente, setTelefonoCliente] = useState(cliente.telefonoCliente ?? '');
+  // Recordatorio de vencimiento: incluido salvo que el contador lo excluya (venc_avisos === false).
+  const [vencAvisos, setVencAvisos] = useState(cliente.vencAvisos !== false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
 
@@ -73,6 +77,9 @@ export function EditarClienteDialog({
       notas,
       relacionDependencia,
       facturaAgro,
+      emailCliente: emailCliente.trim(),
+      telefonoCliente: telefonoCliente.trim(),
+      vencAvisos,
     };
     // Los clientes de ejemplo no se persisten en la cuenta (no existen en el backend).
     if (!esReal) {
@@ -229,6 +236,46 @@ export function EditarClienteDialog({
                 </span>
               </span>
             </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="ed-email-cli">Email del cliente</Label>
+              <Input
+                id="ed-email-cli"
+                type="email"
+                placeholder="opcional"
+                value={emailCliente}
+                onChange={e => setEmailCliente(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ed-tel-cli">Teléfono del cliente</Label>
+              <Input
+                id="ed-tel-cli"
+                type="tel"
+                placeholder="opcional"
+                value={telefonoCliente}
+                onChange={e => setTelefonoCliente(e.target.value)}
+              />
+            </div>
+          </div>
+          <p className="-mt-1.5 text-xs text-muted-foreground">
+            Con el email cargado le enviamos a tu cliente el recordatorio de sus próximos
+            vencimientos.
+          </p>
+
+          <div className="space-y-1.5">
+            <Label>Recordatorios de vencimiento</Label>
+            <Select value={vencAvisos ? 'si' : 'no'} onValueChange={v => setVencAvisos(v === 'si')}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="si">Enviárselos a este cliente</SelectItem>
+                <SelectItem value="no">No enviárselos a este cliente</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-1.5">

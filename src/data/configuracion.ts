@@ -41,6 +41,8 @@ export const CONFIGURACION_INICIAL: Configuracion = {
     },
     mesesHistorial: 12,
   },
+  // Recordatorios de vencimiento al cliente final: envío automático APAGADO por defecto (opt-in).
+  vencimientos: { activo: false },
 };
 // La config del contador se guarda EN LA CUENTA (backend), no en localStorage. La carga/guardado
 // vive en src/context/ConfigContext.tsx (useConfig). Acá quedan sólo los defaults.

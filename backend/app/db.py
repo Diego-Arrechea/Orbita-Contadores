@@ -289,6 +289,18 @@ def _migrar_clientes_arca(conn) -> None:
         conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN recat_ventana_hasta VARCHAR(20)"))
     if "recat_mostrar_alerta" not in cols:
         conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN recat_mostrar_alerta BOOLEAN"))
+    # Contacto del cliente final (lo carga el contador; ARCA no lo trae): alimenta el recordatorio
+    # mensual de vencimientos por mail. VARCHAR/BOOLEAN andan igual en SQLite y Postgres; NULL = sin
+    # dato. `venc_avisos` NULL/TRUE = incluido en los recordatorios, FALSE = el contador lo excluyó.
+    if "email_cliente" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN email_cliente VARCHAR(200)"))
+    if "telefono_cliente" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN telefono_cliente VARCHAR(40)"))
+    if "venc_avisos" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN venc_avisos BOOLEAN"))
+    # Idempotencia del recordatorio mensual: último período (aaaa-mm) avisado. VARCHAR portable.
+    if "venc_notificado_periodo" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN venc_notificado_periodo VARCHAR(7)"))
     # ¿El contador tiene activo el monitoreo del cliente? En False el motor de sync lo saltea y en la
     # lista aparece como "Desactivado". DEFAULT TRUE → los clientes ya existentes quedan activos.
     if "activo" not in cols:
