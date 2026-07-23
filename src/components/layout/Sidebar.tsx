@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Bell,
   Landmark,
+  Percent,
   UserPlus,
   Users,
   Settings,
@@ -22,6 +23,7 @@ import {
   esEmpleado,
   impersonando,
   logoutCuenta,
+  puedeVerIVA,
   tienePermiso,
 } from '@/lib/cuenta';
 import { useNovedadesVistas } from '@/lib/novedadesVistas';
@@ -39,19 +41,36 @@ const nav = [
   { to: '/novedades', label: 'Novedades', icon: Sparkles },
 ];
 
+// Apartado de IVA: rollout gateado (allowlist IVA_EMAILS + admins). Se inserta después de
+// Conciliación sólo para las cuentas habilitadas (puedeVerIVA). El backend valida igual.
+const ivaItem = { to: '/iva', label: 'IVA', icon: Percent };
+
+/** Inserta el ítem de IVA (si la cuenta lo tiene habilitado) justo después de Conciliación. */
+function conIva(items: typeof nav): typeof nav {
+  if (!puedeVerIVA()) return items;
+  const i = items.findIndex(x => x.to === '/conciliacion');
+  const at = i >= 0 ? i + 1 : items.length;
+  return [...items.slice(0, at), ivaItem, ...items.slice(at)];
+}
+
 /** Menú según la cuenta. Usuario del estudio (empleado): sin Gestión, Configuración ni Novedades, y
- *  "Nuevo cliente" sólo si el titular le dio el permiso. Cuenta plena: todo (+ Superadmin si admin). */
+ *  "Nuevo cliente" sólo si el titular le dio el permiso. Cuenta plena: todo (+ Superadmin si admin).
+ *  El apartado de IVA aparece sólo si la cuenta lo tiene habilitado (piloto acotado). */
 function itemsSegunCuenta() {
   if (esEmpleado()) {
-    return nav.filter(item => {
-      if (['/usuarios', '/configuracion', '/novedades'].includes(item.to)) return false;
-      if (item.to === '/clientes/nuevo') return tienePermiso('nuevo_cliente');
-      return true;
-    });
+    return conIva(
+      nav.filter(item => {
+        if (['/usuarios', '/configuracion', '/novedades'].includes(item.to)) return false;
+        if (item.to === '/clientes/nuevo') return tienePermiso('nuevo_cliente');
+        return true;
+      })
+    );
   }
-  return esAdmin()
-    ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
-    : nav;
+  return conIva(
+    esAdmin()
+      ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
+      : nav
+  );
 }
 
 const LS_COLAPSADA = 'orbita_sidebar_colapsada';

@@ -13,6 +13,7 @@ import {
   cuentaActual,
   esAdmin,
   esEmpleado,
+  puedeVerIVA,
   tienePermiso,
   tokenActual,
   actualizarUsuarioGuardado,
@@ -51,12 +52,20 @@ function RequireNuevoCliente({ children }: { children: ReactNode }) {
   if (!cuentaActual()) return <Navigate to="/login" replace />;
   return tienePermiso('nuevo_cliente') ? <>{children}</> : <Navigate to="/" replace />;
 }
+
+/** Apartado de IVA: rollout gateado (allowlist IVA_EMAILS + admins). Sin habilitación → al dashboard.
+ *  El backend valida el mismo gate en cada endpoint. */
+function RequireIVA({ children }: { children: ReactNode }) {
+  if (!cuentaActual()) return <Navigate to="/login" replace />;
+  return puedeVerIVA() ? <>{children}</> : <Navigate to="/" replace />;
+}
 import { Dashboard } from '@/pages/Dashboard';
 import { Alertas } from '@/pages/Alertas';
 import { ClienteDetalle } from '@/pages/ClienteDetalle';
 import { ReporteCliente } from '@/pages/ReporteCliente';
 import { NuevoCliente } from '@/pages/NuevoCliente';
 import { Conciliacion } from '@/pages/Conciliacion';
+import { IVA } from '@/pages/IVA';
 import { Configuracion } from '@/pages/Configuracion';
 import { Novedades } from '@/pages/Novedades';
 import { Admin } from '@/pages/Admin';
@@ -105,6 +114,14 @@ export default function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/alertas" element={<Alertas />} />
         <Route path="/conciliacion" element={<Conciliacion />} />
+        <Route
+          path="/iva"
+          element={
+            <RequireIVA>
+              <IVA />
+            </RequireIVA>
+          }
+        />
         <Route
           path="/clientes/nuevo"
           element={

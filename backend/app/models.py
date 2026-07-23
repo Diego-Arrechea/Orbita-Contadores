@@ -360,6 +360,18 @@ class ComprobanteEmitido(Base):
     moneda: Mapped[str] = mapped_column(String(8), default="ARS")
     cotizacion: Mapped[float] = mapped_column(Numeric(15, 6), default=1)
     imp_total_origen: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    # --- Desglose de IVA (para el Libro IVA / posición). SIEMPRE en pesos, como imp_total. ---
+    # Lo trae 'Mis Comprobantes' discriminado para los comprobantes clase A/B/M (RI); en clase C
+    # (monotributo) no hay IVA discriminado. NULL = todavía no se capturó el desglose (comprobantes
+    # sincronizados antes de esta columna): el Libro IVA cae al total como neto para no romper. Se
+    # poblará al extender el parseo del sync (ver arca/afip.py MCMP_COLS, índices 18..47). imp_neto =
+    # neto gravado, imp_iva = IVA liquidado, imp_no_gravado = neto no gravado, imp_exento = operaciones
+    # exentas, imp_trib = otros tributos (percepciones/impuestos internos). imp_total = suma de todos.
+    imp_neto: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    imp_iva: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    imp_no_gravado: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    imp_exento: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    imp_trib: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
     doc_nro: Mapped[str] = mapped_column(String(20), default="")
     contraparte_nombre: Mapped[str] = mapped_column(String(200), default="")
     cae: Mapped[str] = mapped_column(String(20), default="")
