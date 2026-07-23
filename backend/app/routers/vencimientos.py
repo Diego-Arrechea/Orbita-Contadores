@@ -116,10 +116,13 @@ def previsualizar(
         )
     ).all()
 
+    # La fecha del próximo vencimiento se CALCULA (día 20), igual para todos: el dato scrapeado se
+    # congela en el último sync y puede quedar viejo (mostrar un 20 ya pasado). Ver services.
+    fecha_venc = vencimientos_svc.fecha_corta(vencimientos_svc.proximo_venc(hoy))
     lista: list[VencimientoClienteOut] = []
     sin_vencimiento = 0
     for c in clientes:
-        if not c.prox_venc_fecha:  # no monotributista / todavía sin próximo vencimiento
+        if not c.prox_venc_fecha:  # no monotributista / todavía sin cuota de monotributo cargada
             sin_vencimiento += 1
             continue
         activos = c.venc_avisos is not False  # None/True = incluido; False = excluido a mano
@@ -135,7 +138,7 @@ def previsualizar(
                 cuit=c.cuit,
                 nombre=c.nombre,
                 email=c.email_cliente,
-                fecha=c.prox_venc_fecha,
+                fecha=fecha_venc,
                 importe=(
                     float(c.prox_venc_importe)
                     if (fresco and c.prox_venc_importe is not None)
