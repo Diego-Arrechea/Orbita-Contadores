@@ -270,26 +270,50 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
             </div>
             <div
               className={cn(
-                'flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg px-3 py-2.5 text-sm',
+                'rounded-lg text-sm',
                 evalDebe
                   ? 'bg-warning/15 border border-warning/30'
                   : 'bg-muted/40 border border-border',
               )}
             >
-              <span className="text-xs text-muted-foreground tabular-nums">{rangoEval}</span>
-              <span className="text-lg font-semibold tabular-nums">
-                {formatCurrency(evalVentana.facturado)}
-              </span>
-              <span className="inline-flex items-center gap-1.5 ml-auto">
-                {evalDebe && <TrendingUp className="h-4 w-4 text-warning-foreground" />}
-                corresponde
-                <Badge variant={evalDebe ? 'warning' : 'muted'} className="font-semibold">
-                  Cat. {evalVentana.categoriaCorresponde.codigo}
-                </Badge>
-              </span>
+              {/* Los dos semestres calendario que componen la ventana anual: cada mitad por separado
+                  para que el contador controle el facturado contra ARCA. */}
+              {evalVentana.semestres.map((s, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between gap-3 border-b border-border/50 px-3 py-2"
+                >
+                  <span className="text-xs text-muted-foreground">
+                    {i === 0 ? '1.er semestre' : '2.º semestre'}
+                    <span className="ml-1.5 tabular-nums">
+                      {mesCorto(s.desde)} – {mesCorto(s.hasta)}
+                    </span>
+                  </span>
+                  <span className="tabular-nums font-medium">{formatCurrency(s.facturado)}</span>
+                </div>
+              ))}
+              {/* Total anual: la suma de ambos semestres y la categoría que le correspondería. */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide">Total anual</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">{rangoEval}</span>
+                </div>
+                <div className="ml-auto flex items-center gap-3">
+                  <span className="text-lg font-semibold tabular-nums">
+                    {formatCurrency(evalVentana.facturado)}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    {evalDebe && <TrendingUp className="h-4 w-4 text-warning-foreground" />}
+                    corresponde
+                    <Badge variant={evalDebe ? 'warning' : 'muted'} className="font-semibold">
+                      Cat. {evalVentana.categoriaCorresponde.codigo}
+                    </Badge>
+                  </span>
+                </div>
+              </div>
             </div>
             <div className="mt-1.5 text-[11px] text-muted-foreground">
-              Según los comprobantes del período
+              Cada semestre y el total anual, según los comprobantes del período
               {evalDebe
                 ? ` · hoy figura en Cat. ${cliente.categoria}`
                 : ' · coincide con su categoría actual'}

@@ -42,6 +42,19 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-23-recat-dos-semestres',
+    fecha: '2026-07-23',
+    titulo: 'Recategorización: los dos semestres y el total anual',
+    resumen: 'El cuadro de recategorización ahora abre el año en sus dos semestres para controlar mejor.',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'En la Situación actual del cliente, el cuadro de recategorización muestra el facturado de cada semestre por separado y el total anual, con la categoría que le corresponde. Así podés controlar cada mitad del año de un vistazo antes de mirar comprobante por comprobante.',
+      },
+    ],
+  },
+  {
     id: '2026-07-22-recordatorios-vencimiento',
     fecha: '2026-07-22',
     titulo: 'Recordatorios de vencimiento automáticos para tus clientes',
