@@ -137,7 +137,8 @@ def pasar_vencimientos(db: Session, hoy: dt.date | None = None) -> dict:
     """Pase mensual: envía por mail el recordatorio del próximo vencimiento a cada cliente elegible.
 
     Elegible = monitoreo activo + monotributista con próximo vencimiento + email cargado + no excluido
-    (venc_avisos) + el estudio tiene el master ON + todavía no se le avisó ESTE período. Idempotente:
+    (venc_avisos) + SIN problema de clave (si no podemos acceder al cliente, su vencimiento está viejo
+    y no lo mandamos) + el estudio tiene el master ON + todavía no se le avisó ESTE período. Idempotente:
     al enviar marca `venc_notificado_periodo`, así un reinicio del worker no reenvía. Si el mail no se
     entrega (SMTP caído), no marca y se reintenta en la próxima pasada. Devuelve un resumen."""
     hoy = hoy or dt.datetime.now(dt.timezone.utc).date()
@@ -147,6 +148,11 @@ def pasar_vencimientos(db: Session, hoy: dt.date | None = None) -> dict:
             models.ClienteARCA.activo.is_(True),
             models.ClienteARCA.prox_venc_fecha.isnot(None),
             models.ClienteARCA.email_cliente.isnot(None),
+            # Sin problema de clave: esos clientes no se sincronizan, así que su próximo vencimiento
+            # quedó congelado en una fecha vieja (posiblemente ya pasada). No los avisamos.
+            models.ClienteARCA.clave_invalida.is_(False),
+            models.ClienteARCA.clave_requiere_cambio.is_(False),
+            models.ClienteARCA.contribuyente_irregular.is_(False),
             or_(
                 models.ClienteARCA.venc_avisos.is_(None),
                 models.ClienteARCA.venc_avisos.is_(True),

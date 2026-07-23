@@ -100,13 +100,19 @@ def previsualizar(
     usuario: models.Usuario = Depends(usuario_actual),
 ):
     """A quién le llegaría el recordatorio este mes y quién queda afuera (y por qué). Solo lectura,
-    no envía nada. Recorre la cartera visible; sólo clientes bajo monitoreo (activos)."""
+    no envía nada. Recorre la cartera visible; sólo clientes bajo monitoreo (activos) y sin problema
+    de clave (los bloqueados no se sincronizan → su vencimiento quedó viejo, no se listan)."""
     hoy = dt.datetime.now(dt.timezone.utc).date()
     ids = ids_cartera(db, usuario)
     clientes = db.scalars(
         select(models.ClienteARCA).where(
             models.ClienteARCA.usuario_id.in_(ids),
             models.ClienteARCA.activo.is_(True),
+            # Igual que el job: excluimos a los que no se pueden sincronizar (clave/irregular), porque
+            # su próximo vencimiento está congelado en una fecha vieja.
+            models.ClienteARCA.clave_invalida.is_(False),
+            models.ClienteARCA.clave_requiere_cambio.is_(False),
+            models.ClienteARCA.contribuyente_irregular.is_(False),
         )
     ).all()
 
