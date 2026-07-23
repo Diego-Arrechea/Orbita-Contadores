@@ -35,6 +35,38 @@ def nombre_mes(mes: int) -> str:
     return _MESES[mes - 1]
 
 
+def _venc_del_mes(anio: int, mes: int) -> dt.date:
+    """El 20 del mes; si cae fin de semana, corre al lunes (regla del vencimiento de monotributo)."""
+    d = dt.date(anio, mes, 20)
+    if d.weekday() == 5:  # sábado
+        d += dt.timedelta(days=2)
+    elif d.weekday() == 6:  # domingo
+        d += dt.timedelta(days=1)
+    return d
+
+
+def proximo_venc(hoy: dt.date) -> dt.date:
+    """PRÓXIMO vencimiento de la cuota de monotributo respecto de `hoy`. La cuota vence el 20 de cada
+    mes (igual para TODOS los monotributistas), así que la fecha se CALCULA, no se scrapea: el dato de
+    ARCA se congela en el último sync y puede quedar viejo (mostrar el 20 ya pasado). Calcularla
+    garantiza que siempre sea la próxima real."""
+    venc = _venc_del_mes(hoy.year, hoy.month)
+    if hoy <= venc:
+        return venc
+    anio, mes = (hoy.year + 1, 1) if hoy.month == 12 else (hoy.year, hoy.month + 1)
+    return _venc_del_mes(anio, mes)
+
+
+def fecha_corta(d: dt.date) -> str:
+    """20/08/2026 — para tablas/paneles."""
+    return f"{d.day:02d}/{d.month:02d}/{d.year}"
+
+
+def fecha_larga(d: dt.date) -> str:
+    """20 de agosto de 2026 — para el cuerpo del mail."""
+    return f"{d.day} de {_MESES[d.month - 1]} de {d.year}"
+
+
 def _pesos(monto) -> str:
     """Formatea un importe en pesos al formato argentino: 12345.6 -> '$12.345,60'."""
     entero = f"{float(monto):,.2f}"  # formato US: '12,345.60'
@@ -61,12 +93,13 @@ def importe_fresco(db: Session, cuit: str, hoy: dt.date, umbral_dias: int | None
 def armar_mail(
     cliente: models.ClienteARCA, hoy: dt.date, fresco: bool
 ) -> tuple[str, str, str] | None:
-    """Arma (asunto, html, texto) del recordatorio para un cliente. Devuelve None si el cliente no
-    tiene un próximo vencimiento cargado (nada para recordar). `fresco` decide si se incluye el
-    importe: si es False (o no hay importe), el mail sale sólo con la fecha."""
-    fecha = cliente.prox_venc_fecha
-    if not fecha:
+    """Arma (asunto, html, texto) del recordatorio para un cliente. Devuelve None si el cliente no es
+    monotributista con cuota (nada para recordar). La fecha se CALCULA (próximo día 20); `fresco`
+    decide si se incluye el importe: si es False (o no hay importe), el mail sale sólo con la fecha."""
+    if not cliente.prox_venc_fecha:  # proxy de "monotributista con cuota"; su valor no se usa (viejo)
         return None
+    venc = proximo_venc(hoy)
+    fecha = fecha_larga(venc)
     importe = cliente.prox_venc_importe
     sufijo = f" por {_pesos(importe)}" if (fresco and importe is not None) else ""
     saludo = f"Hola {cliente.nombre}," if cliente.nombre else "Hola,"
@@ -75,7 +108,7 @@ def armar_mail(
     else:
         linea = f"tu cuota de monotributo vence el {fecha}{sufijo}."
 
-    asunto = f"Vencimiento de tu monotributo — {_MESES[hoy.month - 1]}"
+    asunto = f"Vencimiento de tu monotributo — {_MESES[venc.month - 1]}"
     html = f"""\
 <div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;line-height:1.6;max-width:520px">
   <p>{saludo}</p>
