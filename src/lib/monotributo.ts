@@ -69,34 +69,63 @@ export function semestreRecatActual(hoy: Date = HOY): { semestre: Semestre; anio
     : { semestre: 'Julio-Diciembre', anio: hoy.getFullYear() - 1 };
 }
 
-export interface FacturadoVentana {
-  /** Primer y último mes calendario de la ventana (día 1). */
+/** Facturado NETO de una mitad (6 meses calendario) de la ventana anual de recategorización. */
+export interface SemestreFacturado {
+  /** Primer y último mes calendario del semestre (día 1). */
   desde: Date;
   hasta: Date;
-  /** Facturado NETO (facturas − NC) del período, por comprobantes. */
+  /** Facturado NETO (facturas − NC) de esos 6 meses, por comprobantes. */
+  facturado: number;
+}
+
+export interface FacturadoVentana {
+  /** Primer y último mes calendario de la ventana anual (día 1). */
+  desde: Date;
+  hasta: Date;
+  /** Facturado NETO (facturas − NC) del período anual, por comprobantes. */
   facturado: number;
   /** Categoría que le correspondería por ese facturado. */
   categoriaCorresponde: Categoria;
+  /** Desglose de la ventana anual en sus dos semestres calendario: el primer medio año y el segundo,
+   *  para poder controlar cada mitad contra ARCA. La facturación agropecuaria (dato ANUAL, sin
+   *  apertura por mes) NO se prorratea entre semestres: queda incluida sólo en el `facturado` total. */
+  semestres: [SemestreFacturado, SemestreFacturado];
 }
 
 /** Facturado NETO de los 12 meses calendario que cierran en `hasta`, tomado del historial mensual (que
- *  YA incluye la carga manual) + lo agropecuario, con la categoría que le correspondería. Sirve para
- *  evaluar la recategorización sobre un período ELEGIDO por el contador; el facturómetro OFICIAL de
- *  ARCA es sólo el rolling de 12 meses a hoy, así que para otras ventanas se usa el cálculo propio. */
+ *  YA incluye la carga manual) + lo agropecuario, con la categoría que le correspondería, y su desglose
+ *  por semestre. Sirve para evaluar la recategorización sobre un período ELEGIDO por el contador; el
+ *  facturómetro OFICIAL de ARCA es sólo el rolling de 12 meses a hoy, así que para otras ventanas se
+ *  usa el cálculo propio. */
 export function facturadoEnVentana(cliente: Cliente, hasta: Date): FacturadoVentana {
   const meses = ventana12Meses(cliente.historialMensual, hasta);
-  const facturado =
-    meses.reduce((acc, m) => acc + m.emitidasNetas + m.ingresosNoFacturados, 0) +
-    (cliente.facturacionAgro12m ?? 0);
-  const categoriaCorresponde =
-    CATEGORIAS.find(c => facturado <= c.topeAnual) || CATEGORIAS[CATEGORIAS.length - 1];
   const finIdx = hasta.getFullYear() * 12 + hasta.getMonth();
   const desdeIdx = finIdx - 11;
+  const corteIdx = finIdx - 5; // primer mes del segundo semestre (los últimos 6 meses)
+  const idxDe = (m: HistorialMes) => {
+    const [y, mo] = m.mes.split('-').map(Number);
+    return y * 12 + (mo - 1);
+  };
+  const netoMes = (m: HistorialMes) => m.emitidasNetas + m.ingresosNoFacturados;
+  const facturadoSem1 = meses
+    .filter(m => idxDe(m) < corteIdx)
+    .reduce((acc, m) => acc + netoMes(m), 0);
+  const facturadoSem2 = meses
+    .filter(m => idxDe(m) >= corteIdx)
+    .reduce((acc, m) => acc + netoMes(m), 0);
+  const facturado = facturadoSem1 + facturadoSem2 + (cliente.facturacionAgro12m ?? 0);
+  const categoriaCorresponde =
+    CATEGORIAS.find(c => facturado <= c.topeAnual) || CATEGORIAS[CATEGORIAS.length - 1];
+  const fecha = (idx: number) => new Date(Math.floor(idx / 12), idx % 12, 1);
   return {
-    desde: new Date(Math.floor(desdeIdx / 12), desdeIdx % 12, 1),
-    hasta: new Date(hasta.getFullYear(), hasta.getMonth(), 1),
+    desde: fecha(desdeIdx),
+    hasta: fecha(finIdx),
     facturado,
     categoriaCorresponde,
+    semestres: [
+      { desde: fecha(desdeIdx), hasta: fecha(corteIdx - 1), facturado: facturadoSem1 },
+      { desde: fecha(corteIdx), hasta: fecha(finIdx), facturado: facturadoSem2 },
+    ],
   };
 }
 
