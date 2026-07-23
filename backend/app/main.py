@@ -18,6 +18,7 @@ from .routers import (
     equipo,
     facturacion,
     indicadores,
+    iva,
     movimientos,
     notificaciones,
     onboarding,
@@ -58,6 +59,7 @@ app.include_router(configuracion.router)
 app.include_router(equipo.router)
 app.include_router(facturacion.router)
 app.include_router(indicadores.router)
+app.include_router(iva.router)
 app.include_router(movimientos.router)
 app.include_router(notificaciones.router)
 app.include_router(onboarding.router)

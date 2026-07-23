@@ -337,6 +337,13 @@ def _migrar_comprobantes_emitidos(conn) -> None:
     # Detalle de renglones (ítems) del comprobante emitido desde la app. JSON serializado, TEXT portable.
     if "items_json" not in cols:
         conn.execute(text("ALTER TABLE comprobantes_emitidos ADD COLUMN items_json TEXT"))
+    # Desglose de IVA (para el Libro IVA / posición). NUMERIC anda igual en SQLite y Postgres; NULL =
+    # todavía no capturado (comprobantes previos a esta columna). Ver models.ComprobanteEmitido.
+    for col in ("imp_neto", "imp_iva", "imp_no_gravado", "imp_exento", "imp_trib"):
+        if col not in cols:
+            conn.execute(
+                text(f"ALTER TABLE comprobantes_emitidos ADD COLUMN {col} NUMERIC(15,2)")
+            )
 
 
 def asegurar_columnas() -> None:

@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models
-from .config import facturacion_habilitada_para, settings
+from .config import facturacion_habilitada_para, iva_habilitada_para, settings
 from .db import get_db
 
 ALGORITMO = "HS256"
@@ -132,6 +132,26 @@ def usuario_puede_facturar(usuario: models.Usuario) -> bool:
     return facturacion_habilitada_para(usuario.email, usuario.rol) or bool(
         getattr(usuario, "_imp_admin", False)
     )
+
+
+def usuario_puede_iva(usuario: models.Usuario) -> bool:
+    """¿Puede ver el apartado de IVA? Habilitados por IVA_EMAILS + admins + impersonación de admin
+    (claim 'adm' del token, para que un admin pueda testear en cualquier cuenta al 'entrar como').
+    Espeja usuario_puede_facturar."""
+    return iva_habilitada_para(usuario.email, usuario.rol) or bool(
+        getattr(usuario, "_imp_admin", False)
+    )
+
+
+def usuario_iva(usuario: models.Usuario = Depends(usuario_actual)) -> models.Usuario:
+    """Dependencia FastAPI: como `usuario_actual`, pero además exige que la cuenta tenga habilitado el
+    apartado de IVA (403 si no). Cierra los endpoints de IVA por detrás del gate del front."""
+    if not usuario_puede_iva(usuario):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenés habilitado el apartado de IVA.",
+        )
+    return usuario
 
 
 def admin_actual(usuario: models.Usuario = Depends(usuario_actual)) -> models.Usuario:

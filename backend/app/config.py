@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     # Vacío = nadie puede facturar. Coma-separado. Cuando se abra a todos, poné "*".
     facturacion_emails: str = ""
 
+    # Allowlist de emails habilitados para ver el apartado de IVA (Libro IVA / posición / regímenes).
+    # Mismo mecanismo que facturacion_emails: piloto acotado (hoy sólo el contador que testea) + los
+    # admins siempre. Vacío = sólo admins. Coma-separado. Cuando se abra a todos, poné "*".
+    iva_emails: str = ""
+
     # Hora (0-23, horario de Argentina) del sync automático diario (scheduler in-process del API).
     sync_hour: int = 3
     # El scheduler diario del API queda APAGADO por defecto: el motor de sincronización continua
@@ -189,3 +194,16 @@ def facturacion_habilitada_para(email: str, rol: str | None) -> bool:
     Sirve también impersonando: la sesión pasa a ser la del contador impersonado, así que el gate se
     evalúa con SU email/rol."""
     return rol == "admin" or facturacion_habilitada(email)
+
+
+def iva_habilitada(email: str) -> bool:
+    """¿El contador (por email) puede ver el apartado de IVA? Allowlist IVA_EMAILS; '*' habilita a
+    todos (cuando se abra el rollout). Espeja facturacion_habilitada."""
+    crudos = [e.strip().lower() for e in settings.iva_emails.split(",") if e.strip()]
+    return "*" in crudos or email.lower() in crudos
+
+
+def iva_habilitada_para(email: str, rol: str | None) -> bool:
+    """Como iva_habilitada, pero los ADMIN siempre pueden ver el IVA (para operar/testear en cualquier
+    cuenta, incluso impersonando: el gate se evalúa con el email/rol de la sesión efectiva)."""
+    return rol == "admin" or iva_habilitada(email)

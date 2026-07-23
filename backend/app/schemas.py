@@ -659,6 +659,8 @@ class UsuarioOut(BaseModel):
     aviso_alertas_pendiente: int = 0
     # Rollout gateado de facturación electrónica: el front muestra "Emitir comprobante" sólo si True.
     facturacion_habilitada: bool = False
+    # Rollout gateado del apartado de IVA: el front muestra el menú/página de IVA sólo si True.
+    iva_habilitada: bool = False
     # Equipo del estudio: True = cuenta de EMPLEADO (creada desde "Gestión de usuarios"); el front
     # le restringe la navegación (sin Novedades/Configuración/Gestión) y esconde las acciones sin
     # permiso. `permisos` trae los efectivos ({clave: bool}); None para cuentas plenas (pueden todo).
@@ -793,6 +795,64 @@ class AsignarClientesIn(BaseModel):
 
     usuario_id: int
     cuits: list[str] = Field(min_length=1)
+
+
+# --- IVA (Libro IVA / posición). Apartado gateado (usuario_iva). ---------------------------------
+class IvaPeriodoOut(BaseModel):
+    """Un período (mes) con comprobantes del cliente, para el selector del Libro IVA."""
+
+    periodo: str  # aaaa-mm
+    label: str    # 'Julio 2026'
+    ventas: int   # cantidad de comprobantes emitidos en el mes
+    compras: int  # cantidad de comprobantes recibidos en el mes
+
+
+class IvaLineaOut(BaseModel):
+    """Un renglón del Libro IVA (un comprobante). Los importes van en pesos (canónico). En clase C
+    (monotributo) no hay IVA discriminado: neto = total, iva = 0. `esNotaCredito` marca las que
+    restan al netear los subtotales."""
+
+    id: str
+    fecha: str  # ISO aaaa-mm-dd
+    tipo: str   # 'Factura A', 'Nota Crédito B', ...
+    cbteTipo: int  # noqa: N815
+    puntoVenta: int  # noqa: N815
+    numero: str
+    contraparteNombre: str = "—"  # noqa: N815
+    contraparteCuit: str  # noqa: N815
+    neto: float
+    iva: float
+    noGravado: float  # noqa: N815
+    exento: float
+    tributos: float
+    total: float
+    esNotaCredito: bool = False  # noqa: N815
+    # True = el desglose (neto/iva) no está capturado para este comprobante (sincronizado antes de la
+    # feature): se muestra el total como neto y el front puede señalarlo. Ver models.ComprobanteEmitido.
+    sinDesglose: bool = False  # noqa: N815
+
+
+class IvaSubtotalesOut(BaseModel):
+    """Totales del período (ya neteadas las notas de crédito)."""
+
+    cantidad: int = 0
+    neto: float = 0
+    iva: float = 0
+    noGravado: float = 0  # noqa: N815
+    exento: float = 0
+    tributos: float = 0
+    total: float = 0
+
+
+class IvaLibroOut(BaseModel):
+    """Libro IVA de un cliente para un período y una dirección (ventas = emitidos, compras =
+    recibidos)."""
+
+    cuit: str
+    periodo: str  # aaaa-mm
+    direccion: str  # 'ventas' | 'compras'
+    lineas: list[IvaLineaOut]
+    subtotales: IvaSubtotalesOut
 
 
 # --- Panel superadmin (sólo rol=admin; ver routers/admin.py) ---

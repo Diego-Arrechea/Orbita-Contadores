@@ -35,6 +35,7 @@ from ..security import (
     permisos_efectivos,
     usuario_actual,
     usuario_puede_facturar,
+    usuario_puede_iva,
     verificar_password,
 )
 from ..services import crisp, email
@@ -58,6 +59,7 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         email_confirmado=bool(u.email_confirmado),
         aviso_alertas_pendiente=u.aviso_alertas_pendiente or 0,
         facturacion_habilitada=usuario_puede_facturar(u),
+        iva_habilitada=usuario_puede_iva(u),
         es_empleado=empleado,
         # Sólo para empleados: el front esconde las acciones sin permiso (el backend igual enforca).
         permisos=permisos_efectivos(u) if empleado else None,

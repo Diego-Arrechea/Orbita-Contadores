@@ -145,6 +145,12 @@ export function puedeFacturar(): boolean {
   return usuarioActual()?.facturacion_habilitada === true && tienePermiso('facturar');
 }
 
+/** ¿La cuenta logueada puede ver el apartado de IVA? Rollout gateado por el backend (allowlist
+ *  IVA_EMAILS + admins). Sólo esconde/muestra el menú y la página: los endpoints validan igual. */
+export function puedeVerIVA(): boolean {
+  return usuarioActual()?.iva_habilitada === true;
+}
+
 /** ¿El usuario REAL detrás de la sesión es admin? Sigue siendo true mientras "entra como" otro
  * contador (la sesión de admin queda respaldada en LS_IMP_*). Útil para diagnósticos que sólo debe
  * ver el superadmin aunque esté mirando la cartera de un contador impersonado. */
