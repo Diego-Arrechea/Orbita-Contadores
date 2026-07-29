@@ -103,6 +103,18 @@ def _upsert(db: Session, cuit: str, direccion: str, crudos: list[dict]) -> tuple
         origen = float(c["imp_total"])
         pesos = origen * cot
         moneda = c.get("moneda", "ARS")
+        # Desglose de IVA (para el Libro IVA), consolidado a pesos como imp_total. Ausente = el
+        # comprobante no discrimina (Factura B/C, tiques) → queda None y el Libro cae a neto=total.
+        def _peso(clave: str) -> float | None:
+            v = c.get(clave)
+            return round(float(v) * cot, 2) if v is not None else None
+
+        d_neto = _peso("imp_neto")
+        d_iva = _peso("imp_iva")
+        d_nog = _peso("imp_no_gravado")
+        d_exe = _peso("imp_exento")
+        d_tri = _peso("imp_trib")
+        tiene_desglose = d_neto is not None or d_iva is not None
         existe = db.scalar(
             select(models.ComprobanteEmitido).where(
                 models.ComprobanteEmitido.cuit == cuit,
@@ -126,6 +138,14 @@ def _upsert(db: Session, cuit: str, direccion: str, crudos: list[dict]) -> tuple
             existe.doc_nro = c["doc_nro"]
             existe.contraparte_nombre = c.get("contraparte_nombre", "")
             existe.cae = c["cae"]
+            # Sólo pisamos el desglose si esta corrida lo trae (no borramos uno bueno con un None
+            # de una fuente que no lo provee, p. ej. el fallback por navegador).
+            if tiene_desglose:
+                existe.imp_neto = d_neto
+                existe.imp_iva = d_iva
+                existe.imp_no_gravado = d_nog
+                existe.imp_exento = d_exe
+                existe.imp_trib = d_tri
             existe.sincronizado_en = ahora
         else:
             db.add(
@@ -143,6 +163,11 @@ def _upsert(db: Session, cuit: str, direccion: str, crudos: list[dict]) -> tuple
                     doc_nro=c["doc_nro"],
                     contraparte_nombre=c.get("contraparte_nombre", ""),
                     cae=c["cae"],
+                    imp_neto=d_neto,
+                    imp_iva=d_iva,
+                    imp_no_gravado=d_nog,
+                    imp_exento=d_exe,
+                    imp_trib=d_tri,
                 )
             )
             nuevos += 1

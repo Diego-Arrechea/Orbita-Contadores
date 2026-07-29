@@ -1009,7 +1009,23 @@ class AFIP:
         d["tipo_cambio"] = row[i_cot] if i_cot < len(row) else None
         d["moneda"] = row[i_mon] if i_mon < len(row) else None
         # el total es el último valor no nulo (la fila termina en total + un None)
-        d["imp_total"] = next((v for v in reversed(row) if v not in (None, "")), None)
+        i_total = next((i for i in range(len(row) - 1, -1, -1) if row[i] not in (None, "")), None)
+        d["imp_total"] = row[i_total] if i_total is not None else None
+        # Desglose de IVA para el Libro IVA: el bloque de TOTALES vive al final de la fila con offsets
+        # FIJOS respecto del total (validado con datos reales de un RI, incl. una Factura A exenta):
+        #   total=i_total · iva=-2 · otros tributos=-4 · exento=-6 · no gravado=-8 · neto gravado=-10.
+        # Los slots por-alícuota (que SÍ corren de posición según las alícuotas del comprobante) quedan
+        # ANTES de -10, así que no los tocamos. Comprobantes que no discriminan (B/C/tiques) traen ese
+        # bloque vacío → estas celdas quedan None y el caller lo interpreta como "sin desglose".
+        def _cel(off: int):
+            j = (i_total - off) if i_total is not None else -1
+            return row[j] if 0 <= j < len(row) else None
+
+        d["imp_neto"] = _cel(10)
+        d["imp_no_gravado"] = _cel(8)
+        d["imp_exento"] = _cel(6)
+        d["imp_trib"] = _cel(4)
+        d["imp_iva"] = _cel(2)
         d["_raw"] = row
         return d
 

@@ -126,7 +126,7 @@ def _map_comprobante(c: dict) -> dict | None:
     numero = int(c.get("nro_desde") or 0)
     if not fecha or not numero:
         return None
-    return {
+    m = {
         "cbte_tipo": int(c.get("tipo_cmp") or 0),
         "punto_venta": int(c.get("punto_venta") or 0),
         "numero": numero,
@@ -138,6 +138,26 @@ def _map_comprobante(c: dict) -> dict | None:
         "contraparte_nombre": str(c.get("denominacion_receptor") or ""),
         "cae": str(c.get("cod_autorizacion") or ""),
     }
+    # Desglose de IVA (para el Libro IVA), en la MONEDA DE ORIGEN como imp_total; el upsert lo
+    # consolida a pesos. Las celdas vienen como string o None (afip._parse_fila). Sólo lo adjuntamos
+    # si el comprobante DISCRIMINA (alguna celda del bloque tiene valor): los que no discriminan
+    # (Factura B/C, tiques) traen todo el bloque vacío → no seteamos nada y el Libro cae a neto=total.
+    def _cel(k):
+        v = c.get(k)
+        return None if v is None or str(v).strip() == "" else _num(v)
+
+    neto, iva = _cel("imp_neto"), _cel("imp_iva")
+    nog, exe, tri = _cel("imp_no_gravado"), _cel("imp_exento"), _cel("imp_trib")
+    # "Discrimina" = alguna celda del bloque tiene valor DISTINTO DE CERO. Los que no discriminan
+    # (Factura B/C, tiques) traen el bloque vacío o en '0' → no adjuntamos nada (Libro cae a
+    # neto=total). Una Factura A totalmente exenta igual entra por su exento > 0.
+    if any((neto, iva, nog, exe, tri)):
+        m["imp_neto"] = neto or 0.0
+        m["imp_iva"] = iva or 0.0
+        m["imp_no_gravado"] = nog or 0.0
+        m["imp_exento"] = exe or 0.0
+        m["imp_trib"] = tri or 0.0
+    return m
 
 
 # --- Comprobantes (reemplaza miscomprobantes.descargar) ------------------------
