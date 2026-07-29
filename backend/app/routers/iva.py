@@ -10,14 +10,18 @@ al total como neto (correcto para monotributo clase C, que no discrimina IVA).""
 from __future__ import annotations
 
 import datetime as dt
+import io
 import json
+import zipfile
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models
 from ..db import get_db
+from ..services import lid_export
 from ..schemas import (
     TIPOS_NOTA_CREDITO,
     IvaAlicuotaOut,
@@ -291,4 +295,38 @@ def posicion_iva(
         percepciones=round(percepciones, 2),
         saldoImpuesto=abs(saldo_impuesto),
         aFavor=saldo_impuesto < 0,
+    )
+
+
+@router.get("/clientes/{cuit}/export/lid")
+def export_lid(
+    cuit: str,
+    periodo: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="aaaa-mm"),
+    direccion: str = Query("ventas", pattern="^(ventas)$", description="por ahora sólo ventas"),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_iva),
+):
+    """Descarga el Libro IVA Digital de AFIP (ventas) como ZIP con los dos TXT de ancho fijo
+    (cabecera + alícuotas), listos para el portal Libro IVA Digital. Compras se suma después."""
+    _cliente_propio(db, cuit, usuario)
+    desde, hasta = _rango_mes(periodo)
+    comp = models.ComprobanteEmitido
+    comps = db.scalars(
+        select(comp).where(
+            comp.cuit == cuit,
+            comp.direccion == "emitido",
+            comp.fecha >= desde,
+            comp.fecha < hasta,
+        )
+    ).all()
+    archivos = lid_export.generar_lid_ventas(comps)
+    per = periodo.replace("-", "")  # aaaamm para el nombre
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(f"LID Ventas {per}.txt", archivos["cabecera"])
+        z.writestr(f"LID Ventas Alicuotas {per}.txt", archivos["alicuotas"])
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="LibroIVADigital_Ventas_{per}.zip"'},
     )

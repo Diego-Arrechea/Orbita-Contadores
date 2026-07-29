@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Percent, Loader2, FileText, Info, Scale } from 'lucide-react';
+import { Percent, Loader2, FileText, Info, Scale, Download } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -25,12 +26,14 @@ import {
   getPeriodosIva,
   getLibroIva,
   getPosicionIva,
+  descargarLibroIvaDigital,
   type DireccionIva,
   type IvaLibro,
   type IvaSubtotales,
   type IvaPosicion,
   type IvaLado,
 } from '@/services/ivaService';
+import { mensajeDeError } from '@/services/authService';
 import { formatCurrency, formatCuit, cn } from '@/lib/utils';
 
 type VistaIva = 'libro' | 'posicion';
@@ -49,6 +52,8 @@ export function IVA() {
   const [vista, setVista] = useState<VistaIva>('libro');
   const [direccion, setDireccion] = useState<DireccionIva>('ventas');
   const [periodo, setPeriodo] = useState<string>('');
+  const [descargando, setDescargando] = useState(false);
+  const [errorDescarga, setErrorDescarga] = useState<string | null>(null);
 
   // Cliente elegido (default: el primero de la cartera en cuanto carga).
   const cuitActivo = cuit || cartera[0]?.cuit || '';
@@ -81,6 +86,19 @@ export function IVA() {
     () => (libro?.lineas ?? []).some(l => l.iva !== 0),
     [libro]
   );
+
+  async function descargarLid() {
+    if (!cuitActivo || !periodoActivo) return;
+    setDescargando(true);
+    setErrorDescarga(null);
+    try {
+      await descargarLibroIvaDigital(cuitActivo, periodoActivo);
+    } catch (e) {
+      setErrorDescarga(mensajeDeError(e));
+    } finally {
+      setDescargando(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -165,7 +183,25 @@ export function IVA() {
               </TabsList>
             </Tabs>
           )}
+          {periodoActivo && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="sm:ml-auto"
+              onClick={descargarLid}
+              disabled={descargando}
+              title="Descarga el Libro IVA Digital de Ventas (formato AFIP)"
+            >
+              {descargando ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              Libro IVA Digital (ventas)
+            </Button>
+          )}
         </div>
+        {errorDescarga && <p className="mt-2 text-sm text-danger">{errorDescarga}</p>}
       </Card>
 
       {/* Contenido */}

@@ -2,7 +2,7 @@
  * Apartado de IVA (Libro IVA / posición). Sólo HTTP contra el backend, que además valida el gate
  * (allowlist IVA_EMAILS + admins) en cada endpoint: el front esconde el menú con puedeVerIVA().
  */
-import { apiGet } from './apiClient';
+import { apiGet, apiGetBlob } from './apiClient';
 
 export interface IvaPeriodo {
   periodo: string; // aaaa-mm
@@ -91,6 +91,22 @@ export function getPeriodosIva(cuit: string): Promise<IvaPeriodo[]> {
 /** Posición de IVA del cliente para un período (débito − crédito = saldo del impuesto). */
 export function getPosicionIva(cuit: string, periodo: string): Promise<IvaPosicion> {
   return apiGet<IvaPosicion>(`/iva/clientes/${cuit}/posicion?periodo=${encodeURIComponent(periodo)}`);
+}
+
+/** Descarga el Libro IVA Digital de AFIP (ventas) como ZIP (cabecera + alícuotas) y dispara la
+ *  descarga en el navegador. Sólo cuentas habilitadas (el backend valida el gate). */
+export async function descargarLibroIvaDigital(cuit: string, periodo: string): Promise<void> {
+  const blob = await apiGetBlob(
+    `/iva/clientes/${cuit}/export/lid?periodo=${encodeURIComponent(periodo)}`
+  );
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `LibroIVADigital_Ventas_${periodo.replace('-', '')}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 /** Libro IVA del cliente para un período y dirección (ventas = emitidos, compras = recibidos). */
