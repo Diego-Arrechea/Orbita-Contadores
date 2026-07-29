@@ -350,6 +350,9 @@ def _migrar_comprobantes_emitidos(conn) -> None:
             conn.execute(
                 text(f"ALTER TABLE comprobantes_emitidos ADD COLUMN {col} NUMERIC(15,2)")
             )
+    # Detalle por alícuota (JSON) para el Libro IVA Digital. TEXT portable SQLite + Postgres.
+    if "alicuotas_json" not in cols:
+        conn.execute(text("ALTER TABLE comprobantes_emitidos ADD COLUMN alicuotas_json TEXT"))
 
 
 def asegurar_columnas() -> None:

@@ -1026,6 +1026,17 @@ class AFIP:
         d["imp_exento"] = _cel(6)
         d["imp_trib"] = _cel(4)
         d["imp_iva"] = _cel(2)
+        # Detalle por alícuota: en el bloque ANTERIOR al neto total (offset -10) hay un par (iva, base)
+        # por cada alícuota del comprobante. Recolectamos los candidatos crudos (string/None); la
+        # alícuota se deriva en _map_comprobante de la relación iva/base (no de un offset fijo), así
+        # cubre todas las tasas. Validado: los pares reconstruyen exacto el neto/IVA total.
+        pares = []
+        if i_total is not None:
+            for j in range(max(0, i_total - 24), i_total - 10):
+                iva_j = row[j] if j < len(row) else None
+                base_j = row[j + 2] if j + 2 < len(row) else None
+                pares.append((iva_j, base_j))
+        d["_alic_pares"] = pares
         d["_raw"] = row
         return d
 

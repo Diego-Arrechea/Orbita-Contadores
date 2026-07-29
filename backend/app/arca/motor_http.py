@@ -157,7 +157,32 @@ def _map_comprobante(c: dict) -> dict | None:
         m["imp_no_gravado"] = nog or 0.0
         m["imp_exento"] = exe or 0.0
         m["imp_trib"] = tri or 0.0
+        # Detalle por alícuota: de cada par (iva, base) del bloque, la tasa sale de iva/base × 100
+        # redondeada a la alícuota oficial más cercana (tolerancia por el redondeo de ARCA).
+        alics = []
+        for iva_raw, base_raw in c.get("_alic_pares") or []:
+            base = None if base_raw is None or str(base_raw).strip() == "" else _num(base_raw)
+            ivp = 0.0 if iva_raw is None or str(iva_raw).strip() == "" else _num(iva_raw)
+            if not base or base <= 0:
+                continue
+            a = _alicuota_oficial(round(ivp / base * 100, 2))
+            if a is not None:
+                alics.append({"alicuota": a, "base": base, "iva": ivp})
+        if alics:
+            m["alicuotas"] = alics
     return m
+
+
+# Alícuotas oficiales de IVA con impuesto (no incluye 0%/exento/no gravado, que van como totales).
+_ALICUOTAS_OFICIALES = (27.0, 21.0, 10.5, 5.0, 2.5)
+
+
+def _alicuota_oficial(ratio: float) -> float | None:
+    """La alícuota oficial más cercana a `ratio` (%), o None si no matchea ninguna (tolerancia 0.3)."""
+    for a in _ALICUOTAS_OFICIALES:
+        if abs(ratio - a) <= 0.3:
+            return a
+    return None
 
 
 # --- Comprobantes (reemplaza miscomprobantes.descargar) ------------------------
