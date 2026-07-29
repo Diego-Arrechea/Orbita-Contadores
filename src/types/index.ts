@@ -224,6 +224,10 @@ export interface Cliente {
    *  hasta que regularice su situación en la dependencia donde está inscripto. Lo resuelve el cliente
    *  (trámite en la dependencia), no el contador; una actualización exitosa apaga el aviso solo. */
   contribuyenteIrregular?: boolean;
+  /** El cliente tiene activada la verificación en dos pasos (token de seguridad) en su Clave Fiscal:
+   *  mientras esté activa no se actualiza su información. Lo resuelve el cliente desactivándola desde
+   *  su Clave Fiscal (no el contador, ni cargando otra clave). Una actualización exitosa lo apaga solo. */
+  dobleFactor?: boolean;
   /** El cliente factura por el sector agropecuario (Liquidaciones Electrónicas: hacienda, etc.). */
   facturaAgro?: boolean;
   /** Suma de las liquidaciones agropecuarias de los últimos 12 meses (se SUMA a la facturación 12m,

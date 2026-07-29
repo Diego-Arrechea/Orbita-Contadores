@@ -42,6 +42,19 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-07-27-aviso-verificacion-dos-pasos',
+    fecha: '2026-07-27',
+    titulo: 'Avisamos cuando un cliente tiene la verificación en dos pasos activada',
+    resumen: 'Si no podemos actualizar sus datos por eso, ahora lo ves claro en la lista.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Cuando un cliente activa la verificación en dos pasos (token de seguridad) en su Clave Fiscal, su información no se puede actualizar hasta que la desactive. Ahora aparece un aviso "Verificación en dos pasos" en su fila para que sepas por qué y le avises. Antes ese caso figuraba, por error, como un problema de clave.',
+      },
+    ],
+  },
+  {
     id: '2026-07-23-recat-dos-semestres',
     fecha: '2026-07-23',
     titulo: 'Recategorización: los dos semestres y el total anual',

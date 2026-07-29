@@ -18,6 +18,7 @@ from ..arca.afip import (
     ClaveInvalidaError,
     ClaveVencidaError,
     ContribuyenteIrregularError,
+    DobleFactorError,
     LoginDesafiadoError,
     RespuestaPaginaError,
 )
@@ -54,6 +55,7 @@ SYNC_BACKOFF_SEG = (30, 90)
 _NO_REINTENTABLES = (
     ClaveVencidaError,
     ClaveInvalidaError,
+    DobleFactorError,
     LoginDesafiadoError,
     ContribuyenteIrregularError,
     RespuestaPaginaError,

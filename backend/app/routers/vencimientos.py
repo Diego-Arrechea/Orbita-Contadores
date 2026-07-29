@@ -108,11 +108,12 @@ def previsualizar(
         select(models.ClienteARCA).where(
             models.ClienteARCA.usuario_id.in_(ids),
             models.ClienteARCA.activo.is_(True),
-            # Igual que el job: excluimos a los que no se pueden sincronizar (clave/irregular), porque
-            # su próximo vencimiento está congelado en una fecha vieja.
+            # Igual que el job: excluimos a los que no se pueden sincronizar (clave/irregular/2 pasos),
+            # porque su próximo vencimiento está congelado en una fecha vieja.
             models.ClienteARCA.clave_invalida.is_(False),
             models.ClienteARCA.clave_requiere_cambio.is_(False),
             models.ClienteARCA.contribuyente_irregular.is_(False),
+            models.ClienteARCA.doble_factor.is_(False),
         )
     ).all()
 

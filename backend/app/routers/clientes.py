@@ -328,6 +328,7 @@ def construir_cliente_out(
         clave_requiere_cambio=bool(c.clave_requiere_cambio),
         clave_invalida=bool(c.clave_invalida),
         contribuyente_irregular=bool(c.contribuyente_irregular),
+        doble_factor=bool(c.doble_factor),
         factura_agro=bool(c.factura_agro),
         facturacion_agro_12m=agro_12m,
         facturacion_agro_total=agro_total,

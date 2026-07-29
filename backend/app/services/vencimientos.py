@@ -181,11 +181,12 @@ def pasar_vencimientos(db: Session, hoy: dt.date | None = None) -> dict:
             models.ClienteARCA.activo.is_(True),
             models.ClienteARCA.prox_venc_fecha.isnot(None),
             models.ClienteARCA.email_cliente.isnot(None),
-            # Sin problema de clave: esos clientes no se sincronizan, así que su próximo vencimiento
-            # quedó congelado en una fecha vieja (posiblemente ya pasada). No los avisamos.
+            # Sin problema de clave / bloqueo: esos clientes no se sincronizan, así que su próximo
+            # vencimiento quedó congelado en una fecha vieja (posiblemente ya pasada). No los avisamos.
             models.ClienteARCA.clave_invalida.is_(False),
             models.ClienteARCA.clave_requiere_cambio.is_(False),
             models.ClienteARCA.contribuyente_irregular.is_(False),
+            models.ClienteARCA.doble_factor.is_(False),
             or_(
                 models.ClienteARCA.venc_avisos.is_(None),
                 models.ClienteARCA.venc_avisos.is_(True),

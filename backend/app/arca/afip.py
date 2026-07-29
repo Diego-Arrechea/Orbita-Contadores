@@ -381,6 +381,15 @@ class ClaveInvalidaError(AFIPError):
     propia para que el caller marque el cliente y avise al contador."""
 
 
+class DobleFactorError(AFIPError):
+    """La cuenta del cliente tiene activada la verificación en dos pasos (segundo factor / token OTP)
+    en su Clave Fiscal: tras validar la clave (que es CORRECTA), ARCA pide un token de un solo uso
+    (hardware token o la app OTP de AFIP) que no tenemos. NO es transitorio, NO se resuelve reintentando
+    ni cargando otra clave: el cliente tiene que desactivar el segundo factor desde su Clave Fiscal.
+    Subclase propia para NO marcar la clave como inválida (está bien) y avisar al contador con un motivo
+    claro, sacando al cliente del ciclo de reintentos en vano (igual que ClaveVencida/Irregular)."""
+
+
 class LoginDesafiadoError(AFIPError):
     """ARCA le pidió a la cuenta una verificación de seguridad adicional (captcha) al ingresar: el
     POST de la clave vuelve a la pantalla de clave con el captcha visible ("El captcha ingresado es
@@ -600,6 +609,17 @@ class AFIP:
                     self.log.warning("ARCA pide/rechaza captcha; reintento con imagen nueva")
                     html = r.text
                     continue
+                # La cuenta tiene activada la verificación en dos pasos (segundo factor / token OTP):
+                # tras la clave, ARCA sirve la pantalla "TU TOKEN — Generá tu token con uno de estos
+                # mecanismos: HARDWARE-TOKEN, AFIP-O" en vez del JWT. No se recupera reintentando ni con
+                # otra clave (la clave está BIEN): el cliente tiene que desactivar el segundo factor.
+                # Va ANTES del chequeo de F1:password por si la pantalla también trajera el form de clave.
+                if any(m in low for m in ("hardware-token", "tu token", "generá tu token", "genera tu token")):
+                    raise DobleFactorError(
+                        "No pudimos acceder a la información de este cliente porque tiene activada la "
+                        "verificación en dos pasos (token de seguridad) en su Clave Fiscal. Para poder "
+                        "actualizar sus datos, el cliente debe desactivarla desde su Clave Fiscal."
+                    )
                 # Clave incorrecta. ARCA lo señala de dos formas: (a) vuelve a la pantalla de clave
                 # (F1:password), o (b) REBOTA a la pantalla del CUIT con el aviso "Clave o usuario
                 # incorrecto" (sin F1:password → antes caía en el cajón de sastre). Ambas = clave

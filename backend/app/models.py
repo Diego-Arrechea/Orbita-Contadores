@@ -285,6 +285,14 @@ class ClienteARCA(Base):
     contribuyente_irregular: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="0", nullable=False
     )
+    # El cliente tiene activada la verificación en dos pasos (segundo factor / token OTP) en su Clave
+    # Fiscal: tras validar la clave (que es CORRECTA), ARCA pide un token de un solo uso que no tenemos,
+    # así que no se puede acceder a su información. La sync lo detecta y lo prende (ver
+    # services/sincronizacion.py); una sync exitosa lo apaga solo (si el cliente desactiva el segundo
+    # factor). Se muestra en la lista de clientes. NO se resuelve cargando otra clave (la clave está bien).
+    doble_factor: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False
+    )
     # Línea de base del Domicilio Fiscal Electrónico: cuándo el motor "fotografió" por primera vez las
     # comunicaciones de este cliente. NULL = todavía no se baselineó → la primera pasada guarda las
     # comunicaciones vigentes como YA VISTAS (sin punto rojo ni alerta); sólo las que aparezcan después
