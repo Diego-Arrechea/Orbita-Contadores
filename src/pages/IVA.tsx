@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Percent, Loader2, FileText, Info } from 'lucide-react';
+import { Percent, Loader2, FileText, Info, Scale } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -24,11 +24,16 @@ import { useClientesReales } from '@/lib/queries';
 import {
   getPeriodosIva,
   getLibroIva,
+  getPosicionIva,
   type DireccionIva,
   type IvaLibro,
   type IvaSubtotales,
+  type IvaPosicion,
+  type IvaLado,
 } from '@/services/ivaService';
 import { formatCurrency, formatCuit, cn } from '@/lib/utils';
+
+type VistaIva = 'libro' | 'posicion';
 
 /**
  * Apartado de IVA (piloto). Muestra el Libro IVA de Ventas/Compras de un cliente por período, armado
@@ -41,6 +46,7 @@ import { formatCurrency, formatCuit, cn } from '@/lib/utils';
 export function IVA() {
   const { data: cartera = [], isLoading: cargandoCartera } = useClientesReales();
   const [cuit, setCuit] = useState<string>('');
+  const [vista, setVista] = useState<VistaIva>('libro');
   const [direccion, setDireccion] = useState<DireccionIva>('ventas');
   const [periodo, setPeriodo] = useState<string>('');
 
@@ -60,7 +66,13 @@ export function IVA() {
   const { data: libro, isLoading: cargandoLibro } = useQuery({
     queryKey: ['iva', 'libro', cuitActivo, periodoActivo, direccion],
     queryFn: () => getLibroIva(cuitActivo, periodoActivo, direccion),
-    enabled: !!cuitActivo && !!periodoActivo,
+    enabled: !!cuitActivo && !!periodoActivo && vista === 'libro',
+  });
+
+  const { data: posicion, isLoading: cargandoPosicion } = useQuery({
+    queryKey: ['iva', 'posicion', cuitActivo, periodoActivo],
+    queryFn: () => getPosicionIva(cuitActivo, periodoActivo),
+    enabled: !!cuitActivo && !!periodoActivo && vista === 'posicion',
   });
 
   const sub = libro?.subtotales;
@@ -138,13 +150,21 @@ export function IVA() {
           </div>
         </div>
 
-        <div className="mt-4">
-          <Tabs value={direccion} onValueChange={v => setDireccion(v as DireccionIva)}>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Tabs value={vista} onValueChange={v => setVista(v as VistaIva)}>
             <TabsList>
-              <TabsTrigger value="ventas">Ventas</TabsTrigger>
-              <TabsTrigger value="compras">Compras</TabsTrigger>
+              <TabsTrigger value="libro">Libro IVA</TabsTrigger>
+              <TabsTrigger value="posicion">Posición</TabsTrigger>
             </TabsList>
           </Tabs>
+          {vista === 'libro' && (
+            <Tabs value={direccion} onValueChange={v => setDireccion(v as DireccionIva)}>
+              <TabsList>
+                <TabsTrigger value="ventas">Ventas</TabsTrigger>
+                <TabsTrigger value="compras">Compras</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
         </div>
       </Card>
 
@@ -154,11 +174,24 @@ export function IVA() {
           titulo="Todavía no tenés clientes"
           detalle="Cuando agregues clientes, vas a poder ver acá su Libro IVA."
         />
-      ) : cargandoLibro || cargandoPeriodos ? (
+      ) : (cargandoLibro || cargandoPosicion || cargandoPeriodos) && periodoActivo ? (
         <div className="flex items-center justify-center py-16 text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
         </div>
-      ) : !periodoActivo || !libro || libro.lineas.length === 0 ? (
+      ) : !periodoActivo ? (
+        <EstadoVacio
+          titulo="Sin comprobantes en este período"
+          detalle={
+            clienteActivo
+              ? `${clienteActivo.nombre} no tiene comprobantes registrados en el período elegido.`
+              : 'Elegí un cliente y un período para ver su IVA.'
+          }
+        />
+      ) : vista === 'posicion' ? (
+        posicion ? (
+          <PosicionView posicion={posicion} />
+        ) : null
+      ) : !libro || libro.lineas.length === 0 ? (
         <EstadoVacio
           titulo="Sin comprobantes en este período"
           detalle={
@@ -171,6 +204,154 @@ export function IVA() {
         <LibroTabla libro={libro} sub={sub!} hayIva={hayIva} direccion={direccion} />
       )}
     </div>
+  );
+}
+
+/** Posición de IVA del período (estilo F2002): débito vs crédito → saldo del impuesto, con el
+ *  desglose por alícuota de ventas y compras. */
+function PosicionView({ posicion: p }: { posicion: IvaPosicion }) {
+  const saldo = p.saldoImpuesto;
+  return (
+    <div className="space-y-4">
+      {/* Resultado principal */}
+      <Card className="p-5">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <ResultadoCelda label="Débito fiscal" detalle="IVA de ventas" valor={p.debitoFiscal} />
+          <ResultadoCelda label="Crédito fiscal" detalle="IVA de compras" valor={p.creditoFiscal} />
+          <ResultadoCelda
+            label="Saldo técnico"
+            detalle="Débito − crédito"
+            valor={p.saldoTecnico}
+            fuerte
+          />
+        </div>
+        <div className="mt-4 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Scale className="h-4 w-4" />
+              <span>
+                Saldo técnico {formatCurrency(p.saldoTecnico)} − percepciones {formatCurrency(p.percepciones)}
+              </span>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              {p.aFavor ? 'Saldo a favor' : 'Saldo a pagar'}
+            </div>
+            <div
+              className={cn(
+                'text-3xl font-semibold tabular-nums',
+                p.aFavor ? 'text-success' : 'text-foreground'
+              )}
+            >
+              {formatCurrency(saldo)}
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <LadoCard titulo="Débito fiscal — Ventas" lado={p.ventas} montoLabel="Débito" />
+        <LadoCard titulo="Crédito fiscal — Compras" lado={p.compras} montoLabel="Crédito" />
+      </div>
+
+      <div className="flex items-start gap-2 rounded-lg bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+        <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>
+          Cálculo preliminar del período: no incluye saldo a favor de períodos anteriores ni
+          retenciones. La alícuota se estima por comprobante; los que combinan varias alícuotas
+          aparecen en “Otras”.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ResultadoCelda({
+  label,
+  detalle,
+  valor,
+  fuerte,
+}: {
+  label: string;
+  detalle: string;
+  valor: number;
+  fuerte?: boolean;
+}) {
+  return (
+    <div>
+      <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={cn('tabular-nums', fuerte ? 'text-2xl font-semibold' : 'text-xl font-medium')}>
+        {formatCurrency(valor)}
+      </div>
+      <div className="text-xs text-muted-foreground">{detalle}</div>
+    </div>
+  );
+}
+
+function LadoCard({ titulo, lado, montoLabel }: { titulo: string; lado: IvaLado; montoLabel: string }) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="border-b px-4 py-3 font-medium">{titulo}</div>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Alícuota</TableHead>
+              <TableHead className="text-right">Neto</TableHead>
+              <TableHead className="text-right">{montoLabel}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {lado.porAlicuota.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={3} className="text-center text-sm text-muted-foreground">
+                  Sin operaciones gravadas
+                </TableCell>
+              </TableRow>
+            ) : (
+              lado.porAlicuota.map(a => (
+                <TableRow key={a.alicuota}>
+                  <TableCell>{a.alicuota}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatCurrency(a.neto)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatCurrency(a.iva)}</TableCell>
+                </TableRow>
+              ))
+            )}
+            {lado.exento !== 0 && (
+              <TableRow className="text-muted-foreground">
+                <TableCell>Exento</TableCell>
+                <TableCell className="text-right tabular-nums">{formatCurrency(lado.exento)}</TableCell>
+                <TableCell className="text-right tabular-nums">—</TableCell>
+              </TableRow>
+            )}
+            {lado.noGravado !== 0 && (
+              <TableRow className="text-muted-foreground">
+                <TableCell>No gravado</TableCell>
+                <TableCell className="text-right tabular-nums">{formatCurrency(lado.noGravado)}</TableCell>
+                <TableCell className="text-right tabular-nums">—</TableCell>
+              </TableRow>
+            )}
+            {lado.tributos !== 0 && (
+              <TableRow className="text-muted-foreground">
+                <TableCell>Percepciones / otros tributos</TableCell>
+                <TableCell className="text-right tabular-nums">—</TableCell>
+                <TableCell className="text-right tabular-nums">{formatCurrency(lado.tributos)}</TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TableCell className="font-medium">
+                {lado.cantidad} comprobante{lado.cantidad === 1 ? '' : 's'}
+              </TableCell>
+              <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(lado.neto)}</TableCell>
+              <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(lado.iva)}</TableCell>
+            </TableRow>
+          </TableFooter>
+        </Table>
+      </div>
+    </Card>
   );
 }
 

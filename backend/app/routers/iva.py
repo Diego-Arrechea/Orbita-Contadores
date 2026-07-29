@@ -19,9 +19,12 @@ from .. import models
 from ..db import get_db
 from ..schemas import (
     TIPOS_NOTA_CREDITO,
+    IvaAlicuotaOut,
+    IvaLadoOut,
     IvaLibroOut,
     IvaLineaOut,
     IvaPeriodoOut,
+    IvaPosicionOut,
     IvaSubtotalesOut,
     nombre_tipo,
 )
@@ -169,4 +172,108 @@ def libro_iva(
 
     return IvaLibroOut(
         cuit=cuit, periodo=periodo, direccion=direccion, lineas=lineas, subtotales=sub
+    )
+
+
+# Alícuotas oficiales de IVA (para inferir la alícuota de cada comprobante desde la relación IVA/neto).
+_ALICUOTAS = (27.0, 21.0, 10.5, 5.0, 2.5)
+
+
+def _clasificar_alicuota(neto: float, iva: float) -> str:
+    """Infiere la alícuota de un comprobante por la relación IVA/neto. Sirve para el caso de una sola
+    alícuota (la mayoría); los mixtos (21%+10,5% en un mismo comprobante) caen en 'Otras' porque sólo
+    tenemos el neto/IVA TOTAL, no el detalle por alícuota."""
+    if not neto:
+        return "0%"
+    ratio = round(iva / neto * 100, 2)
+    for a in _ALICUOTAS:
+        if abs(ratio - a) <= 0.3:
+            return f"{a:g}%"
+    if ratio <= 0.3:
+        return "0%"
+    return "Otras"
+
+
+def _agregar_lado(comps: list[models.ComprobanteEmitido]) -> IvaLadoOut:
+    """Agrega los comprobantes de un lado (ventas o compras) neteando las notas de crédito, con el
+    desglose por alícuota (sólo la parte gravada; exento/no gravado van como totales del lado)."""
+    lado = IvaLadoOut()
+    por_alic: dict[str, dict] = {}
+    for c in comps:
+        signo = -1.0 if c.cbte_tipo in TIPOS_NOTA_CREDITO else 1.0
+        total = float(c.imp_total)
+        tiene = c.imp_neto is not None or c.imp_iva is not None
+        neto = float(c.imp_neto or 0) if tiene else total
+        iva = float(c.imp_iva or 0)
+        no_grav = float(c.imp_no_gravado or 0)
+        exento = float(c.imp_exento or 0)
+        trib = float(c.imp_trib or 0)
+        lado.cantidad += 1
+        lado.neto += signo * neto
+        lado.iva += signo * iva
+        lado.noGravado += signo * no_grav
+        lado.exento += signo * exento
+        lado.tributos += signo * trib
+        lado.total += signo * total
+        # Desglose por alícuota (sólo la parte con neto gravado; exento/no gravado se muestran aparte).
+        if neto:
+            clave = _clasificar_alicuota(neto, iva)
+            slot = por_alic.setdefault(clave, {"neto": 0.0, "iva": 0.0, "cantidad": 0})
+            slot["neto"] += signo * neto
+            slot["iva"] += signo * iva
+            slot["cantidad"] += 1
+    for campo in ("neto", "iva", "noGravado", "exento", "tributos", "total"):
+        setattr(lado, campo, round(getattr(lado, campo), 2))
+    # Orden de alícuotas: las estándar de mayor a menor, después 'Otras'/'0%'.
+    orden = {f"{a:g}%": i for i, a in enumerate(_ALICUOTAS)}
+    lado.porAlicuota = [
+        IvaAlicuotaOut(
+            alicuota=k, neto=round(v["neto"], 2), iva=round(v["iva"], 2), cantidad=v["cantidad"]
+        )
+        for k, v in sorted(por_alic.items(), key=lambda kv: orden.get(kv[0], 99))
+    ]
+    return lado
+
+
+@router.get("/clientes/{cuit}/posicion", response_model=IvaPosicionOut)
+def posicion_iva(
+    cuit: str,
+    periodo: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="aaaa-mm"),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_iva),
+):
+    """Posición de IVA del período (estilo F2002): débito (ventas) − crédito (compras) = saldo
+    técnico; menos percepciones sufridas = saldo del impuesto (a pagar o a favor)."""
+    _cliente_propio(db, cuit, usuario)
+    desde, hasta = _rango_mes(periodo)
+    comp = models.ComprobanteEmitido
+
+    def _comps(columna: str):
+        return db.scalars(
+            select(comp).where(
+                comp.cuit == cuit,
+                comp.direccion == columna,
+                comp.fecha >= desde,
+                comp.fecha < hasta,
+            )
+        ).all()
+
+    ventas = _agregar_lado(_comps("emitido"))
+    compras = _agregar_lado(_comps("recibido"))
+    debito = ventas.iva
+    credito = compras.iva
+    saldo_tecnico = round(debito - credito, 2)
+    percepciones = compras.tributos  # percepciones de IVA sufridas en compras (pago a cuenta)
+    saldo_impuesto = round(saldo_tecnico - percepciones, 2)
+    return IvaPosicionOut(
+        cuit=cuit,
+        periodo=periodo,
+        ventas=ventas,
+        compras=compras,
+        debitoFiscal=debito,
+        creditoFiscal=credito,
+        saldoTecnico=saldo_tecnico,
+        percepciones=round(percepciones, 2),
+        saldoImpuesto=abs(saldo_impuesto),
+        aFavor=saldo_impuesto < 0,
     )

@@ -859,6 +859,47 @@ class IvaLibroOut(BaseModel):
     subtotales: IvaSubtotalesOut
 
 
+class IvaAlicuotaOut(BaseModel):
+    """Subtotal de una alícuota (neteado): la alícuota se INFIERE de la relación IVA/neto de cada
+    comprobante (sirve para el 90% de una sola alícuota; los mixtos caen en 'Otras'). 'Exento' y
+    'No gravado' agrupan lo que no lleva IVA."""
+
+    alicuota: str  # '21%' | '10.5%' | '27%' | '5%' | '2.5%' | '0%' | 'Otras' | 'Exento' | 'No gravado'
+    neto: float
+    iva: float
+    cantidad: int
+
+
+class IvaLadoOut(BaseModel):
+    """Un lado de la posición (ventas = débito, compras = crédito), con el desglose por alícuota."""
+
+    cantidad: int = 0
+    neto: float = 0       # neto gravado
+    iva: float = 0        # débito fiscal (ventas) o crédito fiscal (compras)
+    noGravado: float = 0  # noqa: N815
+    exento: float = 0
+    tributos: float = 0   # percepciones / otros tributos
+    total: float = 0
+    porAlicuota: list[IvaAlicuotaOut] = []  # noqa: N815
+
+
+class IvaPosicionOut(BaseModel):
+    """Posición de IVA de un cliente para un período (estilo F2002): débito (ventas) menos crédito
+    (compras) = saldo técnico; menos percepciones sufridas = saldo del impuesto. Simplificado: no
+    contempla saldo a favor de períodos anteriores ni retenciones (se sumarán después)."""
+
+    cuit: str
+    periodo: str  # aaaa-mm
+    ventas: IvaLadoOut
+    compras: IvaLadoOut
+    debitoFiscal: float   # noqa: N815 — = ventas.iva
+    creditoFiscal: float  # noqa: N815 — = compras.iva (sólo comprobantes que discriminan: Factura A)
+    saldoTecnico: float   # noqa: N815 — débito − crédito
+    percepciones: float   # percepciones de IVA sufridas en compras (pago a cuenta)
+    saldoImpuesto: float  # noqa: N815 — saldo técnico − percepciones
+    aFavor: bool          # noqa: N815 — True si el saldo final es a favor del contribuyente
+
+
 # --- Panel superadmin (sólo rol=admin; ver routers/admin.py) ---
 
 
