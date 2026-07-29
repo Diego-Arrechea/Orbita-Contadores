@@ -380,6 +380,11 @@ class ComprobanteEmitido(Base):
     imp_no_gravado: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
     imp_exento: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
     imp_trib: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    # Detalle por alícuota (para el Libro IVA Digital, que pide cada alícuota por separado). JSON
+    # serializado: [{"alicuota": 21.0, "base": 140000.0, "iva": 29400.0}], importes en pesos como
+    # imp_total. La alícuota se deriva de la relación IVA/base de cada par del comprobante (no de un
+    # offset fijo), así cubre todas las tasas. NULL = no capturado / comprobante sin desglose gravado.
+    alicuotas_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     doc_nro: Mapped[str] = mapped_column(String(20), default="")
     contraparte_nombre: Mapped[str] = mapped_column(String(200), default="")
     cae: Mapped[str] = mapped_column(String(20), default="")

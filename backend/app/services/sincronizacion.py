@@ -115,6 +115,22 @@ def _upsert(db: Session, cuit: str, direccion: str, crudos: list[dict]) -> tuple
         d_exe = _peso("imp_exento")
         d_tri = _peso("imp_trib")
         tiene_desglose = d_neto is not None or d_iva is not None
+        # Detalle por alícuota (para el Libro IVA Digital): consolidamos base/iva a pesos como el resto.
+        alics = c.get("alicuotas")
+        d_alicuotas = (
+            json.dumps(
+                [
+                    {
+                        "alicuota": a["alicuota"],
+                        "base": round(float(a["base"]) * cot, 2),
+                        "iva": round(float(a["iva"]) * cot, 2),
+                    }
+                    for a in alics
+                ]
+            )
+            if alics
+            else None
+        )
         existe = db.scalar(
             select(models.ComprobanteEmitido).where(
                 models.ComprobanteEmitido.cuit == cuit,
@@ -146,6 +162,7 @@ def _upsert(db: Session, cuit: str, direccion: str, crudos: list[dict]) -> tuple
                 existe.imp_no_gravado = d_nog
                 existe.imp_exento = d_exe
                 existe.imp_trib = d_tri
+                existe.alicuotas_json = d_alicuotas
             existe.sincronizado_en = ahora
         else:
             db.add(
@@ -168,6 +185,7 @@ def _upsert(db: Session, cuit: str, direccion: str, crudos: list[dict]) -> tuple
                     imp_no_gravado=d_nog,
                     imp_exento=d_exe,
                     imp_trib=d_tri,
+                    alicuotas_json=d_alicuotas,
                 )
             )
             nuevos += 1

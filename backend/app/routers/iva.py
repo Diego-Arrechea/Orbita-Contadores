@@ -10,6 +10,7 @@ al total como neto (correcto para monotributo clase C, que no discrimina IVA).""
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -215,8 +216,22 @@ def _agregar_lado(comps: list[models.ComprobanteEmitido]) -> IvaLadoOut:
         lado.exento += signo * exento
         lado.tributos += signo * trib
         lado.total += signo * total
-        # Desglose por alícuota (sólo la parte con neto gravado; exento/no gravado se muestran aparte).
-        if neto:
+        # Desglose por alícuota: preferimos el detalle REAL capturado (alicuotas_json); si no está
+        # (datos viejos), inferimos una única alícuota del total. exento/no gravado van aparte.
+        detalle = None
+        if c.alicuotas_json:
+            try:
+                detalle = json.loads(c.alicuotas_json)
+            except ValueError:
+                detalle = None
+        if detalle:
+            for a in detalle:
+                clave = f"{float(a['alicuota']):g}%"
+                slot = por_alic.setdefault(clave, {"neto": 0.0, "iva": 0.0, "cantidad": 0})
+                slot["neto"] += signo * float(a["base"])
+                slot["iva"] += signo * float(a["iva"])
+                slot["cantidad"] += 1
+        elif neto:
             clave = _clasificar_alicuota(neto, iva)
             slot = por_alic.setdefault(clave, {"neto": 0.0, "iva": 0.0, "cantidad": 0})
             slot["neto"] += signo * neto
