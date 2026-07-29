@@ -52,9 +52,45 @@ export interface IvaLibro {
   subtotales: IvaSubtotales;
 }
 
+export interface IvaAlicuota {
+  alicuota: string; // '21%' | '10.5%' | ...
+  neto: number;
+  iva: number;
+  cantidad: number;
+}
+
+export interface IvaLado {
+  cantidad: number;
+  neto: number;
+  iva: number;
+  noGravado: number;
+  exento: number;
+  tributos: number;
+  total: number;
+  porAlicuota: IvaAlicuota[];
+}
+
+export interface IvaPosicion {
+  cuit: string;
+  periodo: string;
+  ventas: IvaLado;
+  compras: IvaLado;
+  debitoFiscal: number;
+  creditoFiscal: number;
+  saldoTecnico: number;
+  percepciones: number;
+  saldoImpuesto: number;
+  aFavor: boolean;
+}
+
 /** Meses con comprobantes del cliente (para el selector de período). */
 export function getPeriodosIva(cuit: string): Promise<IvaPeriodo[]> {
   return apiGet<IvaPeriodo[]>(`/iva/clientes/${cuit}/periodos`);
+}
+
+/** Posición de IVA del cliente para un período (débito − crédito = saldo del impuesto). */
+export function getPosicionIva(cuit: string, periodo: string): Promise<IvaPosicion> {
+  return apiGet<IvaPosicion>(`/iva/clientes/${cuit}/posicion?periodo=${encodeURIComponent(periodo)}`);
 }
 
 /** Libro IVA del cliente para un período y dirección (ventas = emitidos, compras = recibidos). */
