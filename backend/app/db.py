@@ -253,6 +253,12 @@ def _migrar_clientes_arca(conn) -> None:
         conn.execute(
             text("ALTER TABLE clientes_arca ADD COLUMN contribuyente_irregular BOOLEAN DEFAULT FALSE")
         )
+    # El cliente tiene la verificación en dos pasos (token OTP) activada en su Clave Fiscal: bloquea el
+    # acceso hasta que la desactive. Se muestra en la lista. DEFAULT FALSE anda en SQLite y Postgres.
+    if "doble_factor" not in cols:
+        conn.execute(
+            text("ALTER TABLE clientes_arca ADD COLUMN doble_factor BOOLEAN DEFAULT FALSE")
+        )
     # ¿Factura por Liquidaciones Electrónicas del sector primario (agro)? Habilita la sync semanal de
     # esas liquidaciones y su apartado. DEFAULT FALSE anda igual en SQLite (0/FALSE) y Postgres.
     if "factura_agro" not in cols:

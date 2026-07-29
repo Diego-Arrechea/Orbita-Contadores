@@ -21,6 +21,7 @@ from ..arca.afip import (
     ClaveInvalidaError,
     ClaveVencidaError,
     ContribuyenteIrregularError,
+    DobleFactorError,
     LoginDesafiadoError,
     LoginSinJWTError,
 )
@@ -275,6 +276,9 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
         # Si estaba marcado por irregularidades en el padrón y ahora la consulta entró, ya regularizó.
         if cliente.contribuyente_irregular:
             cliente.contribuyente_irregular = False
+        # Si estaba marcado por verificación en dos pasos y el login entró, ya la desactivó: lo apagamos.
+        if cliente.doble_factor:
+            cliente.doble_factor = False
         nuevos = 0
         for direccion, crudos in datos.items():
             _, nv = _upsert(db, cuit, direccion, crudos)
@@ -304,6 +308,16 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
         # nosotros (ni el contador): marcamos el cliente para avisarle y NO reintentamos en vano.
         db.rollback()
         cliente.contribuyente_irregular = True
+        db.commit()
+        _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
+        raise
+    except DobleFactorError as e:
+        # El cliente activó la verificación en dos pasos (token OTP) en su Clave Fiscal: la clave es
+        # correcta pero ARCA pide un token que no tenemos. No es transitorio ni lo arreglamos nosotros
+        # ni el contador cargando otra clave: marcamos el cliente para avisarle (que el cliente la
+        # desactive) y NO reintentar en vano. Una sync exitosa (si la desactiva) apaga el aviso solo.
+        db.rollback()
+        cliente.doble_factor = True
         db.commit()
         _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
         raise

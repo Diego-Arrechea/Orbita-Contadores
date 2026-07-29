@@ -292,6 +292,10 @@ class ClienteOut(BaseModel):
     # queda bloqueada hasta que regularice su situación en la dependencia donde está inscripto. No lo
     # resolvemos nosotros ni el contador: es un trámite del cliente.
     contribuyente_irregular: bool = False
+    # El cliente tiene activada la verificación en dos pasos (token de seguridad) en su Clave Fiscal:
+    # mientras esté activa no se puede actualizar su información. Lo resuelve el cliente desactivándola
+    # desde su Clave Fiscal (no el contador, ni cargando otra clave: la clave está bien).
+    doble_factor: bool = False
     # Facturación agropecuaria (Liquidaciones Electrónicas del sector primario): si el cliente factura
     # así, `factura_agro` está en true y `facturacion_agro_12m` es la suma de esas liquidaciones en los
     # últimos 12 meses (para SUMARLA a la facturación 12m del cliente, que no las trae de otra fuente).

@@ -102,6 +102,10 @@ def _clientes_vencidos(db, limite: dt.datetime, limite_fallidos: dt.datetime):
             # Igual criterio si registra irregularidades en el padrón: reintentar es en vano hasta que
             # el cliente regularice en la dependencia. Una sync exitosa (cuando regularice) apaga el flag.
             ClienteARCA.contribuyente_irregular.is_(False),
+            # Igual si tiene la verificación en dos pasos (token OTP) activada: cada login pide un token
+            # que no tenemos, así que reintentar es en vano hasta que el cliente la desactive. Una sync
+            # exitosa (cuando la desactive) apaga el flag y el cliente vuelve al ciclo.
+            ClienteARCA.doble_factor.is_(False),
             or_(
                 ult.c.fecha.is_(None),                                            # nunca sincronizado
                 ult.c.fecha < limite,                                             # vencido normal

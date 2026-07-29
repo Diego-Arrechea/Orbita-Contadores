@@ -87,6 +87,7 @@ def estado_motor(db: Session = Depends(get_db)):
                 models.ClienteARCA.clave_invalida.is_(False),
                 models.ClienteARCA.clave_requiere_cambio.is_(False),
                 models.ClienteARCA.contribuyente_irregular.is_(False),
+                models.ClienteARCA.doble_factor.is_(False),
             )
         ).all()
     )

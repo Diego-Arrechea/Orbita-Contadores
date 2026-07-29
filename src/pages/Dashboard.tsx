@@ -18,6 +18,7 @@ import {
   KeyRound,
   CalendarClock,
   Wheat,
+  ShieldAlert,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -456,6 +457,7 @@ export function Dashboard() {
                       {cliente.claveRequiereCambio && <AvisoClaveFiscal />}
                       {cliente.claveInvalida && <AvisoClaveInvalida />}
                       {cliente.contribuyenteIrregular && <AvisoContribuyenteIrregular />}
+                      {cliente.dobleFactor && <AvisoDobleFactor />}
                     </div>
                   </Link>
                 </TableCell>
@@ -626,6 +628,7 @@ export function Dashboard() {
                       {cliente.claveRequiereCambio && <AvisoClaveFiscal />}
                       {cliente.claveInvalida && <AvisoClaveInvalida />}
                       {cliente.contribuyenteIrregular && <AvisoContribuyenteIrregular />}
+                      {cliente.dobleFactor && <AvisoDobleFactor />}
                     </div>
                   </div>
                   <AlertaBadge estado={estado} />
@@ -754,6 +757,23 @@ function AvisoContribuyenteIrregular() {
     >
       <AlertTriangle className="h-3 w-3 shrink-0" />
       Registra irregularidades
+    </div>
+  );
+}
+
+// Aviso, en la fila/tarjeta del cliente, de que su información no puede actualizarse porque tiene
+// activada la verificación en dos pasos (token de seguridad) en su Clave Fiscal. Lo resuelve el
+// CLIENTE desactivándola (no el contador, ni cargando otra clave: la clave está bien); el aviso se
+// apaga solo cuando la info se actualiza. NO menciona el mecanismo: es un hecho de la config del cliente.
+function AvisoDobleFactor() {
+  return (
+    <div
+      className="mt-1 inline-flex items-center gap-1 rounded-md bg-warning/15 px-1.5 py-0.5 text-[11px] font-medium text-warning-foreground"
+      title="Este cliente tiene activada la verificación en dos pasos (token de seguridad) en su Clave Fiscal. Mientras esté activa, su información no se actualiza. Para reactivar el seguimiento, el cliente debe desactivarla desde su Clave Fiscal."
+      onClick={e => e.preventDefault()}
+    >
+      <ShieldAlert className="h-3 w-3 shrink-0" />
+      Verificación en dos pasos
     </div>
   );
 }
