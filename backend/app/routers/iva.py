@@ -282,7 +282,11 @@ def posicion_iva(
     debito = ventas.iva
     credito = compras.iva
     saldo_tecnico = round(debito - credito, 2)
-    percepciones = compras.tributos  # percepciones de IVA sufridas en compras (pago a cuenta)
+    # Percepciones de IVA sufridas (pago a cuenta): NO las contamos todavía. Mis Comprobantes sólo da
+    # el TOTAL de otros tributos (lumpeado: percepción IVA + IIBB + municipal + otros), no el desglose,
+    # así que no podemos identificar la percepción IVA real. Contar el lumpeado sobre-declara el pago a
+    # cuenta (infla el crédito) → peligroso. Queda en 0 hasta capturar el detalle del comprobante.
+    percepciones = 0.0
     saldo_impuesto = round(saldo_tecnico - percepciones, 2)
     return IvaPosicionOut(
         cuit=cuit,
