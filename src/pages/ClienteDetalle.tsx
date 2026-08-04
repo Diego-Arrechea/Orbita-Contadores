@@ -449,7 +449,7 @@ export function ClienteDetalle() {
           </TabsContent>
         )}
         <TabsContent value="historico" className="mt-0">
-          <HistoricoMensual cliente={cliente} />
+          <HistoricoMensual cliente={cliente} real={!clienteMock} />
         </TabsContent>
         <TabsContent value="facturacion" className="mt-0">
           <FacturacionDetalle cliente={cliente} />

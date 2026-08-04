@@ -42,6 +42,25 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-08-04-facturacion-historica',
+    fecha: '2026-08-04',
+    titulo: 'Facturación histórica por año, ajustada por inflación',
+    resumen:
+      'En la ficha del cliente ya podés ver la facturación de varios años, no sólo los últimos 12 meses.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'El histórico del cliente ahora tiene un selector de rango (12 meses, 24 meses, 5 años o todo el período): elegís cuánto hacia atrás querés ver.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Podés expresar los importes en "pesos de hoy" (ajustados por inflación) para comparar años entre sí con sentido; en rangos largos el histórico se muestra por año.',
+      },
+    ],
+  },
+  {
     id: '2026-07-27-aviso-verificacion-dos-pasos',
     fecha: '2026-07-27',
     titulo: 'Avisamos cuando un cliente tiene la verificación en dos pasos activada',

@@ -31,6 +31,26 @@ export interface HistorialMes {
   ingresosNoFacturados: number;
 }
 
+/** Un período del histórico de facturación (mes 'aaaa-mm' o año 'aaaa'), con importes nominales y
+ *  expresados en pesos del mes de referencia (ajustados por inflación). */
+export interface HistoricoPeriodo {
+  periodo: string;
+  emitidasNetas: number;
+  recibidas: number;
+  emitidasNetasReal: number;
+  recibidasReal: number;
+}
+
+/** Respuesta del histórico de facturación para el gráfico de rango variable. */
+export interface Historico {
+  periodos: HistoricoPeriodo[];
+  agrupacion: 'mes' | 'anio';
+  /** Mes al que se deflacta ("pesos de <mes>"), aaaa-mm. */
+  mesReferencia: string;
+  /** Período más antiguo con datos (para rotular "desde …"). null si no hay comprobantes. */
+  primerPeriodo: string | null;
+}
+
 export interface MovimientoBancario {
   id: string;
   fecha: string;
