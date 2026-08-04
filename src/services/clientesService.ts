@@ -4,6 +4,8 @@ import type {
   CategoriaCodigo,
   TipoActividad,
   Extraccion,
+  Historico,
+  HistoricoPeriodo,
   HistorialMes,
   Regimen,
 } from '@/types';
@@ -239,6 +241,27 @@ export async function getClienteReal(cuit: string): Promise<Cliente | null> {
     getExtraccionesReales(limpio),
   ]);
   return construirCliente(bk, comprobantes, extracciones);
+}
+
+interface HistoricoBackend {
+  periodos: HistoricoPeriodo[];
+  agrupacion: 'mes' | 'anio';
+  mes_referencia: string;
+  primer_periodo: string | null;
+}
+
+/** Facturación histórica de un cliente para el gráfico de rango variable. `rango` = meses hacia
+ *  atrás (>=900 = todo lo disponible). Trae cada período nominal y ajustado por inflación. */
+export async function getHistorico(cuit: string, rango: number): Promise<Historico> {
+  const bk = await apiGet<HistoricoBackend>(
+    `/clientes/${cuit.replace(/\D/g, '')}/historico?rango=${rango}`,
+  );
+  return {
+    periodos: bk.periodos,
+    agrupacion: bk.agrupacion,
+    mesReferencia: bk.mes_referencia,
+    primerPeriodo: bk.primer_periodo,
+  };
 }
 
 /** El historial de sincronizaciones (extracciones) de un cliente real, más reciente primero. */

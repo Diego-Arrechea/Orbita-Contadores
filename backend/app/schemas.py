@@ -189,6 +189,28 @@ class HistorialMesOut(BaseModel):
     ingresosNoFacturados: float = 0  # noqa: N815 — siempre 0 desde el backend; lo pisa el front si aplica
 
 
+class HistoricoPeriodoOut(BaseModel):
+    """Un período (mes 'aaaa-mm' o año 'aaaa') de la facturación histórica, con los importes en su
+    valor NOMINAL y también expresados en pesos del mes de referencia (deflactado por IPC)."""
+
+    periodo: str
+    emitidasNetas: float  # noqa: N815 — nominal (valor del período)
+    recibidas: float      # nominal
+    emitidasNetasReal: float  # noqa: N815 — en pesos de referencia (ajustado por inflación)
+    recibidasReal: float      # noqa: N815 — en pesos de referencia
+
+
+class HistoricoOut(BaseModel):
+    """Facturación histórica de un cliente para el gráfico de rango variable. `agrupacion` indica si
+    los períodos son mensuales o anuales (para rangos largos). `mes_referencia` es el mes al que se
+    deflacta ("pesos de <mes>") y `primer_periodo` el más antiguo con datos (para rotular 'desde …')."""
+
+    periodos: list[HistoricoPeriodoOut] = []
+    agrupacion: str  # 'mes' | 'anio'
+    mes_referencia: str  # aaaa-mm
+    primer_periodo: str | None = None
+
+
 class RemuneracionMesOut(BaseModel):
     """Un mes de remuneración bruta declarada al SIPA (relación de dependencia)."""
 

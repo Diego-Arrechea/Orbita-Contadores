@@ -26,6 +26,8 @@ from ..schemas import (
     EstadoClienteIn,
     ExtraccionOut,
     FacilidadOut,
+    HistoricoOut,
+    HistoricoPeriodoOut,
     HistorialMesOut,
     JobOut,
     LiquidacionAgroOut,
@@ -39,6 +41,7 @@ from ..schemas import (
 from ..scraping import jobs
 from ..security import ids_cartera, requiere_permiso, usuario_actual
 from ..services import comunicaciones as comunicaciones_svc
+from ..services import ipc
 from ..services import sincronizacion
 from ..services.scheduler import estado_scheduler
 
@@ -375,6 +378,81 @@ def detalle_cliente(
         out.responsable_id = cliente.usuario_id
         out.responsable = (f"{u.nombre} {u.apellido}".strip() or u.email) if u else None
     return out
+
+
+@router.get("/clientes/{cuit}/historico", response_model=HistoricoOut)
+def historico_cliente(
+    cuit: str,
+    rango: int = 12,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_actual),
+):
+    """Facturación histórica del cliente para el gráfico de rango variable. `rango` = meses hacia
+    atrás (12/24/…); un valor grande (>=900) trae TODO lo que haya en el cache. Hasta 24 meses los
+    períodos son mensuales; por encima se agrupan por año (sino no entran las barras). Cada período
+    viene en su valor nominal y también deflactado por IPC (pesos del mes de referencia), para que
+    sumar/comparar entre años tenga sentido pese a la inflación."""
+    _cliente_propio(db, cuit, usuario)
+    comp = models.ComprobanteEmitido
+    mes = _mes_expr(db).label("mes")
+    es_nc = comp.cbte_tipo.in_(TIPOS_NOTA_CREDITO)
+    q = (
+        select(
+            mes,
+            comp.direccion,
+            func.sum(case((es_nc, comp.imp_total), else_=0)).label("nc"),
+            func.sum(case((es_nc, 0), else_=comp.imp_total)).label("resto"),
+        )
+        .where(comp.cuit == cuit)
+        .group_by(mes, comp.direccion)
+    )
+    if rango < 900:
+        q = q.where(comp.fecha >= _inicio_ventana_12m(rango))
+    filas = db.execute(q).all()
+
+    # Neto por mes: emitidas = resto − NC (mismo criterio que la lista/ficha); idem recibidas.
+    por_mes: dict[str, dict[str, float]] = {}
+    for mes_s, direccion, nc, resto in filas:
+        e = por_mes.setdefault(mes_s, {"emit": 0.0, "recib": 0.0})
+        neto = float(resto or 0) - float(nc or 0)
+        if direccion == "emitido":
+            e["emit"] += neto
+        elif direccion == "recibido":
+            e["recib"] += neto
+
+    por_anio = rango > 24
+    ref = ipc.mes_referencia()
+    # Deflactamos SIEMPRE por mes (aunque después agrupemos por año): cada mes tiene su propio
+    # coeficiente, así el total anual en pesos de hoy queda bien ponderado.
+    buckets: dict[str, dict[str, float]] = {}
+    for mes_s in sorted(por_mes):
+        coef = ipc.coeficiente(mes_s, ref)
+        v = por_mes[mes_s]
+        clave = mes_s[:4] if por_anio else mes_s
+        b = buckets.setdefault(
+            clave, {"emit": 0.0, "recib": 0.0, "emitReal": 0.0, "recibReal": 0.0}
+        )
+        b["emit"] += v["emit"]
+        b["recib"] += v["recib"]
+        b["emitReal"] += v["emit"] * coef
+        b["recibReal"] += v["recib"] * coef
+
+    periodos = [
+        HistoricoPeriodoOut(
+            periodo=clave,
+            emitidasNetas=b["emit"],
+            recibidas=b["recib"],
+            emitidasNetasReal=b["emitReal"],
+            recibidasReal=b["recibReal"],
+        )
+        for clave, b in sorted(buckets.items())
+    ]
+    return HistoricoOut(
+        periodos=periodos,
+        agrupacion="anio" if por_anio else "mes",
+        mes_referencia=ref,
+        primer_periodo=(min(por_mes) if por_mes else None),
+    )
 
 
 @router.put("/clientes/{cuit}/edicion")

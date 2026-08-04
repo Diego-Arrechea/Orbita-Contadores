@@ -4,7 +4,7 @@
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Cliente } from '@/types';
-import { getClientesReales, getClienteReal } from '@/services/clientesService';
+import { getClientesReales, getClienteReal, getHistorico } from '@/services/clientesService';
 import { getComunicaciones } from '@/services/comunicacionesService';
 import { getLiquidacionesAgro } from '@/services/liquidacionesAgroService';
 
@@ -12,6 +12,7 @@ export const qkClientes = ['clientes', 'reales'] as const;
 export const qkCliente = (cuit: string) => ['cliente', cuit] as const;
 export const qkComunicaciones = (cuit: string) => ['comunicaciones', cuit] as const;
 export const qkLiquidacionesAgro = (cuit: string) => ['liquidaciones-agro', cuit] as const;
+export const qkHistorico = (cuit: string, rango: number) => ['historico', cuit, rango] as const;
 
 /** Cartera completa del contador (cacheada). La consumen Dashboard, Conciliación y useAlertas: una
  *  sola request compartida en vez de tres. */
@@ -46,6 +47,16 @@ export function useLiquidacionesAgro(cuit: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ['liquidaciones-agro', cuit ?? ''],
     queryFn: () => getLiquidacionesAgro(cuit as string),
+    enabled: enabled && !!cuit,
+  });
+}
+
+/** Facturación histórica de un cliente para el gráfico de rango variable (nominal + ajustado por
+ *  inflación). Cacheada por CUIT y rango; sólo para clientes reales. */
+export function useHistorico(cuit: string | undefined, rango: number, enabled = true) {
+  return useQuery({
+    queryKey: ['historico', cuit ?? '', rango],
+    queryFn: () => getHistorico(cuit as string, rango),
     enabled: enabled && !!cuit,
   });
 }
