@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import logging
 import re
 import time
 
@@ -30,9 +29,6 @@ from ..arca.afip import (
 from ..config import settings
 from ..crypto import descifrar
 from ..scraping import miscomprobantes  # sólo helpers motor-agnósticos: ventanas() + PLAN_*
-from . import devengado
-
-log = logging.getLogger(__name__)
 
 
 def _texto_corto(valor: str | None, largo: int) -> str | None:
@@ -401,14 +397,6 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
         _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
         raise
     _registrar_extraccion(db, cuit, "exitosa", nuevos, _ms(inicio))
-    # Período de servicio facturado de los comprobantes (imputación por devengado). Va DESPUÉS de
-    # registrar la extracción y aislado: es un extra que afina en qué mes cae cada comprobante, y si
-    # falla no debe convertir una sincronización exitosa en fallida. Ver services/devengado.py.
-    try:
-        devengado.completar_periodos(db, cuit)
-    except Exception:  # noqa: BLE001
-        db.rollback()
-        log.warning("devengado %s: no se pudieron completar los períodos", cuit, exc_info=True)
     return nuevos
 
 
