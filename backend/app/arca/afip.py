@@ -82,6 +82,7 @@ from __future__ import annotations
 
 import re
 import time
+import random
 import logging
 import html as _html
 import datetime as _dt
@@ -226,6 +227,12 @@ LSP_SECTORES = {
     # "tabaco":   {"token": "ltv", "base": ...},
     # "azucar":   {"token": "leu_web_lca", "base": ...},
 }
+
+# Esperas (segundos, con jitter ±30%) entre reintentos de la grilla de liquidaciones cuando la sesión
+# LSP no queda establecida. El host del sector primario soft-bloquea por volumen: reintentar a los 2s
+# caía casi siempre dentro del mismo bloqueo, así que el reintento no servía de nada. Escalonado da
+# tiempo a que se libere sin sumar volumen.
+LSP_ESPERAS = (5, 20, 60)
 
 # Servicios interactivos que, si el CUIT NO los tiene adheridos en su Clave Fiscal,
 # adherimos solos (Administrador de Relaciones) y reintentamos abrirlos. Mapea el
@@ -3261,7 +3268,7 @@ class AFIP:
 
     def lsp_consultar(
         self, direccion: str = "receptor", *, sector: str = "hacienda", desde=None, hasta=None,
-        _reintento: bool = True,
+        _intento: int = 0,
     ) -> list[dict]:
         """Lista las liquidaciones electrónicas del `sector` (grilla, SIN importe).
 
@@ -3297,11 +3304,15 @@ class AFIP:
         # vez de registrar un falso "sin liquidaciones".
         if "<tbody" not in html_txt:
             self._lsp_sector = None
-            if _reintento:
-                self.log.warning("LSP %s/%s sin grilla (%s); reabro SSO y reintento", sector, direccion, r.url)
-                time.sleep(2)
+            if _intento < len(LSP_ESPERAS):
+                espera = LSP_ESPERAS[_intento] * random.uniform(0.7, 1.3)
+                self.log.warning(
+                    "LSP %s/%s sin grilla (%s); reabro SSO y reintento en %.0fs (%d/%d)",
+                    sector, direccion, r.url, espera, _intento + 1, len(LSP_ESPERAS),
+                )
+                time.sleep(espera)
                 return self.lsp_consultar(
-                    direccion, sector=sector, desde=desde, hasta=hasta, _reintento=False
+                    direccion, sector=sector, desde=desde, hasta=hasta, _intento=_intento + 1
                 )
             raise AFIPError(
                 f"Liquidaciones {sector}/{direccion}: la grilla no cargó (sesión no establecida)."

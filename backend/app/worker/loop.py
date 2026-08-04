@@ -167,8 +167,10 @@ def _worker(idx: int) -> None:
                 ra = agro_paso_worker(db, cuit)
                 if ra:
                     logger.info("[w%d] %s agro -> %s liq (nuevas %s)", idx, cuit, ra["procesadas"], ra["nuevas"])
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                # No tumba la sync ya hecha, pero SÍ queda registrado: el fallo silencioso hacía que un
+                # bloqueo sostenido del servicio del agro pasara meses inadvertido.
+                logger.warning("[w%d] %s agro FALLÓ: %s", idx, cuit, e)
             # Aportes en Línea (relación de dependencia): consulta gateada de baja cadencia. best-effort:
             # un fallo acá no debe tumbar la sync ya hecha, y deja el cliente sin marcar para reintentar.
             try:

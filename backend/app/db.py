@@ -276,6 +276,11 @@ def _migrar_clientes_arca(conn) -> None:
     if "agro_ultimo_intento" not in cols:
         tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
         conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN agro_ultimo_intento {tipo}"))
+    # Cuándo se consultó el agro con ÉXITO por última vez (diagnóstico: junto con agro_ultimo_intento
+    # dice si el servicio nos viene fallando). TIMESTAMP portable SQLite + Postgres.
+    if "agro_ultimo_ok" not in cols:
+        tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
+        conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN agro_ultimo_ok {tipo}"))
     # Remuneración en relación de dependencia ("Aportes en Línea"), JSON serializado. TEXT portable.
     if "remuneraciones_json" not in cols:
         conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN remuneraciones_json TEXT"))

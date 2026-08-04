@@ -39,15 +39,15 @@ def _upsert(db: Session, cuit: str, crudos: list[dict], con_importe: bool) -> tu
         liq_id = str(c.get("liq_id") or "")
         if not liq_id:
             continue
-        bruto = c.get("importe_bruto")  # None = no se descargó (detección) o el PDF falló
-        if con_importe and bruto is None:
-            sin_importe += 1  # se pidió el importe pero el PDF no se pudo leer
+        bruto = c.get("importe_bruto")  # None = no se descargó (detección/ya cacheado) o el PDF falló
         existe = db.scalar(
             select(models.LiquidacionAgro).where(
                 models.LiquidacionAgro.cuit == cuit,
                 models.LiquidacionAgro.liq_id == liq_id,
             )
         )
+        if con_importe and bruto is None and not (existe and existe.importe_bruto):
+            sin_importe += 1  # se pidió el importe, no lo teníamos y el PDF no se pudo leer
         campos = dict(
             sector=c.get("sector", "hacienda"),
             direccion=c.get("direccion", "receptor"),
@@ -102,8 +102,23 @@ def sincronizar_agro(
         raise ValueError(f"El cliente {cuit} no tiene una credencial con clave guardada")
     clave = descifrar(credencial.clave_cifrada).decode()
 
+    # El importe de una liquidación no cambia: las que ya lo tienen no se vuelven a bajar. Así el
+    # mantenimiento baja sólo los PDFs que faltan (antes re-bajaba TODA la historia del cliente en
+    # cada pasada: decenas de PDFs por cliente, el grueso del volumen que gatilla el bloqueo).
+    omitir: set[str] = set()
+    if con_importe:
+        omitir = {
+            str(x)
+            for x in db.scalars(
+                select(models.LiquidacionAgro.liq_id).where(
+                    models.LiquidacionAgro.cuit == cuit,
+                    models.LiquidacionAgro.importe_bruto > 0,
+                )
+            )
+        }
     crudos = motor.liquidaciones_agro(
-        credencial.cuit, clave, cuit, sector=sector, con_importe=con_importe, on_progress=on_progress
+        credencial.cuit, clave, cuit, sector=sector, con_importe=con_importe,
+        omitir_importe_ids=omitir, on_progress=on_progress,
     )
     procesadas, nuevas, sin_importe = _upsert(db, cuit, crudos, con_importe)
     tiene = procesadas > 0
@@ -173,7 +188,13 @@ def sincronizar_agro_si_corresponde(
 # ese bucle: un intento fallido no se reintenta hasta pasado el cooldown, bajando el volumen por debajo
 # del umbral del WAF. Marcados (el contador los espera) reintentan diario; la detección masiva, semanal.
 COOLDOWN_MARCADO = dt.timedelta(days=1)
-COOLDOWN_DETECCION = dt.timedelta(days=7)
+COOLDOWN_DETECCION = dt.timedelta(days=21)
+# Tope de DETECCIONES por día en toda la base. La detección es tráfico especulativo (la enorme
+# mayoría de los clientes no son agropecuarios) y es el grueso del volumen contra el servicio del
+# sector primario: con cientos de clientes pendientes, aun con cooldown, sostenía el bloqueo y se
+# comía la cuota de los agropecuarios REALES, que son los que importan. Con el cupo, la detección
+# avanza de a poco y el mantenimiento de los marcados (que no tiene cupo) siempre tiene lugar.
+CUPO_DETECCION_DIARIO = 20
 
 
 def _en_cooldown(ultimo: dt.datetime | None, ahora: dt.datetime, ventana: dt.timedelta) -> bool:
@@ -183,6 +204,21 @@ def _en_cooldown(ultimo: dt.datetime | None, ahora: dt.datetime, ventana: dt.tim
     if ultimo.tzinfo is None:  # Postgres aware; SQLite naive → normalizamos a UTC
         ultimo = ultimo.replace(tzinfo=dt.timezone.utc)
     return ultimo > ahora - ventana
+
+
+def _detecciones_del_dia(db: Session, ahora: dt.datetime) -> int:
+    """Cuántas DETECCIONES (clientes todavía sin chequear ni marcar) se intentaron en las últimas 24 h
+    en toda la base. Gatea el cupo diario; no cuenta el mantenimiento de los marcados."""
+    return int(
+        db.scalar(
+            select(func.count()).select_from(models.ClienteARCA).where(
+                models.ClienteARCA.factura_agro.is_(False),
+                models.ClienteARCA.agro_chequeado_en.is_(None),
+                models.ClienteARCA.agro_ultimo_intento > ahora - dt.timedelta(days=1),
+            )
+        )
+        or 0
+    )
 
 
 def paso_worker(db: Session, cuit: str, *, sector: str = "hacienda") -> dict | None:
@@ -206,14 +242,18 @@ def paso_worker(db: Session, cuit: str, *, sector: str = "hacienda") -> dict | N
     ahora = dt.datetime.now(dt.timezone.utc)
 
     if cliente.factura_agro:
-        # Marcado: mantenimiento. Mientras siga sin importes (total 0) el mantenimiento reintenta en
-        # cada pasada → bajo bloqueo eso martilla; backoff diario. Con importes ya al día, el gate
-        # semanal de sincronizar_agro_si_corresponde manda (no lo tocamos).
-        if _total_bruto(db, cuit) == 0 and _en_cooldown(cliente.agro_ultimo_intento, ahora, COOLDOWN_MARCADO):
+        # Marcado: mantenimiento, con cooldown diario ante CUALQUIER intento (antes el cooldown sólo
+        # aplicaba si el cliente no tenía importes: uno que ya los tenía y fallaba se reintentaba en
+        # CADA pasada, porque el gate semanal se apoya en `sincronizado_en`, que no avanza si falla).
+        if _en_cooldown(cliente.agro_ultimo_intento, ahora, COOLDOWN_MARCADO):
             return None
         cliente.agro_ultimo_intento = ahora
         db.commit()
-        return sincronizar_agro_si_corresponde(db, cuit, sector=sector)
+        res = sincronizar_agro_si_corresponde(db, cuit, sector=sector)
+        if res is not None:  # None = no correspondía consultar (ya estaba al día), no es un éxito
+            cliente.agro_ultimo_ok = ahora
+            db.commit()
+        return res
 
     if cliente.agro_chequeado_en is not None:
         return None  # ya se chequeó y no es agropecuario
@@ -221,10 +261,13 @@ def paso_worker(db: Session, cuit: str, *, sector: str = "hacienda") -> dict | N
     # cada pasada de toda la cartera pendiente era lo que auto-gatillaba el bloqueo de ARCA).
     if _en_cooldown(cliente.agro_ultimo_intento, ahora, COOLDOWN_DETECCION):
         return None
+    if _detecciones_del_dia(db, ahora) >= CUPO_DETECCION_DIARIO:
+        return None  # cupo diario agotado: la detección sigue mañana, sin pisarle el turno al resto
     cliente.agro_ultimo_intento = ahora
     db.commit()
     # Si sincronizar_agro levanta (bloqueo/ARCA), NO marcamos chequeado → reintenta pasado el cooldown.
     res = sincronizar_agro(db, cuit, sector=sector, marcar_flag=True, con_importe=False)
     cliente.agro_chequeado_en = ahora
+    cliente.agro_ultimo_ok = ahora
     db.commit()
     return res

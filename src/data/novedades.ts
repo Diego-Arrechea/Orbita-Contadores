@@ -42,6 +42,25 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-08-04-liquidaciones-agro-actualizacion',
+    fecha: '2026-08-04',
+    titulo: 'Liquidaciones del agro más al día',
+    resumen:
+      'Mejoramos la actualización de las liquidaciones del sector pecuario de tus clientes productores.',
+    items: [
+      {
+        tipo: 'arreglo',
+        texto:
+          'Las liquidaciones nuevas de tus clientes agropecuarios se incorporan de forma más pareja: antes podían demorar varios días en aparecer y sumarse a la facturación.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Las liquidaciones que habían quedado cargadas sin su importe se completan solas, así el facturado del cliente deja de quedar por debajo del real.',
+      },
+    ],
+  },
+  {
     id: '2026-08-04-facturacion-historica',
     fecha: '2026-08-04',
     titulo: 'Facturación histórica por año, ajustada por inflación',
