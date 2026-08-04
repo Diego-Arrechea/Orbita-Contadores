@@ -114,7 +114,10 @@ def _fila_cabecera(c: models.ComprobanteEmitido) -> str:
         _imp(0 if es_c else no_grav),                                 # 100 No gravado (15)
         _imp(0),                                                      # 110 Percep no categorizado (15)
         _imp(exento),                                                 # 120 Exento (15)
-        _imp(float(c.imp_trib or 0)),                                 # 130 Percep IVA+Nacionales (15)
+        # Percepciones: Mis Comprobantes sólo da el TOTAL de otros tributos (lumpeado), no el desglose
+        # por tipo. Para NO sobre-declarar percepción IVA (que infla el pago a cuenta), va todo a "Otros
+        # Tributos" (campo 210) y los campos de percepción quedan en 0 hasta capturar el detalle real.
+        _imp(0),                                                      # 130 Percep IVA+Nacionales (15)
         _imp(0),                                                      # 140 Percep IIBB (15)
         _imp(0),                                                      # 150 Percep Municipales (15)
         _imp(0),                                                      # 160 Impuestos Internos (15)
@@ -122,7 +125,7 @@ def _fila_cabecera(c: models.ComprobanteEmitido) -> str:
         _cambio(float(c.cotizacion) if c.cotizacion is not None else 1),  # 180 Tipo de cambio (10)
         _ent(cant, 1),                                               # 190 Cantidad de alícuotas (1)
         _txt(cod_op, 1),                                             # 200 Código de operación (1)
-        _imp(0),                                                      # 210 Otros tributos (15)
+        _imp(float(c.imp_trib or 0)),                                 # 210 Otros tributos (15)
         "00000000",                                                  # 220 Fecha vto pago (8)
     ]
     return "".join(campos)
@@ -184,7 +187,10 @@ def _fila_cabecera_compras(c: models.ComprobanteEmitido) -> str:
         _imp(float(c.imp_total)),                                     # 90 Importe total (15)
         _imp(0 if sin_credito else no_grav),                          # 100 No gravado (15)
         _imp(exento),                                                 # 110 Exento (15)
-        _imp(float(c.imp_trib or 0)),                                 # 120 Percepciones IVA (15)
+        # Percepciones: Mis Comprobantes sólo da el TOTAL de otros tributos (lumpeado), no el desglose
+        # por tipo. Para NO sobre-declarar percepción IVA (pago a cuenta que infla el crédito), va todo
+        # a "Otros Tributos" (campo 220) y los campos de percepción quedan en 0 hasta capturar el detalle.
+        _imp(0),                                                      # 120 Percepciones IVA (15)
         _imp(0),                                                      # 130 Percep otros nacionales (15)
         _imp(0),                                                      # 140 Percep IIBB (15)
         _imp(0),                                                      # 150 Percep Municipales (15)
@@ -194,7 +200,7 @@ def _fila_cabecera_compras(c: models.ComprobanteEmitido) -> str:
         _ent(cant, 1),                                               # 190 Cantidad de alícuotas (1)
         _txt(cod_op, 1),                                             # 200 Código de operación (1)
         _imp(0 if sin_credito else iva),                              # 210 Crédito fiscal computable (15)
-        _imp(0),                                                      # 220 Otros tributos (15)
+        _imp(float(c.imp_trib or 0)),                                 # 220 Otros tributos (15)
         _ent(0, 11),                                                 # 230 CUIT emisor/corredor (11)
         _txt("", 30),                                                # 240 Denominación emisor (30)
         _imp(0),                                                      # 250 IVA comisión (15)

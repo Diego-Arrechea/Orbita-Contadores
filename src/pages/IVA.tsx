@@ -299,9 +299,9 @@ function PosicionView({ posicion: p }: { posicion: IvaPosicion }) {
       <div className="flex items-start gap-2 rounded-lg bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>
-          Cálculo preliminar del período: no incluye saldo a favor de períodos anteriores ni
-          retenciones. La alícuota se estima por comprobante; los que combinan varias alícuotas
-          aparecen en “Otras”.
+          Cálculo preliminar del período: no incluye saldo a favor de períodos anteriores,
+          retenciones ni percepciones de IVA sufridas (se suman más adelante). La alícuota se estima
+          por comprobante; los que combinan varias alícuotas aparecen en “Otras”.
         </span>
       </div>
     </div>
