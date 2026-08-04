@@ -155,12 +155,15 @@ def _total_bruto(db: Session, cuit: str) -> float:
 
 
 def sincronizar_agro_si_corresponde(
-    db: Session, cuit: str, *, sector: str = "hacienda", dias: int = 7
+    db: Session, cuit: str, *, sector: str = "hacienda", dias: int = 2
 ) -> dict | None:
-    """Mantenimiento SEMANAL de un cliente YA marcado (`factura_agro`): re-sincroniza CON importe si
-    pasó `dias` desde la última, o si todavía le faltan los importes (total 0 → recién detectado en
-    modo liviano). Devuelve None si no correspondía (no marcado, o ya al día). Estas liquidaciones
-    aparecen rara vez, así que la pasada normal es semanal."""
+    """Mantenimiento de un cliente YA marcado (`factura_agro`): re-sincroniza CON importe si pasó
+    `dias` desde la última, o si todavía le faltan los importes (total 0 → recién detectado en modo
+    liviano). Devuelve None si no correspondía (no marcado, o ya al día).
+
+    Cada 2 días, no semanal: con el gate semanal una liquidación nueva podía tardar una semana en
+    aparecer, que es justo lo que reclamaban los contadores. Ahora la pasada es barata (sólo la
+    grilla + los PDFs que faltan, ver `omitir` en sincronizar_agro), así que se puede mirar seguido."""
     cliente = db.get(models.ClienteARCA, cuit)
     if cliente is None or not cliente.factura_agro:
         return None
