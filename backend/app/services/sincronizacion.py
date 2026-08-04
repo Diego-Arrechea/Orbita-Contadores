@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import logging
+import re
 import time
 
 from sqlalchemy import func, select, text
@@ -28,6 +30,18 @@ from ..arca.afip import (
 from ..config import settings
 from ..crypto import descifrar
 from ..scraping import miscomprobantes  # sólo helpers motor-agnósticos: ventanas() + PLAN_*
+from . import devengado
+
+log = logging.getLogger(__name__)
+
+
+def _texto_corto(valor: str | None, largo: int) -> str | None:
+    """Texto plano acotado a `largo` para columnas VARCHAR: saca marcado, colapsa espacios y corta.
+    Un valor más largo que la columna hace fallar el flush y deja la sesión inutilizable."""
+    if not valor:
+        return valor
+    limpio = " ".join(re.sub(r"<[^>]+>", " ", valor).split())
+    return limpio[:largo] or None
 
 
 def _parse_fecha(yyyymmdd: str) -> dt.date:
@@ -387,6 +401,14 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
         _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
         raise
     _registrar_extraccion(db, cuit, "exitosa", nuevos, _ms(inicio))
+    # Período de servicio facturado de los comprobantes (imputación por devengado). Va DESPUÉS de
+    # registrar la extracción y aislado: es un extra que afina en qué mes cae cada comprobante, y si
+    # falla no debe convertir una sincronización exitosa en fallida. Ver services/devengado.py.
+    try:
+        devengado.completar_periodos(db, cuit)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        log.warning("devengado %s: no se pudieron completar los períodos", cuit, exc_info=True)
     return nuevos
 
 
@@ -418,7 +440,10 @@ def sincronizar_padron(db: Session, cuit: str, headless: bool | None = None) -> 
     if datos.get("categoria"):
         cliente.categoria = datos["categoria"]
         cliente.actividad = datos.get("actividad")
-        cliente.prox_recategorizacion = datos.get("prox_recategorizacion")
+        # Saneado defensivo: el aviso de recategorización a veces viene con marcado adentro y no
+        # entra en la columna (40). Reventaba el flush y dejaba la sesión inutilizable, así que se
+        # caían en cascada los pasos siguientes del cliente (padrón, liquidaciones del agro).
+        cliente.prox_recategorizacion = _texto_corto(datos.get("prox_recategorizacion"), 40)
     # Estado de cuota (CCMA) + próximo vencimiento (portal): guarda los que vinieron.
     for campo in (
         "cuota_estado",
