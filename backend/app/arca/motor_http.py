@@ -502,6 +502,7 @@ def liquidaciones_agro(
     desde=None,
     hasta=None,
     con_importe: bool = True,
+    omitir_importe_ids=None,
     on_progress=None,
 ) -> list[dict]:
     """Trae las Liquidaciones Electrónicas del `sector` (receptor + emisor).
@@ -509,8 +510,13 @@ def liquidaciones_agro(
     `con_importe=True`: por cada liquidación baja el PDF y parsea el Importe Bruto (más pesado; se
     pacea entre PDF para no gatillar el WAF de serviciosjava2). `con_importe=False` (modo DETECCIÓN):
     sólo la grilla, sin PDFs → mucho más liviano; el importe queda en None (se llena después). La
-    grilla ya alcanza para saber si el cliente ES agropecuario. Devuelve dicts para agro._upsert."""
+    grilla ya alcanza para saber si el cliente ES agropecuario. Devuelve dicts para agro._upsert.
+
+    `omitir_importe_ids`: liq_ids cuyo importe YA está cacheado → no se les baja el PDF de nuevo (el
+    importe de una liquidación no cambia). Deja la ráfaga de PDFs acotada a lo que falta, en vez de
+    re-bajar toda la historia del cliente en cada mantenimiento."""
     out: list[dict] = []
+    omitir = set(omitir_importe_ids or ())
     liq_pdf = None
     if con_importe:
         from ..services import liquidacion_pdf as liq_pdf
@@ -520,7 +526,7 @@ def liquidaciones_agro(
             if on_progress:
                 on_progress(f"{direccion} {i + 1}/{len(filas)}")
             bruto = None
-            if con_importe:
+            if con_importe and str(r["liq_id"]) not in omitir:
                 try:
                     bruto = liq_pdf.importe_bruto(afip.lsp_pdf(r["liq_id"], sector=sector))
                 except Exception:  # noqa: BLE001  (un PDF ilegible no debe cortar toda la sync)

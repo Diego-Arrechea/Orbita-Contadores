@@ -324,6 +324,12 @@ class ClienteARCA(Base):
     agro_ultimo_intento: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Cuándo se consultó el agro con ÉXITO por última vez (la grilla cargó). Sirve para distinguir
+    # "no tiene liquidaciones" de "hace N días que no podemos leerlas": comparado con
+    # `agro_ultimo_intento` da, de un vistazo, si el servicio nos viene fallando. Sólo diagnóstico.
+    agro_ultimo_ok: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # ¿El contador tiene activo el monitoreo de este cliente? En False el cliente queda "pausado": el
     # motor de sincronización lo saltea (deja de traer sus datos) y en la lista del contador aparece
     # atenuado como "Desactivado". Lo prende/apaga el propio contador desde la ficha. Default True

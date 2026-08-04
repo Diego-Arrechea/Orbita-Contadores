@@ -159,15 +159,17 @@ def liquidaciones_agro(
     desde=None,
     hasta=None,
     con_importe: bool = True,
+    omitir_importe_ids=None,
     on_progress=None,
 ) -> list[dict]:
     """Liquidaciones del agro (receptor + emisor). `con_importe=False` = sólo grilla (detección
-    liviana, sin PDFs). Sólo HTTP: el motor browser nunca hizo el sector primario (LSP)."""
+    liviana, sin PDFs); `omitir_importe_ids` saltea el PDF de las que ya tienen importe cacheado.
+    Sólo HTTP: el motor browser nunca hizo el sector primario (LSP)."""
     from . import motor_http
 
     return motor_http.liquidaciones_agro(
         cuit_login, clave, cuit_cliente, sector=sector, desde=desde, hasta=hasta,
-        con_importe=con_importe, on_progress=on_progress,
+        con_importe=con_importe, omitir_importe_ids=omitir_importe_ids, on_progress=on_progress,
     )
 
 
