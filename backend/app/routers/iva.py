@@ -302,31 +302,37 @@ def posicion_iva(
 def export_lid(
     cuit: str,
     periodo: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="aaaa-mm"),
-    direccion: str = Query("ventas", pattern="^(ventas)$", description="por ahora sólo ventas"),
+    direccion: str = Query("ventas", pattern="^(ventas|compras)$"),
     db: Session = Depends(get_db),
     usuario: models.Usuario = Depends(usuario_iva),
 ):
-    """Descarga el Libro IVA Digital de AFIP (ventas) como ZIP con los dos TXT de ancho fijo
-    (cabecera + alícuotas), listos para el portal Libro IVA Digital. Compras se suma después."""
+    """Descarga el Libro IVA Digital de AFIP (ventas o compras) como ZIP con los dos TXT de ancho fijo
+    (cabecera + alícuotas), listos para el portal Libro IVA Digital."""
     _cliente_propio(db, cuit, usuario)
     desde, hasta = _rango_mes(periodo)
+    columna = "emitido" if direccion == "ventas" else "recibido"
     comp = models.ComprobanteEmitido
     comps = db.scalars(
         select(comp).where(
             comp.cuit == cuit,
-            comp.direccion == "emitido",
+            comp.direccion == columna,
             comp.fecha >= desde,
             comp.fecha < hasta,
         )
     ).all()
-    archivos = lid_export.generar_lid_ventas(comps)
+    if direccion == "ventas":
+        archivos = lid_export.generar_lid_ventas(comps)
+        etiqueta, cap = "Ventas", "Ventas"
+    else:
+        archivos = lid_export.generar_lid_compras(comps)
+        etiqueta, cap = "Compras", "Compras"
     per = periodo.replace("-", "")  # aaaamm para el nombre
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr(f"LID Ventas {per}.txt", archivos["cabecera"])
-        z.writestr(f"LID Ventas Alicuotas {per}.txt", archivos["alicuotas"])
+        z.writestr(f"LID {etiqueta} {per}.txt", archivos["cabecera"])
+        z.writestr(f"LID {etiqueta} Alicuotas {per}.txt", archivos["alicuotas"])
     return Response(
         content=buf.getvalue(),
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="LibroIVADigital_Ventas_{per}.zip"'},
+        headers={"Content-Disposition": f'attachment; filename="LibroIVADigital_{cap}_{per}.zip"'},
     )

@@ -52,7 +52,7 @@ export function IVA() {
   const [vista, setVista] = useState<VistaIva>('libro');
   const [direccion, setDireccion] = useState<DireccionIva>('ventas');
   const [periodo, setPeriodo] = useState<string>('');
-  const [descargando, setDescargando] = useState(false);
+  const [descargando, setDescargando] = useState<DireccionIva | null>(null);
   const [errorDescarga, setErrorDescarga] = useState<string | null>(null);
 
   // Cliente elegido (default: el primero de la cartera en cuanto carga).
@@ -87,16 +87,16 @@ export function IVA() {
     [libro]
   );
 
-  async function descargarLid() {
+  async function descargarLid(dir: DireccionIva) {
     if (!cuitActivo || !periodoActivo) return;
-    setDescargando(true);
+    setDescargando(dir);
     setErrorDescarga(null);
     try {
-      await descargarLibroIvaDigital(cuitActivo, periodoActivo);
+      await descargarLibroIvaDigital(cuitActivo, periodoActivo, dir);
     } catch (e) {
       setErrorDescarga(mensajeDeError(e));
     } finally {
-      setDescargando(false);
+      setDescargando(null);
     }
   }
 
@@ -184,21 +184,26 @@ export function IVA() {
             </Tabs>
           )}
           {periodoActivo && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="sm:ml-auto"
-              onClick={descargarLid}
-              disabled={descargando}
-              title="Descarga el Libro IVA Digital de Ventas (formato AFIP)"
-            >
-              {descargando ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="mr-2 h-4 w-4" />
-              )}
-              Libro IVA Digital (ventas)
-            </Button>
+            <div className="flex items-center gap-2 sm:ml-auto">
+              <span className="hidden text-xs text-muted-foreground sm:inline">Libro IVA Digital:</span>
+              {(['ventas', 'compras'] as const).map(dir => (
+                <Button
+                  key={dir}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => descargarLid(dir)}
+                  disabled={descargando !== null}
+                  title={`Descarga el Libro IVA Digital de ${dir} (formato AFIP)`}
+                >
+                  {descargando === dir ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  {dir === 'ventas' ? 'Ventas' : 'Compras'}
+                </Button>
+              ))}
+            </div>
           )}
         </div>
         {errorDescarga && <p className="mt-2 text-sm text-danger">{errorDescarga}</p>}
