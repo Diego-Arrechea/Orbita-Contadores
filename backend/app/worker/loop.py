@@ -158,7 +158,7 @@ def _worker(idx: int) -> None:
             try:
                 sincronizar_padron(db, cuit)  # best-effort: no aplica o falló, comprobantes ya están
             except Exception:  # noqa: BLE001
-                pass
+                db.rollback()  # si el fallo dejó la sesión sucia, los pasos siguientes no se caen en cascada
             # Liquidaciones del agro: detección gradual (una vez por cliente en su próxima sync) +
             # mantenimiento semanal de los agropecuarios. best-effort: un fallo acá (p.ej. el WAF
             # rate-limitea) no debe tumbar la sync de comprobantes ya hecha, y deja el cliente sin
@@ -171,6 +171,7 @@ def _worker(idx: int) -> None:
                 # No tumba la sync ya hecha, pero SÍ queda registrado: el fallo silencioso hacía que un
                 # bloqueo sostenido del servicio del agro pasara meses inadvertido.
                 logger.warning("[w%d] %s agro FALLÓ: %s", idx, cuit, e)
+                db.rollback()
             # Aportes en Línea (relación de dependencia): consulta gateada de baja cadencia. best-effort:
             # un fallo acá no debe tumbar la sync ya hecha, y deja el cliente sin marcar para reintentar.
             try:
@@ -179,7 +180,7 @@ def _worker(idx: int) -> None:
                     logger.info("[w%d] %s aportes -> rel_dep=%s total=%.0f", idx, cuit,
                                 rap.get("es_relacion_dependencia"), rap.get("total_bruto") or 0)
             except Exception:  # noqa: BLE001
-                pass
+                db.rollback()
             # Planes de facilidades (Mis Facilidades): consulta gateada de baja cadencia (~14 días).
             # best-effort: un fallo no tumba la sync ya hecha y deja el cliente sin marcar para reintentar.
             try:
@@ -188,7 +189,7 @@ def _worker(idx: int) -> None:
                     vig = sum(1 for p in rf if p.get("vigente"))
                     logger.info("[w%d] %s facilidades -> %s plan(es) (%s vigentes)", idx, cuit, len(rf), vig)
             except Exception:  # noqa: BLE001
-                pass
+                db.rollback()
             logger.info("[w%d] %s OK -> %s comprobantes nuevos", idx, cuit, n)
         except Exception as e:  # noqa: BLE001 — la falla ya quedó en `extracciones` con su motivo
             logger.warning("[w%d] %s FALLÓ: %s", idx, cuit, str(e)[:160])
