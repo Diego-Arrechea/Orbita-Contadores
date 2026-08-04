@@ -93,16 +93,21 @@ export function getPosicionIva(cuit: string, periodo: string): Promise<IvaPosici
   return apiGet<IvaPosicion>(`/iva/clientes/${cuit}/posicion?periodo=${encodeURIComponent(periodo)}`);
 }
 
-/** Descarga el Libro IVA Digital de AFIP (ventas) como ZIP (cabecera + alícuotas) y dispara la
- *  descarga en el navegador. Sólo cuentas habilitadas (el backend valida el gate). */
-export async function descargarLibroIvaDigital(cuit: string, periodo: string): Promise<void> {
+/** Descarga el Libro IVA Digital de AFIP (ventas o compras) como ZIP (cabecera + alícuotas) y dispara
+ *  la descarga en el navegador. Sólo cuentas habilitadas (el backend valida el gate). */
+export async function descargarLibroIvaDigital(
+  cuit: string,
+  periodo: string,
+  direccion: DireccionIva
+): Promise<void> {
   const blob = await apiGetBlob(
-    `/iva/clientes/${cuit}/export/lid?periodo=${encodeURIComponent(periodo)}`
+    `/iva/clientes/${cuit}/export/lid?periodo=${encodeURIComponent(periodo)}&direccion=${direccion}`
   );
+  const cap = direccion === 'ventas' ? 'Ventas' : 'Compras';
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `LibroIVADigital_Ventas_${periodo.replace('-', '')}.zip`;
+  a.download = `LibroIVADigital_${cap}_${periodo.replace('-', '')}.zip`;
   document.body.appendChild(a);
   a.click();
   a.remove();

@@ -1,4 +1,4 @@
-"""Generador de los archivos del Libro IVA Digital de AFIP (por ahora VENTAS: cabecera + alícuotas).
+"""Generador de los archivos del Libro IVA Digital de AFIP (VENTAS y COMPRAS: cabecera + alícuotas).
 
 Formato de ANCHO FIJO leído de Nacional Sistema (ver memoria `lid-formato-afip`): fechas YYYYMMDD;
 importes = valor×100 (2 decimales implícitos), 15 chars, zero-pad izquierda, sin signo ni separador;
@@ -14,10 +14,18 @@ import json
 from decimal import ROUND_HALF_UP, Decimal
 
 from .. import models
-from ..schemas import TIPOS_MONOTRIBUTO
+from ..schemas import TIPO_COMPROBANTE, TIPOS_MONOTRIBUTO
 
 # ID de alícuota de AFIP por tasa (%). Confirmado en Nacional: 0→3, 2.5→9, 5→8, 10.5→4, 21→5, 27→6.
 _ALICUOTA_ID = {0.0: 3, 2.5: 9, 5.0: 8, 10.5: 4, 21.0: 5, 27.0: 6}
+
+
+def _letra(cbte_tipo: int) -> str:
+    """Letra de clase del comprobante (A/B/C/M/E) a partir del nombre del tipo. '' si no se deduce."""
+    for token in reversed(TIPO_COMPROBANTE.get(cbte_tipo, "").split()):
+        if token in ("A", "B", "C", "M", "E"):
+            return token
+    return "C" if cbte_tipo in TIPOS_MONOTRIBUTO else ""
 
 # Moneda: AFIP usa 'PES' (pesos), 'DOL' (dólar). El resto se pasa tal cual (3 chars).
 _MONEDA_AFIP = {"ARS": "PES", "PES": "PES", "USD": "DOL"}
@@ -71,10 +79,10 @@ def _alicuotas_de(c: models.ComprobanteEmitido) -> list[dict]:
         return []
 
 
-def _cant_alicuotas(c: models.ComprobanteEmitido, alics: list[dict]) -> int:
-    """Cantidad de alícuotas (campo 190 del LID). Clase C → 0. Sin IVA pero con exento/no gravado →
-    1 (fila con alícuota id 3). Si no, la cantidad real de alícuotas."""
-    if _es_clase_c(c.cbte_tipo):
+def _cant_alicuotas(c: models.ComprobanteEmitido, alics: list[dict], *, sin_b: bool = False) -> int:
+    """Cantidad de alícuotas (campo 190 del LID). Clase C → 0 (y en COMPRAS también clase B, `sin_b`).
+    Sin IVA pero con exento/no gravado → 1 (fila con alícuota id 3). Si no, la cantidad real."""
+    if _es_clase_c(c.cbte_tipo) or (sin_b and _letra(c.cbte_tipo) == "B"):
         return 0
     iva = float(c.imp_iva or 0)
     exento = float(c.imp_exento or 0)
@@ -144,6 +152,83 @@ def generar_lid_ventas(comps: list[models.ComprobanteEmitido]) -> dict[str, str]
     filas_alic: list[str] = []
     for c in ordenados:
         filas_alic.extend(_filas_alicuota(c))
+    alicuotas = "\r\n".join(filas_alic)
+    return {
+        "cabecera": (cabecera + "\r\n") if cabecera else "",
+        "alicuotas": (alicuotas + "\r\n") if alicuotas else "",
+    }
+
+
+# --- COMPRAS (recibidos) -------------------------------------------------------
+# Difiere de ventas: cabecera con despacho de importación (vacío), doc del VENDEDOR, crédito fiscal
+# computable (=IVA), y separa la percepción de IVA (campo 120). El proveedor siempre es CUIT (80).
+def _fila_cabecera_compras(c: models.ComprobanteEmitido) -> str:
+    alics = _alicuotas_de(c)
+    _, num_doc = _cod_doc(c.doc_nro)  # doc del vendedor (proveedor); AFIP/Nacional lo tratan como CUIT
+    letra = _letra(c.cbte_tipo)
+    sin_credito = letra in ("C", "B")
+    cant = _cant_alicuotas(c, alics, sin_b=True)
+    iva = float(c.imp_iva or 0)
+    exento = float(c.imp_exento or 0)
+    no_grav = float(c.imp_no_gravado or 0)
+    cod_op = "E" if (iva == 0 and (exento != 0 or no_grav != 0)) else " "
+    campos = [
+        c.fecha.strftime("%Y%m%d"),                                   # 10 Fecha (8)
+        _ent(c.cbte_tipo, 3),                                         # 20 Tipo cbte (3)
+        _ent(c.punto_venta, 5),                                       # 30 Punto de venta (5)
+        _ent(c.numero, 20),                                           # 40 Número (20)
+        _txt("", 16),                                                 # 50 Despacho importación (16)
+        _ent(80, 2),                                                  # 60 Cód doc vendedor (2) = CUIT
+        _ent(num_doc, 20),                                           # 70 N° doc vendedor (20)
+        _txt(c.contraparte_nombre, 30),                              # 80 Razón social vendedor (30)
+        _imp(float(c.imp_total)),                                     # 90 Importe total (15)
+        _imp(0 if sin_credito else no_grav),                          # 100 No gravado (15)
+        _imp(exento),                                                 # 110 Exento (15)
+        _imp(float(c.imp_trib or 0)),                                 # 120 Percepciones IVA (15)
+        _imp(0),                                                      # 130 Percep otros nacionales (15)
+        _imp(0),                                                      # 140 Percep IIBB (15)
+        _imp(0),                                                      # 150 Percep Municipales (15)
+        _imp(0),                                                      # 160 Impuestos Internos (15)
+        _txt(_MONEDA_AFIP.get(c.moneda or "ARS", c.moneda or "PES"), 3),  # 170 Moneda (3)
+        _cambio(float(c.cotizacion) if c.cotizacion is not None else 1),  # 180 Tipo de cambio (10)
+        _ent(cant, 1),                                               # 190 Cantidad de alícuotas (1)
+        _txt(cod_op, 1),                                             # 200 Código de operación (1)
+        _imp(0 if sin_credito else iva),                              # 210 Crédito fiscal computable (15)
+        _imp(0),                                                      # 220 Otros tributos (15)
+        _ent(0, 11),                                                 # 230 CUIT emisor/corredor (11)
+        _txt("", 30),                                                # 240 Denominación emisor (30)
+        _imp(0),                                                      # 250 IVA comisión (15)
+    ]
+    return "".join(campos)
+
+
+def _filas_alicuota_compras(c: models.ComprobanteEmitido) -> list[str]:
+    """Filas del archivo de alícuotas de compras (incluye el doc del vendedor). Una por alícuota."""
+    alics = _alicuotas_de(c)
+    _, num_doc = _cod_doc(c.doc_nro)
+    cab = (
+        _ent(c.cbte_tipo, 3) + _ent(c.punto_venta, 5) + _ent(c.numero, 20)
+        + _ent(80, 2) + _ent(num_doc, 20)
+    )
+    if alics:
+        return [
+            cab + _imp(float(a["base"])) + _ent(_ALICUOTA_ID.get(float(a["alicuota"]), 3), 4)
+            + _imp(float(a["iva"]))
+            for a in alics
+        ]
+    if _cant_alicuotas(c, alics, sin_b=True) == 1:  # exento / no gravado sin IVA
+        return [cab + _imp(0) + _ent(3, 4) + _imp(0)]
+    return []
+
+
+def generar_lid_compras(comps: list[models.ComprobanteEmitido]) -> dict[str, str]:
+    """Genera los TXT del Libro IVA Digital de COMPRAS (cabecera LID_COMPRAS + alícuotas
+    LID_COMPRAS_ALICUOTA). Ordenados por fecha/PV/número."""
+    ordenados = sorted(comps, key=lambda c: (c.fecha, c.punto_venta, c.numero))
+    cabecera = "\r\n".join(_fila_cabecera_compras(c) for c in ordenados)
+    filas_alic: list[str] = []
+    for c in ordenados:
+        filas_alic.extend(_filas_alicuota_compras(c))
     alicuotas = "\r\n".join(filas_alic)
     return {
         "cabecera": (cabecera + "\r\n") if cabecera else "",
