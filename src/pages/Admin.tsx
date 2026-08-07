@@ -525,6 +525,10 @@ function FilaEmpleado({
         <div className="break-all text-xs text-muted-foreground">{e.email}</div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
+        {/* Clientes que tiene asignados dentro de la cartera del estudio. */}
+        <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
+          {e.clientes ? `${e.clientes} cliente(s)` : 'sin clientes asignados'}
+        </span>
         <span className="hidden whitespace-nowrap text-xs text-muted-foreground sm:inline">
           {fechaHora(e.ultimo_acceso)}
         </span>
@@ -819,7 +823,16 @@ function TabCuentas({ miId, onImpersonar }: { miId?: number; onImpersonar: () =>
                         </button>
                       </div>
                     </TableCell>
-                    <TableCell className="text-center tabular-nums">{u.clientes}</TableCell>
+                    <TableCell
+                      className="text-center tabular-nums"
+                      title={
+                        u.empleados
+                          ? 'Cartera del estudio: incluye los clientes asignados a sus empleados'
+                          : undefined
+                      }
+                    >
+                      {u.clientes}
+                    </TableCell>
                     <TableCell className="text-center tabular-nums">
                       {u.empleados ? u.empleados : <span className="text-muted-foreground">—</span>}
                     </TableCell>
