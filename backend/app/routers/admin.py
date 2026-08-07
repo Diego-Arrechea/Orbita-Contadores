@@ -35,6 +35,7 @@ from ..security import (
     es_empleado,
     generar_password_temporal,
     hashear_password,
+    ids_cartera,
     permisos_efectivos,
     usuario_puede_facturar,
 )
@@ -91,6 +92,27 @@ def _admin_usuario_out(u: models.Usuario, clientes: int, empleados: int = 0) -> 
     )
 
 
+def _conteos_cartera(db: Session) -> dict[int, int]:
+    """Clientes que cada cuenta VE, no los que tiene asignados: el titular de un estudio ve también
+    los de sus empleados (misma regla que `security.ids_cartera`). Si no, un titular que le asigna
+    toda la cartera a un empleado figura acá con 0 clientes aunque los siga viendo y operando."""
+    propios = dict(
+        db.execute(
+            select(models.ClienteARCA.usuario_id, func.count())
+            .where(models.ClienteARCA.usuario_id.is_not(None))
+            .group_by(models.ClienteARCA.usuario_id)
+        ).all()
+    )
+    conteos = dict(propios)
+    for empleado_id, titular_id in db.execute(
+        select(models.Usuario.id, models.Usuario.titular_id).where(
+            models.Usuario.titular_id.is_not(None)
+        )
+    ).all():
+        conteos[titular_id] = conteos.get(titular_id, 0) + propios.get(empleado_id, 0)
+    return conteos
+
+
 def _registrar(
     db: Session,
     admin: models.Usuario,
@@ -113,16 +135,10 @@ def _registrar(
 
 @router.get("/usuarios", response_model=list[AdminUsuarioOut])
 def listar_usuarios(db: Session = Depends(get_db)):
-    """Todas las cuentas con su Nº de clientes cargados y de empleados (subcuentas) que dependen de
-    ellas (más nuevas primero)."""
-    # Conteo de clientes por usuario en una sola query (evita N+1).
-    conteos = dict(
-        db.execute(
-            select(models.ClienteARCA.usuario_id, func.count())
-            .where(models.ClienteARCA.usuario_id.is_not(None))
-            .group_by(models.ClienteARCA.usuario_id)
-        ).all()
-    )
+    """Todas las cuentas con su Nº de clientes (los de la cartera que ven, incluidos los de sus
+    empleados) y de empleados (subcuentas) que dependen de ellas (más nuevas primero)."""
+    # Conteo de clientes por usuario en dos queries (evita N+1).
+    conteos = _conteos_cartera(db)
     # Conteo de empleados (subcuentas) por titular, en una sola query.
     empleados = dict(
         db.execute(
@@ -408,15 +424,24 @@ def todos_los_clientes(db: Session = Depends(get_db)):
 def ficha_contador(usuario_id: int, db: Session = Depends(get_db)):
     """Ficha completa de un contador (read-only): sus datos + un resumen agregado (clientes,
     comprobantes, facturado 12m total, sincronizaciones con problemas) + la lista de sus clientes
-    con el mismo detalle que la vista global. Leer no dispara scraping: todo sale de la base."""
+    con el mismo detalle que la vista global. Leer no dispara scraping: todo sale de la base.
+
+    "Sus clientes" = la cartera que esta cuenta ve (`ids_cartera`): la del titular incluye los
+    clientes asignados a sus empleados, que él opera igual."""
     u = db.get(models.Usuario, usuario_id)
     if u is None:
         raise HTTPException(status_code=404, detail="Cuenta no encontrada.")
+    ids = ids_cartera(db, u)
     clientes_arca = db.scalars(
         select(models.ClienteARCA)
-        .where(models.ClienteARCA.usuario_id == usuario_id)
+        .where(models.ClienteARCA.usuario_id.in_(ids))
         .order_by(models.ClienteARCA.nombre)
     ).all()
+    # Responsable real de cada cliente: en un estudio puede ser un empleado, no el titular.
+    responsables = {
+        usr.id: usr
+        for usr in db.scalars(select(models.Usuario).where(models.Usuario.id.in_(ids))).all()
+    }
     cuits = [c.cuit for c in clientes_arca]
     conteos: dict[str, int] = {}
     if cuits:
@@ -439,12 +464,13 @@ def ficha_contador(usuario_id: int, db: Session = Depends(get_db)):
             con_comps += 1
         if base.resultado_ultima_extraccion == "fallida":
             problemas += 1
+        resp = responsables.get(c.usuario_id, u)
         clientes_out.append(
             AdminClienteOut(
                 **base.model_dump(),
-                contador_id=u.id,
-                contador_email=u.email,
-                contador_nombre=f"{u.nombre} {u.apellido}".strip(),
+                contador_id=resp.id,
+                contador_email=resp.email,
+                contador_nombre=f"{resp.nombre} {resp.apellido}".strip(),
                 cantidad_comprobantes=conteos.get(c.cuit, 0),
             )
         )
@@ -594,7 +620,9 @@ def editar_usuario(
     db.refresh(target)
     clientes = (
         db.scalar(
-            select(func.count()).where(models.ClienteARCA.usuario_id == target.id)
+            select(func.count()).where(
+                models.ClienteARCA.usuario_id.in_(ids_cartera(db, target))
+            )
         )
         or 0
     )
