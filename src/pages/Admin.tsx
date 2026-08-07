@@ -2483,7 +2483,9 @@ function FichaContador({
 
       <div className="space-y-2">
         <h3 className="text-sm font-semibold">Clientes ({ficha.clientes.length})</h3>
-        <TablaClientes clientes={ficha.clientes} mostrarContador={false} />
+        {/* En un estudio con empleados la cartera incluye los clientes asignados a cada uno, así
+            que mostramos quién es el responsable de cada cliente. */}
+        <TablaClientes clientes={ficha.clientes} mostrarContador={(u.empleados ?? 0) > 0} />
       </div>
     </div>
   );
