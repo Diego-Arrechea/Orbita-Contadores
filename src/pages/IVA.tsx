@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Percent, Loader2, FileText, Info, Scale, Download } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Percent, Loader2, FileText, Info, Scale, Download, Check, AlertTriangle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -26,12 +27,15 @@ import {
   getPeriodosIva,
   getLibroIva,
   getPosicionIva,
+  guardarAjustesIva,
+  getInconsistenciasIva,
   descargarLibroIvaDigital,
   type DireccionIva,
   type IvaLibro,
   type IvaSubtotales,
   type IvaPosicion,
   type IvaLado,
+  type IvaInconsistencia,
 } from '@/services/ivaService';
 import { mensajeDeError } from '@/services/authService';
 import { formatCurrency, formatCuit, cn } from '@/lib/utils';
@@ -78,6 +82,12 @@ export function IVA() {
     queryKey: ['iva', 'posicion', cuitActivo, periodoActivo],
     queryFn: () => getPosicionIva(cuitActivo, periodoActivo),
     enabled: !!cuitActivo && !!periodoActivo && vista === 'posicion',
+  });
+
+  const { data: inconsistencias = [] } = useQuery({
+    queryKey: ['iva', 'inconsistencias', cuitActivo, periodoActivo],
+    queryFn: () => getInconsistenciasIva(cuitActivo, periodoActivo),
+    enabled: !!cuitActivo && !!periodoActivo,
   });
 
   const sub = libro?.subtotales;
@@ -209,6 +219,9 @@ export function IVA() {
         {errorDescarga && <p className="mt-2 text-sm text-danger">{errorDescarga}</p>}
       </Card>
 
+      {/* Revisiones sugeridas (inconsistencias) — visible en ambas vistas */}
+      {inconsistencias.length > 0 && <InconsistenciasCard items={inconsistencias} />}
+
       {/* Contenido */}
       {!cargandoCartera && cartera.length === 0 ? (
         <EstadoVacio
@@ -230,7 +243,7 @@ export function IVA() {
         />
       ) : vista === 'posicion' ? (
         posicion ? (
-          <PosicionView posicion={posicion} />
+          <PosicionView posicion={posicion} cuit={cuitActivo} periodo={periodoActivo} />
         ) : null
       ) : !libro || libro.lineas.length === 0 ? (
         <EstadoVacio
@@ -249,8 +262,17 @@ export function IVA() {
 }
 
 /** Posición de IVA del período (estilo F2002): débito vs crédito → saldo del impuesto, con el
- *  desglose por alícuota de ventas y compras. */
-function PosicionView({ posicion: p }: { posicion: IvaPosicion }) {
+ *  desglose por alícuota de ventas y compras + los ajustes manuales del contador. */
+function PosicionView({
+  posicion: p,
+  cuit,
+  periodo,
+}: {
+  posicion: IvaPosicion;
+  cuit: string;
+  periodo: string;
+}) {
+  const qc = useQueryClient();
   const saldo = p.saldoImpuesto;
   return (
     <div className="space-y-4">
@@ -271,7 +293,9 @@ function PosicionView({ posicion: p }: { posicion: IvaPosicion }) {
             <div className="flex items-center gap-2">
               <Scale className="h-4 w-4" />
               <span>
-                Saldo técnico {formatCurrency(p.saldoTecnico)} − percepciones {formatCurrency(p.percepciones)}
+                Saldo técnico {formatCurrency(p.saldoTecnico)} − pagos a cuenta{' '}
+                {formatCurrency(p.retenciones + p.otrosPagos)} − saldo a favor anterior{' '}
+                {formatCurrency(p.saldoFavorAnterior)}
               </span>
             </div>
           </div>
@@ -291,6 +315,13 @@ function PosicionView({ posicion: p }: { posicion: IvaPosicion }) {
         </div>
       </Card>
 
+      <AjustesPosicion
+        posicion={p}
+        onGuardado={() => qc.invalidateQueries({ queryKey: ['iva', 'posicion', cuit, periodo] })}
+        cuit={cuit}
+        periodo={periodo}
+      />
+
       <div className="grid gap-4 lg:grid-cols-2">
         <LadoCard titulo="Débito fiscal — Ventas" lado={p.ventas} montoLabel="Débito" />
         <LadoCard titulo="Crédito fiscal — Compras" lado={p.compras} montoLabel="Crédito" />
@@ -305,6 +336,94 @@ function PosicionView({ posicion: p }: { posicion: IvaPosicion }) {
         </span>
       </div>
     </div>
+  );
+}
+
+/** Editor de los ajustes que el contador completa (Órbita no los deriva de los comprobantes):
+ *  saldo a favor de períodos anteriores, retenciones de IVA sufridas y otros pagos a cuenta. */
+function AjustesPosicion({
+  posicion: p,
+  cuit,
+  periodo,
+  onGuardado,
+}: {
+  posicion: IvaPosicion;
+  cuit: string;
+  periodo: string;
+  onGuardado: () => void;
+}) {
+  const num = (v: number) => (v ? String(v) : '');
+  const [saldoAnt, setSaldoAnt] = useState(num(p.saldoFavorAnterior));
+  const [reten, setReten] = useState(num(p.retenciones));
+  const [otros, setOtros] = useState(num(p.otrosPagos));
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState(false);
+
+  // Re-sincroniza los inputs cuando cambia el cliente/período o llega la posición fresca.
+  useEffect(() => {
+    setSaldoAnt(num(p.saldoFavorAnterior));
+    setReten(num(p.retenciones));
+    setOtros(num(p.otrosPagos));
+    setOk(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cuit, periodo, p.saldoFavorAnterior, p.retenciones, p.otrosPagos]);
+
+  const parse = (s: string) => Number(s.replace(/\./g, '').replace(',', '.')) || 0;
+
+  async function guardar() {
+    setGuardando(true);
+    setError(null);
+    setOk(false);
+    try {
+      await guardarAjustesIva(cuit, periodo, {
+        saldoFavorAnterior: parse(saldoAnt),
+        retenciones: parse(reten),
+        otrosPagos: parse(otros),
+      });
+      setOk(true);
+      onGuardado();
+    } catch (e) {
+      setError(mensajeDeError(e));
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  const campo = (label: string, val: string, set: (v: string) => void, hint: string) => (
+    <div>
+      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <Input
+        value={val}
+        onChange={e => {
+          set(e.target.value);
+          setOk(false);
+        }}
+        inputMode="decimal"
+        placeholder="0,00"
+        className="mt-1 h-9 text-right tabular-nums"
+      />
+      <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>
+    </div>
+  );
+
+  return (
+    <Card className="p-4">
+      <div className="mb-3 text-sm font-medium">Ajustes del período</div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {campo('Saldo a favor período anterior', saldoAnt, setSaldoAnt, 'Libre disponibilidad que traés')}
+        {campo('Retenciones de IVA', reten, setReten, 'Retenciones sufridas en el período')}
+        {campo('Otros pagos a cuenta', otros, setOtros, 'Otros conceptos a favor')}
+      </div>
+      <div className="mt-3 flex items-center gap-3">
+        <Button size="sm" onClick={guardar} disabled={guardando}>
+          {guardando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+          Guardar ajustes
+        </Button>
+        {ok && <span className="text-sm text-success">Guardado ✓</span>}
+        {error && <span className="text-sm text-danger">{error}</span>}
+      </div>
+    </Card>
   );
 }
 
@@ -392,6 +511,33 @@ function LadoCard({ titulo, lado, montoLabel }: { titulo: string; lado: IvaLado;
           </TableFooter>
         </Table>
       </div>
+    </Card>
+  );
+}
+
+/** Revisiones sugeridas del período: posibles errores en los comprobantes a chequear antes de
+ *  declarar (IVA en cero, alícuota atípica, compra sin CUIT). No corrige nada, sólo marca. */
+function InconsistenciasCard({ items }: { items: IvaInconsistencia[] }) {
+  return (
+    <Card className="overflow-hidden border-warning/40">
+      <div className="flex items-center gap-2 border-b border-warning/30 bg-warning/10 px-4 py-3">
+        <AlertTriangle className="h-4 w-4 text-warning-foreground" />
+        <span className="text-sm font-medium">
+          {items.length} revisión{items.length === 1 ? '' : 'es'} sugerida{items.length === 1 ? '' : 's'} en este período
+        </span>
+      </div>
+      <ul className="divide-y">
+        {items.map((it, i) => (
+          <li key={`${it.comprobanteId}-${it.tipo}-${i}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-4 py-2.5 text-sm">
+            <Badge variant="outline" className="shrink-0 text-xs">
+              {it.lado === 'ventas' ? 'Venta' : 'Compra'}
+            </Badge>
+            <span className="font-medium tabular-nums">{it.comprobante}</span>
+            <span className="text-muted-foreground">· {it.contraparte}</span>
+            <span className="w-full text-muted-foreground sm:w-auto sm:flex-1">{it.detalle}</span>
+          </li>
+        ))}
+      </ul>
     </Card>
   );
 }

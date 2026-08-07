@@ -918,8 +918,33 @@ class IvaPosicionOut(BaseModel):
     creditoFiscal: float  # noqa: N815 — = compras.iva (sólo comprobantes que discriminan: Factura A)
     saldoTecnico: float   # noqa: N815 — débito − crédito
     percepciones: float   # percepciones de IVA sufridas en compras (pago a cuenta)
-    saldoImpuesto: float  # noqa: N815 — saldo técnico − percepciones
+    # Ajustes MANUALES del contador (IvaAjuste) que Órbita no deriva de los comprobantes:
+    retenciones: float = 0        # retenciones de IVA sufridas (pago a cuenta)
+    otrosPagos: float = 0         # noqa: N815 — otros pagos a cuenta
+    saldoFavorAnterior: float = 0  # noqa: N815 — saldo a favor técnico de períodos anteriores
+    saldoImpuesto: float  # noqa: N815 — saldo técnico − percepciones − retenciones − otros − saldo anterior
     aFavor: bool          # noqa: N815 — True si el saldo final es a favor del contribuyente
+
+
+class IvaAjusteIn(BaseModel):
+    """Ajustes manuales de la posición de IVA de un período (los que el contador completa)."""
+
+    saldoFavorAnterior: float = 0  # noqa: N815
+    retenciones: float = 0
+    otrosPagos: float = 0  # noqa: N815
+
+
+class IvaInconsistenciaOut(BaseModel):
+    """Una revisión sugerida detectada en los comprobantes del período (posible error a chequear
+    antes de declarar). No corrige nada: sólo marca para que el contador lo revise."""
+
+    tipo: str          # iva_cero | alicuota_atipica | compra_sin_cuit
+    severidad: str     # aviso | datos
+    lado: str          # ventas | compras
+    comprobanteId: str  # noqa: N815 — id compuesto del comprobante
+    comprobante: str   # etiqueta legible (tipo + PV-número)
+    contraparte: str
+    detalle: str       # descripción de qué revisar
 
 
 # --- Panel superadmin (sólo rol=admin; ver routers/admin.py) ---
