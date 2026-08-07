@@ -2,7 +2,7 @@
  * Apartado de IVA (Libro IVA / posición). Sólo HTTP contra el backend, que además valida el gate
  * (allowlist IVA_EMAILS + admins) en cada endpoint: el front esconde el menú con puedeVerIVA().
  */
-import { apiGet, apiGetBlob } from './apiClient';
+import { apiGet, apiGetBlob, apiPatch } from './apiClient';
 
 export interface IvaPeriodo {
   periodo: string; // aaaa-mm
@@ -79,8 +79,18 @@ export interface IvaPosicion {
   creditoFiscal: number;
   saldoTecnico: number;
   percepciones: number;
+  retenciones: number;
+  otrosPagos: number;
+  saldoFavorAnterior: number;
   saldoImpuesto: number;
   aFavor: boolean;
+}
+
+/** Ajustes manuales de la posición de un período (los que el contador completa). */
+export interface IvaAjuste {
+  saldoFavorAnterior: number;
+  retenciones: number;
+  otrosPagos: number;
 }
 
 /** Meses con comprobantes del cliente (para el selector de período). */
@@ -91,6 +101,33 @@ export function getPeriodosIva(cuit: string): Promise<IvaPeriodo[]> {
 /** Posición de IVA del cliente para un período (débito − crédito = saldo del impuesto). */
 export function getPosicionIva(cuit: string, periodo: string): Promise<IvaPosicion> {
   return apiGet<IvaPosicion>(`/iva/clientes/${cuit}/posicion?periodo=${encodeURIComponent(periodo)}`);
+}
+
+/** Guarda los ajustes manuales de la posición (saldo a favor anterior, retenciones, otros pagos). */
+export function guardarAjustesIva(
+  cuit: string,
+  periodo: string,
+  ajuste: IvaAjuste
+): Promise<{ ok: boolean }> {
+  return apiPatch(`/iva/clientes/${cuit}/ajustes?periodo=${encodeURIComponent(periodo)}`, ajuste);
+}
+
+/** Una revisión sugerida detectada en los comprobantes del período. */
+export interface IvaInconsistencia {
+  tipo: string; // iva_cero | alicuota_atipica | compra_sin_cuit
+  severidad: string; // aviso | datos
+  lado: DireccionIva;
+  comprobanteId: string;
+  comprobante: string;
+  contraparte: string;
+  detalle: string;
+}
+
+/** Revisiones sugeridas del período (posibles errores a chequear antes de declarar). */
+export function getInconsistenciasIva(cuit: string, periodo: string): Promise<IvaInconsistencia[]> {
+  return apiGet<IvaInconsistencia[]>(
+    `/iva/clientes/${cuit}/inconsistencias?periodo=${encodeURIComponent(periodo)}`
+  );
 }
 
 /** Descarga el Libro IVA Digital de AFIP (ventas o compras) como ZIP (cabecera + alícuotas) y dispara

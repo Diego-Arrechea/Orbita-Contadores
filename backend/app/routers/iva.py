@@ -23,8 +23,11 @@ from .. import models
 from ..db import get_db
 from ..services import lid_export
 from ..schemas import (
+    TIPOS_MONOTRIBUTO,
     TIPOS_NOTA_CREDITO,
+    IvaAjusteIn,
     IvaAlicuotaOut,
+    IvaInconsistenciaOut,
     IvaLadoOut,
     IvaLibroOut,
     IvaLineaOut,
@@ -282,12 +285,23 @@ def posicion_iva(
     debito = ventas.iva
     credito = compras.iva
     saldo_tecnico = round(debito - credito, 2)
-    # Percepciones de IVA sufridas (pago a cuenta): NO las contamos todavía. Mis Comprobantes sólo da
-    # el TOTAL de otros tributos (lumpeado: percepción IVA + IIBB + municipal + otros), no el desglose,
-    # así que no podemos identificar la percepción IVA real. Contar el lumpeado sobre-declara el pago a
-    # cuenta (infla el crédito) → peligroso. Queda en 0 hasta capturar el detalle del comprobante.
+    # Percepciones de IVA sufridas (pago a cuenta): NO las contamos automáticamente. Mis Comprobantes
+    # sólo da el TOTAL de otros tributos (lumpeado), no el desglose, así que no podemos identificar la
+    # percepción IVA real. Queda en 0 (contar el lumpeado sobre-declararía el pago a cuenta).
     percepciones = 0.0
-    saldo_impuesto = round(saldo_tecnico - percepciones, 2)
+    # Ajustes manuales del contador (saldo a favor anterior, retenciones, otros pagos a cuenta).
+    aj = db.scalar(
+        select(models.IvaAjuste).where(
+            models.IvaAjuste.cuit == cuit, models.IvaAjuste.periodo == periodo
+        )
+    )
+    retenciones = float(aj.retenciones or 0) if aj else 0.0
+    otros_pagos = float(aj.otros_pagos or 0) if aj else 0.0
+    saldo_favor_anterior = float(aj.saldo_favor_anterior or 0) if aj else 0.0
+    # Saldo del impuesto: técnico − pagos a cuenta − saldo a favor anterior. >0 a pagar, <0 a favor.
+    saldo_impuesto = round(
+        saldo_tecnico - percepciones - retenciones - otros_pagos - saldo_favor_anterior, 2
+    )
     return IvaPosicionOut(
         cuit=cuit,
         periodo=periodo,
@@ -297,8 +311,126 @@ def posicion_iva(
         creditoFiscal=credito,
         saldoTecnico=saldo_tecnico,
         percepciones=round(percepciones, 2),
+        retenciones=round(retenciones, 2),
+        otrosPagos=round(otros_pagos, 2),
+        saldoFavorAnterior=round(saldo_favor_anterior, 2),
         saldoImpuesto=abs(saldo_impuesto),
         aFavor=saldo_impuesto < 0,
+    )
+
+
+@router.patch("/clientes/{cuit}/ajustes")
+def guardar_ajustes(
+    cuit: str,
+    datos: IvaAjusteIn,
+    periodo: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="aaaa-mm"),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_iva),
+):
+    """Guarda los ajustes manuales de la posición de IVA del período (saldo a favor anterior,
+    retenciones, otros pagos a cuenta). Upsert por (cuit, período)."""
+    _cliente_propio(db, cuit, usuario)
+    aj = db.scalar(
+        select(models.IvaAjuste).where(
+            models.IvaAjuste.cuit == cuit, models.IvaAjuste.periodo == periodo
+        )
+    )
+    if aj is None:
+        aj = models.IvaAjuste(cuit=cuit, periodo=periodo)
+        db.add(aj)
+    aj.saldo_favor_anterior = datos.saldoFavorAnterior
+    aj.retenciones = datos.retenciones
+    aj.otros_pagos = datos.otrosPagos
+    aj.actualizado_en = dt.datetime.now(dt.timezone.utc)
+    db.commit()
+    return {"ok": True}
+
+
+# --- Detección de inconsistencias (revisiones sugeridas) --------------------------------------------
+_ALICUOTAS_STD = (0.0, 2.5, 5.0, 10.5, 21.0, 27.0)
+
+
+def _rate_estandar(neto: float, iva: float) -> bool:
+    """¿La alícuota efectiva (iva/neto) coincide con una oficial (±0.5)?"""
+    if not neto:
+        return True
+    r = round(iva / neto * 100, 1)
+    return any(abs(r - a) <= 0.5 for a in _ALICUOTAS_STD)
+
+
+def _n_alicuotas(c: models.ComprobanteEmitido) -> int:
+    if not c.alicuotas_json:
+        return 1
+    try:
+        return len(json.loads(c.alicuotas_json)) or 1
+    except ValueError:
+        return 1
+
+
+def _detectar_inconsistencias(
+    comps: list[models.ComprobanteEmitido], lado: str
+) -> list[IvaInconsistenciaOut]:
+    """Revisiones sugeridas sobre los comprobantes de un lado. No corrige: sólo marca."""
+    out: list[IvaInconsistenciaOut] = []
+    for c in comps:
+        if c.cbte_tipo in TIPOS_NOTA_CREDITO:
+            continue
+        neto = float(c.imp_neto or 0)
+        iva = float(c.imp_iva or 0)
+        exento = float(c.imp_exento or 0)
+        no_grav = float(c.imp_no_gravado or 0)
+        es_c = c.cbte_tipo in TIPOS_MONOTRIBUTO  # clase C no discrimina IVA (no aplica)
+        cid = f"{c.cuit}-{c.direccion}-{c.punto_venta}-{c.cbte_tipo}-{c.numero}"
+        etq = f"{nombre_tipo(c.cbte_tipo)} {str(c.punto_venta).zfill(5)}-{str(c.numero).zfill(8)}"
+        cp = c.contraparte_nombre or "—"
+
+        def _add(tipo: str, sev: str, detalle: str) -> None:
+            out.append(
+                IvaInconsistenciaOut(
+                    tipo=tipo, severidad=sev, lado=lado, comprobanteId=cid,
+                    comprobante=etq, contraparte=cp, detalle=detalle,
+                )
+            )
+
+        # 1) IVA cero sobre neto gravado (no clase C, sin exento/no gravado que lo justifique).
+        if not es_c and neto > 0 and iva == 0 and exento == 0 and no_grav == 0:
+            _add("iva_cero", "aviso",
+                 "Tiene neto gravado pero el IVA figura en cero. Revisá la alícuota.")
+        # 2) Alícuota efectiva no estándar (sólo comprobantes de una sola alícuota).
+        elif neto > 0 and iva > 0 and _n_alicuotas(c) <= 1 and not _rate_estandar(neto, iva):
+            _add("alicuota_atipica", "datos",
+                 f"La alícuota efectiva ({round(iva / neto * 100, 1)}%) no coincide con una oficial.")
+        # 3) Compra con crédito fiscal de un proveedor sin CUIT válido.
+        if lado == "compras" and iva > 0:
+            doc = "".join(ch for ch in (c.doc_nro or "") if ch.isdigit())
+            if len(doc) != 11:
+                _add("compra_sin_cuit", "datos",
+                     "Compra con crédito fiscal de un proveedor sin CUIT válido.")
+    return out
+
+
+@router.get("/clientes/{cuit}/inconsistencias", response_model=list[IvaInconsistenciaOut])
+def inconsistencias(
+    cuit: str,
+    periodo: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="aaaa-mm"),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_iva),
+):
+    """Revisiones sugeridas del período (posibles errores a chequear antes de declarar)."""
+    _cliente_propio(db, cuit, usuario)
+    desde, hasta = _rango_mes(periodo)
+    comp = models.ComprobanteEmitido
+
+    def _comps(columna: str):
+        return db.scalars(
+            select(comp).where(
+                comp.cuit == cuit, comp.direccion == columna,
+                comp.fecha >= desde, comp.fecha < hasta,
+            ).order_by(comp.fecha, comp.punto_venta, comp.numero)
+        ).all()
+
+    return _detectar_inconsistencias(_comps("emitido"), "ventas") + _detectar_inconsistencias(
+        _comps("recibido"), "compras"
     )
 
 

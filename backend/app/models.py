@@ -416,6 +416,27 @@ class ComprobanteEmitido(Base):
     )
 
 
+class IvaAjuste(Base):
+    """Ajustes MANUALES del contador para la posición de IVA de un cliente en un período, que Órbita
+    no puede derivar de los comprobantes (no tiene la fuente): saldo a favor de períodos anteriores,
+    retenciones de IVA sufridas y otros pagos a cuenta. Se suman a la determinación (F2002). Uno por
+    (cuit, período). Filosofía 'auto + edición puntual': Órbita calcula débito/crédito, el contador
+    completa esto."""
+
+    __tablename__ = "iva_ajustes"
+    __table_args__ = (UniqueConstraint("cuit", "periodo", name="uq_iva_ajuste"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cuit: Mapped[str] = mapped_column(String(11), ForeignKey("clientes_arca.cuit"), index=True)
+    periodo: Mapped[str] = mapped_column(String(7))  # aaaa-mm
+    saldo_favor_anterior: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    retenciones: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    otros_pagos: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    actualizado_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class LiquidacionAgro(Base):
     """Liquidación Electrónica del sector primario (agro) de un cliente productor.
 
