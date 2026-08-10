@@ -17,6 +17,7 @@ export type TipoAlerta =
   | 'exclusion'
   | 'cuota'
   | 'meses_adeudados'
+  | 'dfe'
   | 'sync';
 
 export interface Alerta {
@@ -27,6 +28,9 @@ export interface Alerta {
   tipo: TipoAlerta;
   titulo: string;
   detalle: string;
+  /** A dónde lleva la alerta al clickearla. Por defecto la ficha del cliente; algunas apuntan a la
+   *  solapa concreta donde se resuelve (ej. la del Domicilio Fiscal Electrónico). */
+  href?: string;
 }
 
 const PRIORIDAD: Record<Severidad, number> = { urgente: 0, aviso: 1, datos: 2, ok: 3 };
@@ -38,7 +42,13 @@ export function derivarAlertas(
   config: Configuracion,
 ): Alerta[] {
   const alertas: Alerta[] = [];
-  const add = (severidad: Severidad, tipo: TipoAlerta, titulo: string, detalle: string) =>
+  const add = (
+    severidad: Severidad,
+    tipo: TipoAlerta,
+    titulo: string,
+    detalle: string,
+    href?: string,
+  ) =>
     alertas.push({
       id: `${cliente.id}-${tipo}`,
       clienteId: cliente.id,
@@ -47,6 +57,7 @@ export function derivarAlertas(
       tipo,
       titulo,
       detalle,
+      href,
     });
 
   // Sincronización con ARCA fallida (vale para cualquier régimen).
@@ -56,6 +67,22 @@ export function derivarAlertas(
       'sync',
       'La sincronización con ARCA falló',
       cliente.motivoFalloUltimaExtraccion ?? 'No se pudieron traer los últimos datos.',
+    );
+  }
+
+  // Comunicaciones nuevas en el Domicilio Fiscal Electrónico (vale para cualquier régimen). Lleva
+  // directo a la solapa donde se leen: al abrirlas el conteo baja a 0 y la alerta se resuelve sola.
+  const nuevasDfe = cliente.comunicacionesSinVer ?? 0;
+  if (nuevasDfe > 0) {
+    const cuantas = nuevasDfe === 1 ? '1 comunicación nueva' : `${nuevasDfe} comunicaciones nuevas`;
+    add(
+      'aviso',
+      'dfe',
+      nuevasDfe === 1
+        ? 'Comunicación nueva en el Domicilio Fiscal Electrónico'
+        : 'Comunicaciones nuevas en el Domicilio Fiscal Electrónico',
+      `Tiene ${cuantas} en su Domicilio Fiscal Electrónico.`,
+      `/clientes/${cliente.id}?tab=dfe`,
     );
   }
 

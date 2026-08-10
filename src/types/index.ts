@@ -212,6 +212,9 @@ export interface Cliente {
   /** Cuántos meses SEGUIDOS de monotributo adeuda hoy (de la Consulta de Saldos de la CCMA).
    *  0 = al día; undefined = no se sabe / no aplica. Se muestra junto a la cuota del mes. */
   mesesAdeudados?: number;
+  /** Comunicaciones NUEVAS del Domicilio Fiscal Electrónico que el contador todavía no abrió (las que
+   *  llegaron después de que empezamos a seguirle el domicilio). Dispara la alerta 'dfe'. */
+  comunicacionesSinVer?: number;
   // Facturómetro oficial del padrón (ARCA): ingresos brutos 12m, tope de su categoría y la fecha de
   // corte que informa ARCA. Numerador/denominador OFICIALES del gauge (el cálculo por comprobantes
   // queda como estimación al día). Sólo titular monotributista.
@@ -290,6 +293,7 @@ export type TipoNotificable =
   | 'cuota'
   | 'vencimiento'
   | 'meses_adeudados'
+  | 'dfe'
   | 'sync';
 
 /** Preferencias del CANAL de alertas por WhatsApp (sólo cómo/cuándo se entrega). El "qué" y "con qué
@@ -323,6 +327,9 @@ export interface ConfigAlertas {
   /** Adeuda varios meses seguidos. `umbralMeses`: a partir de cuántos meses seguidos de deuda avisar
    *  (8 por defecto). `reavisarSubidaMeses`: re-avisar cada tantos meses más de deuda acumulada. */
   meses_adeudados: { activo: boolean; umbralMeses: number; reavisarSubidaMeses: number };
+  /** Entró una comunicación nueva al Domicilio Fiscal Electrónico del cliente. `reavisarSubidaCant`:
+   *  re-avisar cada tantas comunicaciones nuevas más sin abrir (1 = por cada una). */
+  dfe: { activo: boolean; reavisarSubidaCant: number };
 }
 
 /** Inflación mensual esperada según el mercado (mediana del REM), que el panel trae como base de las proyecciones. */

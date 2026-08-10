@@ -49,6 +49,9 @@ ALERTAS_DEFAULT = {
     # Deuda de varios meses seguidos (Consulta de Saldos CCMA): avisa al llegar a `umbralMeses` (8
     # por defecto) y re-avisa cada `reavisarSubidaMeses` meses más de deuda acumulada.
     "meses_adeudados": {"activo": True, "umbralMeses": 8, "reavisarSubidaMeses": 1},
+    # Comunicaciones nuevas en el Domicilio Fiscal Electrónico del cliente: avisa apenas entra una y
+    # re-avisa cada `reavisarSubidaCant` comunicaciones nuevas más (1 = por cada una).
+    "dfe": {"activo": True, "reavisarSubidaCant": 1},
 }
 NOTIF_DEFAULT = {"activo": False, "horaDesde": 9, "horaHasta": 21}
 INFLACION_DEFAULT = 0.02
@@ -148,9 +151,12 @@ def en_ventana_disponible(notif: dict, ahora_ar: dt.datetime) -> bool:
 
 def _reaviso_step(tipo: str, alertas_cfg: dict) -> float:
     """Umbral de subida para re-avisar una alerta numérica (fracción para las de %, meses para la de
-    deuda por meses); 0 = no aplica."""
+    deuda por meses, cantidad para las de conteo); 0 = no aplica."""
     c = alertas_cfg.get(tipo, {})
-    return float(c.get("reavisarSubidaPct", c.get("reavisarSubidaMeses", 0)) or 0)
+    for campo in ("reavisarSubidaPct", "reavisarSubidaMeses", "reavisarSubidaCant"):
+        if c.get(campo) is not None:
+            return float(c[campo] or 0)
+    return 0.0
 
 
 def derivar_alertas(cliente, calc: monotributo.CalculoCliente, a: dict, hoy: dt.date) -> list[dict]:
@@ -165,6 +171,14 @@ def derivar_alertas(cliente, calc: monotributo.CalculoCliente, a: dict, hoy: dt.
 
     if cliente.resultado_ultima_extraccion == "fallida":
         add("datos", "sync", "no pudimos actualizar sus datos")
+
+    # Comunicaciones nuevas en el Domicilio Fiscal Electrónico (vale para cualquier régimen). `valor`
+    # = cuántas hay sin abrir, para re-avisar cuando entran más. Al abrirlas en Órbita el conteo
+    # baja a 0 y la alerta se resuelve sola.
+    nuevas_dfe = getattr(cliente, "comunicaciones_sin_ver", 0) or 0
+    if nuevas_dfe > 0:
+        cuantas = "1 comunicación nueva" if nuevas_dfe == 1 else f"{nuevas_dfe} comunicaciones nuevas"
+        add("aviso", "dfe", f"tiene {cuantas} en su Domicilio Fiscal Electrónico", float(nuevas_dfe))
 
     if not calc.es_monotributista:
         return out

@@ -40,6 +40,7 @@ interface ClienteBackend {
   prox_venc_importe?: number | null;
   debito_automatico?: boolean | null;
   meses_adeudados?: number | null;
+  comunicaciones_sin_ver?: number | null;
   facturacion_12m?: number | null;
   tope_categoria?: number | null;
   facturometro_actualizado?: string | null;
@@ -185,6 +186,7 @@ function construirCliente(
     proxVencImporte: bk.prox_venc_importe ?? undefined,
     debitoAutomatico: bk.debito_automatico ?? undefined,
     mesesAdeudados: bk.meses_adeudados ?? undefined,
+    comunicacionesSinVer: bk.comunicaciones_sin_ver ?? 0,
     facturacion12mOficial: bk.facturacion_12m ?? undefined,
     topeCategoriaOficial: bk.tope_categoria ?? undefined,
     facturometroActualizado: bk.facturometro_actualizado ?? undefined,

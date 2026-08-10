@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -114,6 +114,29 @@ def sin_ver(db: Session, cuit: str) -> int:
             )
         ).all()
     )
+
+
+def conteo_nuevas_sin_ver(db: Session, cuits: list[str]) -> dict[str, int]:
+    """Cuántas comunicaciones NUEVAS sin ver tiene cada cliente de la lista (una sola query para
+    todos). "Nueva" = llegó después del baseline del cliente: descarta las que ya estaban cuando
+    empezamos a mirarle el domicilio (esas nacen vistas, pero filtramos también por fecha para no
+    depender sólo de eso). Alimenta el aviso proactivo del motor de alertas (tipo 'dfe')."""
+    if not cuits:
+        return {}
+    com = models.ComunicacionDFE
+    cli = models.ClienteARCA
+    filas = db.execute(
+        select(com.cuit, func.count(com.id))
+        .join(cli, cli.cuit == com.cuit)
+        .where(
+            com.cuit.in_(cuits),
+            com.vista_por_contador.is_(False),
+            cli.dfe_baseline_en.is_not(None),
+            com.sincronizado_en > cli.dfe_baseline_en,
+        )
+        .group_by(com.cuit)
+    ).all()
+    return {cuit: int(n or 0) for cuit, n in filas}
 
 
 def marcar_vista(db: Session, cuit: str, id_comunicacion: str) -> models.ComunicacionDFE | None:

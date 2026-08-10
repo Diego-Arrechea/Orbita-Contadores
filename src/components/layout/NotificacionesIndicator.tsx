@@ -86,7 +86,7 @@ export function NotificacionesIndicator() {
               const Icon = meta.icon;
               return (
                 <div key={a.id} className="flex items-start gap-2 px-3 py-2.5 hover:bg-muted/40 transition-colors group">
-                  <Link to={`/clientes/${a.clienteId}`} className="flex items-start gap-3 min-w-0 flex-1">
+                  <Link to={a.href ?? `/clientes/${a.clienteId}`} className="flex items-start gap-3 min-w-0 flex-1">
                     <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${meta.classes}`}>
                       <Icon className="h-4 w-4" />
                     </div>
