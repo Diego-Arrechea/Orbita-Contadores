@@ -38,6 +38,7 @@ from ..security import (
     ids_cartera,
     permisos_efectivos,
     usuario_puede_facturar,
+    usuario_puede_iva,
 )
 from .clientes import _correr_sync, construir_cliente_out, datos_cartera
 
@@ -63,6 +64,9 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         rol=u.rol,
         email_confirmado=bool(u.email_confirmado),
         facturacion_habilitada=usuario_puede_facturar(u),
+        # Al impersonar, el apartado de IVA refleja el acceso REAL de la cuenta impersonada (allowlist
+        # IVA_EMAILS o rol admin), no el del admin: así sólo aparece en las cuentas que lo tienen (Durso).
+        iva_habilitada=usuario_puede_iva(u),
         # Al impersonar a un empleado, el front necesita saberlo para restringirle la navegación
         # igual que en una sesión real del empleado.
         es_empleado=empleado,
