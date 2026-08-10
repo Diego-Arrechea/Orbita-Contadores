@@ -2,7 +2,8 @@
  * Apartado de IVA (Libro IVA / posición). Sólo HTTP contra el backend, que además valida el gate
  * (allowlist IVA_EMAILS + admins) en cada endpoint: el front esconde el menú con puedeVerIVA().
  */
-import { apiGet, apiGetBlob, apiPatch } from './apiClient';
+import { apiGet, apiGetBlob, apiPatch, BASE_URL } from './apiClient';
+import { tokenActual } from '@/lib/cuenta';
 
 export interface IvaPeriodo {
   periodo: string; // aaaa-mm
@@ -128,6 +129,32 @@ export function getInconsistenciasIva(cuit: string, periodo: string): Promise<Iv
   return apiGet<IvaInconsistencia[]>(
     `/iva/clientes/${cuit}/inconsistencias?periodo=${encodeURIComponent(periodo)}`
   );
+}
+
+export interface ImportBorradorResumen {
+  actualizados: number;
+  sin_match: number;
+  total: number;
+}
+
+/** Importa el borrador del Libro IVA Digital de AFIP (el ZIP o CSV que se baja del Portal IVA) para
+ *  traer la percepción IVA real por comprobante. Se manda el archivo como body crudo (no multipart). */
+export async function importarBorradorIva(
+  cuit: string,
+  archivo: File
+): Promise<ImportBorradorResumen> {
+  const res = await fetch(`${BASE_URL}/iva/clientes/${cuit}/importar-borrador`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${tokenActual()}`,
+      'Content-Type': 'application/octet-stream',
+    },
+    body: archivo,
+  });
+  if (!res.ok) {
+    throw new Error(`API ${res.status} ${res.statusText}: ${await res.text()}`);
+  }
+  return res.json();
 }
 
 /** Descarga el Libro IVA Digital de AFIP (ventas o compras) como ZIP (cabecera + alícuotas) y dispara

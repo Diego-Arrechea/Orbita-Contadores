@@ -14,14 +14,14 @@ import io
 import json
 import zipfile
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models
 from ..db import get_db
-from ..services import lid_export
+from ..services import lid_export, lid_import
 from ..schemas import (
     TIPOS_MONOTRIBUTO,
     TIPOS_NOTA_CREDITO,
@@ -280,15 +280,26 @@ def posicion_iva(
             )
         ).all()
 
+    recibido_comps = _comps("recibido")
     ventas = _agregar_lado(_comps("emitido"))
-    compras = _agregar_lado(_comps("recibido"))
+    compras = _agregar_lado(recibido_comps)
     debito = ventas.iva
     credito = compras.iva
     saldo_tecnico = round(debito - credito, 2)
-    # Percepciones de IVA sufridas (pago a cuenta): NO las contamos automáticamente. Mis Comprobantes
-    # sólo da el TOTAL de otros tributos (lumpeado), no el desglose, así que no podemos identificar la
-    # percepción IVA real. Queda en 0 (contar el lumpeado sobre-declararía el pago a cuenta).
+    # Percepciones de IVA sufridas (pago a cuenta): salen del desglose REAL importado del borrador de
+    # AFIP (percepciones_json.iva). Si no se importó, quedan en 0 (Mis Comprobantes sólo da el total
+    # lumpeado, y contarlo como percepción IVA sobre-declararía el pago a cuenta).
     percepciones = 0.0
+    for c in recibido_comps:
+        if not c.percepciones_json:
+            continue
+        try:
+            pj = json.loads(c.percepciones_json)
+        except ValueError:
+            continue
+        signo = -1.0 if c.cbte_tipo in TIPOS_NOTA_CREDITO else 1.0
+        percepciones += signo * float(pj.get("iva") or 0)
+    percepciones = round(percepciones, 2)
     # Ajustes manuales del contador (saldo a favor anterior, retenciones, otros pagos a cuenta).
     aj = db.scalar(
         select(models.IvaAjuste).where(
@@ -407,6 +418,24 @@ def _detectar_inconsistencias(
                 _add("compra_sin_cuit", "datos",
                      "Compra con crédito fiscal de un proveedor sin CUIT válido.")
     return out
+
+
+@router.post("/clientes/{cuit}/importar-borrador")
+async def importar_borrador(
+    cuit: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_iva),
+):
+    """Importa el borrador del Libro IVA Digital de AFIP (ZIP o CSV, en el body crudo del POST) para
+    traer las percepciones SEPARADAS por tipo (percepción IVA real, etc.) que Mis Comprobantes no da.
+    Matchea por tipo/PV/número y las guarda en los comprobantes. Devuelve {actualizados, sin_match,
+    total}. Body crudo (no multipart) para no depender de python-multipart."""
+    _cliente_propio(db, cuit, usuario)
+    contenido = await request.body()
+    if not contenido:
+        raise HTTPException(status_code=400, detail="El archivo está vacío.")
+    return lid_import.importar(db, cuit, contenido)
 
 
 @router.get("/clientes/{cuit}/inconsistencias", response_model=list[IvaInconsistenciaOut])

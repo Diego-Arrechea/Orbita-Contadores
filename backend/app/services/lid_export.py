@@ -69,6 +69,26 @@ def _cod_doc(doc_nro: str) -> tuple[int, str]:
     return 99, d or "0"
 
 
+def _percepciones(c: models.ComprobanteEmitido) -> dict | None:
+    """Desglose de percepciones por tipo (del import del borrador de AFIP), o None si no se importó."""
+    if not c.percepciones_json:
+        return None
+    try:
+        return json.loads(c.percepciones_json)
+    except ValueError:
+        return None
+
+
+def _percep_o_fallback(c: models.ComprobanteEmitido) -> dict:
+    """Percepciones por tipo para el export. Si se importó el borrador de AFIP, usa el desglose real;
+    si no, mete el total lumpeado (imp_trib) en 'otros' y el resto en 0 (no sobre-declara percep IVA)."""
+    campos = ("iva", "iibb", "muni", "internos", "otros_nac", "otros", "no_categ")
+    p = _percepciones(c)
+    if p:
+        return {k: float(p.get(k) or 0) for k in campos}
+    return {k: (float(c.imp_trib or 0) if k == "otros" else 0.0) for k in campos}
+
+
 def _alicuotas_de(c: models.ComprobanteEmitido) -> list[dict]:
     """Lista de alícuotas del comprobante (de alicuotas_json). [] si no tiene / no discrimina."""
     if not c.alicuotas_json:
@@ -101,6 +121,7 @@ def _fila_cabecera(c: models.ComprobanteEmitido) -> str:
     exento = float(c.imp_exento or 0)
     no_grav = float(c.imp_no_gravado or 0)
     cod_op = "E" if (iva == 0 and (exento != 0 or no_grav != 0)) else " "
+    pv = _percep_o_fallback(c)
     campos = [
         c.fecha.strftime("%Y%m%d"),                                   # 10 Fecha (8)
         _ent(c.cbte_tipo, 3),                                         # 20 Tipo cbte (3)
@@ -112,20 +133,19 @@ def _fila_cabecera(c: models.ComprobanteEmitido) -> str:
         _txt(c.contraparte_nombre, 30),                              # 80 Razón social (30)
         _imp(float(c.imp_total)),                                     # 90 Importe total (15)
         _imp(0 if es_c else no_grav),                                 # 100 No gravado (15)
-        _imp(0),                                                      # 110 Percep no categorizado (15)
+        _imp(pv["no_categ"]),                                         # 110 Percep no categorizado (15)
         _imp(exento),                                                 # 120 Exento (15)
-        # Percepciones: Mis Comprobantes sólo da el TOTAL de otros tributos (lumpeado), no el desglose
-        # por tipo. Para NO sobre-declarar percepción IVA (que infla el pago a cuenta), va todo a "Otros
-        # Tributos" (campo 210) y los campos de percepción quedan en 0 hasta capturar el detalle real.
-        _imp(0),                                                      # 130 Percep IVA+Nacionales (15)
-        _imp(0),                                                      # 140 Percep IIBB (15)
-        _imp(0),                                                      # 150 Percep Municipales (15)
-        _imp(0),                                                      # 160 Impuestos Internos (15)
+        # Percepciones: si se importó el borrador de AFIP, separadas por tipo (en ventas el campo 130
+        # combina percep IVA + otras nacionales); si no, el total lumpeado va a "Otros Tributos" (210).
+        _imp(pv["iva"] + pv["otros_nac"]),                            # 130 Percep IVA+Nacionales (15)
+        _imp(pv["iibb"]),                                             # 140 Percep IIBB (15)
+        _imp(pv["muni"]),                                             # 150 Percep Municipales (15)
+        _imp(pv["internos"]),                                         # 160 Impuestos Internos (15)
         _txt(_MONEDA_AFIP.get(c.moneda or "ARS", c.moneda or "PES"), 3),  # 170 Moneda (3)
         _cambio(float(c.cotizacion) if c.cotizacion is not None else 1),  # 180 Tipo de cambio (10)
         _ent(cant, 1),                                               # 190 Cantidad de alícuotas (1)
         _txt(cod_op, 1),                                             # 200 Código de operación (1)
-        _imp(float(c.imp_trib or 0)),                                 # 210 Otros tributos (15)
+        _imp(pv["otros"]),                                            # 210 Otros tributos (15)
         "00000000",                                                  # 220 Fecha vto pago (8)
     ]
     return "".join(campos)
@@ -175,6 +195,7 @@ def _fila_cabecera_compras(c: models.ComprobanteEmitido) -> str:
     exento = float(c.imp_exento or 0)
     no_grav = float(c.imp_no_gravado or 0)
     cod_op = "E" if (iva == 0 and (exento != 0 or no_grav != 0)) else " "
+    p = _percep_o_fallback(c)
     campos = [
         c.fecha.strftime("%Y%m%d"),                                   # 10 Fecha (8)
         _ent(c.cbte_tipo, 3),                                         # 20 Tipo cbte (3)
@@ -187,20 +208,19 @@ def _fila_cabecera_compras(c: models.ComprobanteEmitido) -> str:
         _imp(float(c.imp_total)),                                     # 90 Importe total (15)
         _imp(0 if sin_credito else no_grav),                          # 100 No gravado (15)
         _imp(exento),                                                 # 110 Exento (15)
-        # Percepciones: Mis Comprobantes sólo da el TOTAL de otros tributos (lumpeado), no el desglose
-        # por tipo. Para NO sobre-declarar percepción IVA (pago a cuenta que infla el crédito), va todo
-        # a "Otros Tributos" (campo 220) y los campos de percepción quedan en 0 hasta capturar el detalle.
-        _imp(0),                                                      # 120 Percepciones IVA (15)
-        _imp(0),                                                      # 130 Percep otros nacionales (15)
-        _imp(0),                                                      # 140 Percep IIBB (15)
-        _imp(0),                                                      # 150 Percep Municipales (15)
-        _imp(0),                                                      # 160 Impuestos Internos (15)
+        # Percepciones: si se importó el borrador de AFIP, van separadas por tipo; si no, todo el total
+        # lumpeado (imp_trib) va a "Otros Tributos" (220) para NO sobre-declarar percepción IVA.
+        _imp(p["iva"]),                                               # 120 Percepciones IVA (15)
+        _imp(p["otros_nac"]),                                         # 130 Percep otros nacionales (15)
+        _imp(p["iibb"]),                                              # 140 Percep IIBB (15)
+        _imp(p["muni"]),                                              # 150 Percep Municipales (15)
+        _imp(p["internos"]),                                          # 160 Impuestos Internos (15)
         _txt(_MONEDA_AFIP.get(c.moneda or "ARS", c.moneda or "PES"), 3),  # 170 Moneda (3)
         _cambio(float(c.cotizacion) if c.cotizacion is not None else 1),  # 180 Tipo de cambio (10)
         _ent(cant, 1),                                               # 190 Cantidad de alícuotas (1)
         _txt(cod_op, 1),                                             # 200 Código de operación (1)
         _imp(0 if sin_credito else iva),                              # 210 Crédito fiscal computable (15)
-        _imp(float(c.imp_trib or 0)),                                 # 220 Otros tributos (15)
+        _imp(p["otros"]),                                             # 220 Otros tributos (15)
         _ent(0, 11),                                                 # 230 CUIT emisor/corredor (11)
         _txt("", 30),                                                # 240 Denominación emisor (30)
         _imp(0),                                                      # 250 IVA comisión (15)
