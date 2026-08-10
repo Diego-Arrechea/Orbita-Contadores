@@ -135,12 +135,11 @@ def usuario_puede_facturar(usuario: models.Usuario) -> bool:
 
 
 def usuario_puede_iva(usuario: models.Usuario) -> bool:
-    """¿Puede ver el apartado de IVA? Habilitados por IVA_EMAILS + admins + impersonación de admin
-    (claim 'adm' del token, para que un admin pueda testear en cualquier cuenta al 'entrar como').
-    Espeja usuario_puede_facturar."""
-    return iva_habilitada_para(usuario.email, usuario.rol) or bool(
-        getattr(usuario, "_imp_admin", False)
-    )
+    """¿Puede ver el apartado de IVA? Habilitados por IVA_EMAILS + admins (rol). A diferencia de
+    facturación, NO lleva el bonus de impersonación: al 'entrar como' otra cuenta, el IVA refleja el
+    acceso REAL de esa cuenta (allowlist/rol), así aparece sólo en las que lo tienen (p. ej. Durso) y
+    no en todas por el sólo hecho de que un admin esté impersonando."""
+    return iva_habilitada_para(usuario.email, usuario.rol)
 
 
 def usuario_iva(usuario: models.Usuario = Depends(usuario_actual)) -> models.Usuario:
