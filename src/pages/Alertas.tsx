@@ -21,6 +21,7 @@ const TIPO_LABEL: Record<TipoAlerta, string> = {
   exclusion: 'Exclusión',
   cuota: 'Cuota',
   meses_adeudados: 'Meses adeudados',
+  dfe: 'Domicilio electrónico',
   sync: 'Sincronización',
 };
 
@@ -91,7 +92,7 @@ export function Alertas() {
                 className={`flex items-center gap-4 p-4 transition-colors group ${vista ? 'bg-muted/20' : 'hover:bg-muted/30'}`}
               >
                 <Link
-                  to={`/clientes/${a.clienteId}`}
+                  to={a.href ?? `/clientes/${a.clienteId}`}
                   className={`flex items-center gap-4 min-w-0 flex-1 ${vista ? 'opacity-60' : ''}`}
                 >
                   <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${meta.classes}`}>

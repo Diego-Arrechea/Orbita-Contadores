@@ -325,6 +325,9 @@ class ClienteOut(BaseModel):
     factura_agro: bool = False
     facturacion_agro_12m: float = 0
     facturacion_agro_total: float = 0
+    # Comunicaciones NUEVAS del Domicilio Fiscal Electrónico que el contador todavía no abrió (sólo
+    # las posteriores al baseline del cliente). Alimenta el aviso proactivo (alerta 'dfe').
+    comunicaciones_sin_ver: int = 0
     # ¿El contador tiene activo el monitoreo de este cliente? En false queda "pausado": no se le
     # actualizan los datos y en la lista se muestra atenuado como "Desactivado".
     activo: bool = True

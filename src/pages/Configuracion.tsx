@@ -631,6 +631,26 @@ export function Configuracion() {
                 );
               })()}
 
+              {/* Domicilio Fiscal Electrónico */}
+              {(() => {
+                const d = conf.alertas.dfe;
+                return (
+                  <TarjetaAlerta
+                    titulo="Comunicación nueva en el Domicilio Fiscal Electrónico"
+                    descripcion="Cuando le entra una comunicación oficial al cliente y todavía no la abriste."
+                    activo={d.activo}
+                    onToggle={() => setAlerta('dfe', { activo: !d.activo })}
+                  >
+                    <CampoInline
+                      label="Re-avisar cada"
+                      value={d.reavisarSubidaCant}
+                      sufijo="comunicaciones más"
+                      onChange={(n) => setAlerta('dfe', { reavisarSubidaCant: n })}
+                    />
+                  </TarjetaAlerta>
+                );
+              })()}
+
               {/* Sync */}
               <TarjetaAlerta
                 titulo="No pudimos actualizar sus datos"

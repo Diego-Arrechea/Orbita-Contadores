@@ -25,6 +25,7 @@ export const CONFIGURACION_INICIAL: Configuracion = {
     vencimiento: { activo: true, avisarDiasAntes: 7 },
     sync: { activo: true },
     meses_adeudados: { activo: true, umbralMeses: 8, reavisarSubidaMeses: 1 },
+    dfe: { activo: true, reavisarSubidaCant: 1 },
   },
   // Canal de WhatsApp: apagado por defecto (el contador lo activa). Ventana horaria 9–21.
   notificaciones: {

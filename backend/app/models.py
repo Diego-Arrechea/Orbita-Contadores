@@ -523,7 +523,7 @@ class AlertaEnviada(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     usuario_id: Mapped[int] = mapped_column(Integer, ForeignKey("usuarios.id"), index=True)
     cuit: Mapped[str] = mapped_column(String(11), index=True)
-    tipo: Mapped[str] = mapped_column(String(20))  # tope | recategorizacion | ventana | exclusion | cuota | vencimiento | sync | meses_adeudados
+    tipo: Mapped[str] = mapped_column(String(20))  # tope | recategorizacion | ventana | exclusion | cuota | vencimiento | sync | meses_adeudados | dfe
     # Severidad con la que se avisó (urgente | aviso | datos). Forma parte de la clave: si una alerta
     # escala (aviso → urgente) cuenta como nueva y se vuelve a avisar.
     severidad: Mapped[str] = mapped_column(String(10), default="urgente", server_default="urgente")

@@ -42,6 +42,25 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-08-10-aviso-domicilio-fiscal-electronico',
+    fecha: '2026-08-10',
+    titulo: 'Te avisamos cuando le entra una comunicación al Domicilio Fiscal Electrónico',
+    resumen:
+      'Ya no hace falta entrar a mirar cliente por cliente: la comunicación nueva te busca a vos.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Cuando a un cliente le entra una comunicación nueva en su Domicilio Fiscal Electrónico, aparece como alerta en el centro de alertas y en la campanita del header, y el cliente queda marcado en el semáforo. La alerta te lleva directo a la solapa donde leerla, y se resuelve sola apenas la abrís.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Si tenés activado el aviso por WhatsApp, también te llega por ahí (una sola vez por comunicación, y de nuevo si entran más). Podés prenderlo o apagarlo desde Configuración → Alertas, junto al resto de los avisos.',
+      },
+    ],
+  },
+  {
     id: '2026-08-04-liquidaciones-agro-actualizacion',
     fecha: '2026-08-04',
     titulo: 'Liquidaciones del agro más al día',

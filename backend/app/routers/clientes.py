@@ -79,13 +79,17 @@ def _mes_expr(db: Session):
 def datos_cartera(
     db: Session, clientes: list[models.ClienteARCA], meses_historial: int = 12
 ) -> dict[str, dict]:
-    """Precalcula, en ~5 queries para TODA la lista, lo que construir_cliente_out necesita por
+    """Precalcula, en ~6 queries para TODA la lista, lo que construir_cliente_out necesita por
     cliente: historial 12m agregado por mes, si tiene comprobantes, los tipos emitidos, la última
-    extracción y la facturación agro. Antes esto eran 4-5 queries POR cliente (y los comprobantes
-    crudos del año viajaban a Python para sumarse acá): la lista tardaba proporcional a
-    clientes × comprobantes. Las Notas de Crédito se RESTAN del mes (idéntico criterio al front)."""
+    extracción, la facturación agro y las comunicaciones nuevas sin ver. Antes esto eran 4-5 queries
+    POR cliente (y los comprobantes crudos del año viajaban a Python para sumarse acá): la lista
+    tardaba proporcional a clientes × comprobantes. Las Notas de Crédito se RESTAN del mes (idéntico
+    criterio al front)."""
     datos: dict[str, dict] = {
-        c.cuit: {"historial": [], "tiene": False, "tipos": set(), "ult": None, "agro": (0.0, 0.0)}
+        c.cuit: {
+            "historial": [], "tiene": False, "tipos": set(), "ult": None, "agro": (0.0, 0.0),
+            "dfe": 0,
+        }
         for c in clientes
     }
     cuits = list(datos)
@@ -168,6 +172,10 @@ def datos_cartera(
             .group_by(liq.cuit)
         ):
             datos[cuit]["agro"] = (float(total or 0), float(doce or 0))
+    # Comunicaciones NUEVAS sin ver del Domicilio Fiscal Electrónico (posteriores al baseline): las
+    # usa el punto rojo y el aviso proactivo de alertas.
+    for cuit, n in comunicaciones_svc.conteo_nuevas_sin_ver(db, cuits).items():
+        datos[cuit]["dfe"] = n
     return datos
 
 
@@ -335,6 +343,7 @@ def construir_cliente_out(
         factura_agro=bool(c.factura_agro),
         facturacion_agro_12m=agro_12m,
         facturacion_agro_total=agro_total,
+        comunicaciones_sin_ver=datos["dfe"],
         activo=bool(c.activo),
     )
 

@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
   Calendar,
@@ -82,7 +82,16 @@ export function ClienteDetalle() {
   const [editarOpen, setEditarOpen] = useState(false);
   const [claveOpen, setClaveOpen] = useState(false);
   const [eliminarOpen, setEliminarOpen] = useState(false);
-  const [tab, setTab] = useState('situacion');
+  // Solapa abierta. `?tab=` permite entrar directo a una (ej. la alerta de comunicaciones nuevas
+  // linkea a ?tab=dfe); a partir de ahí manda el estado local.
+  const [busqueda] = useSearchParams();
+  const tabPedida = busqueda.get('tab');
+  const [tab, setTab] = useState(tabPedida || 'situacion');
+  // Al saltar de una ficha a otra (misma ruta, otro cliente) el componente no se re-monta: si el
+  // link pide una solapa, la abrimos igual.
+  useEffect(() => {
+    if (tabPedida) setTab(tabPedida);
+  }, [tabPedida, id]);
   const [generandoExcel, setGenerandoExcel] = useState(false);
   const [facturarOpen, setFacturarOpen] = useState(false);
   const [cambiandoActivo, setCambiandoActivo] = useState(false);
