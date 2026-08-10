@@ -64,9 +64,14 @@ export function IVA() {
   const fileRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
+  // El Libro IVA es para Responsables Inscriptos: los monotributistas no tienen IVA, así que no
+  // aparecen en el selector. Se excluyen sólo los CONFIRMADOS monotributo (se dejan RI, no
+  // monotributistas y los que todavía están en proceso, para no ocultar un RI sin régimen resuelto).
+  const carteraIva = useMemo(() => cartera.filter(c => c.regimen !== 'monotributo'), [cartera]);
+
   // Cliente elegido (default: el primero de la cartera en cuanto carga).
-  const cuitActivo = cuit || cartera[0]?.cuit || '';
-  const clienteActivo = cartera.find(c => c.cuit === cuitActivo);
+  const cuitActivo = cuit || carteraIva[0]?.cuit || '';
+  const clienteActivo = carteraIva.find(c => c.cuit === cuitActivo);
 
   const { data: periodos = [], isLoading: cargandoPeriodos } = useQuery({
     queryKey: ['iva', 'periodos', cuitActivo],
@@ -161,13 +166,13 @@ export function IVA() {
                 setCuit(v);
                 setPeriodo(''); // el nuevo cliente tiene otros períodos: volvé al más reciente
               }}
-              disabled={cargandoCartera || cartera.length === 0}
+              disabled={cargandoCartera || carteraIva.length === 0}
             >
               <SelectTrigger className="mt-1 h-10 bg-card">
                 <SelectValue placeholder={cargandoCartera ? 'Cargando…' : 'Elegí un cliente'} />
               </SelectTrigger>
               <SelectContent>
-                {cartera.map(c => (
+                {carteraIva.map(c => (
                   <SelectItem key={c.cuit} value={c.cuit}>
                     {c.nombre} · {formatCuit(c.cuit)}
                   </SelectItem>
@@ -275,10 +280,10 @@ export function IVA() {
       {inconsistencias.length > 0 && <InconsistenciasCard items={inconsistencias} />}
 
       {/* Contenido */}
-      {!cargandoCartera && cartera.length === 0 ? (
+      {!cargandoCartera && carteraIva.length === 0 ? (
         <EstadoVacio
-          titulo="Todavía no tenés clientes"
-          detalle="Cuando agregues clientes, vas a poder ver acá su Libro IVA."
+          titulo="No tenés clientes con IVA"
+          detalle="El Libro IVA es para Responsables Inscriptos. Los monotributistas no aparecen acá porque no liquidan IVA."
         />
       ) : (cargandoLibro || cargandoPosicion || cargandoPeriodos) && periodoActivo ? (
         <div className="flex items-center justify-center py-16 text-muted-foreground">
