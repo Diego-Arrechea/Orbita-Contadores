@@ -391,6 +391,12 @@ class ComprobanteEmitido(Base):
     # imp_total. La alícuota se deriva de la relación IVA/base de cada par del comprobante (no de un
     # offset fijo), así cubre todas las tasas. NULL = no capturado / comprobante sin desglose gravado.
     alicuotas_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Percepciones/tributos SEPARADOS por tipo (para el Libro IVA Digital y la posición). Mis
+    # Comprobantes sólo da el total lumpeado (imp_trib); este desglose viene de IMPORTAR el borrador
+    # del Libro IVA Digital de AFIP (que ya los trae separados). JSON: {"iva","iibb","muni","internos",
+    # "otros_nac","otros","no_categ"} en pesos. NULL = no importado (el export cae a imp_trib en Otros
+    # Tributos y la posición no cuenta percepción IVA). Ver services/lid_import.py.
+    percepciones_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     doc_nro: Mapped[str] = mapped_column(String(20), default="")
     contraparte_nombre: Mapped[str] = mapped_column(String(200), default="")
     cae: Mapped[str] = mapped_column(String(20), default="")

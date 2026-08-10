@@ -358,6 +358,9 @@ def _migrar_comprobantes_emitidos(conn) -> None:
     # Detalle por alícuota (JSON) para el Libro IVA Digital. TEXT portable SQLite + Postgres.
     if "alicuotas_json" not in cols:
         conn.execute(text("ALTER TABLE comprobantes_emitidos ADD COLUMN alicuotas_json TEXT"))
+    # Percepciones/tributos separados por tipo (JSON), del import del borrador de AFIP. TEXT portable.
+    if "percepciones_json" not in cols:
+        conn.execute(text("ALTER TABLE comprobantes_emitidos ADD COLUMN percepciones_json TEXT"))
 
 
 def asegurar_columnas() -> None:

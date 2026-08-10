@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Percent, Loader2, FileText, Info, Scale, Download, Check, AlertTriangle } from 'lucide-react';
+import { Percent, Loader2, FileText, Info, Scale, Download, Check, AlertTriangle, Upload } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,7 @@ import {
   getPosicionIva,
   guardarAjustesIva,
   getInconsistenciasIva,
+  importarBorradorIva,
   descargarLibroIvaDigital,
   type DireccionIva,
   type IvaLibro,
@@ -58,6 +59,10 @@ export function IVA() {
   const [periodo, setPeriodo] = useState<string>('');
   const [descargando, setDescargando] = useState<DireccionIva | null>(null);
   const [errorDescarga, setErrorDescarga] = useState<string | null>(null);
+  const [importando, setImportando] = useState(false);
+  const [avisoImport, setAvisoImport] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const qc = useQueryClient();
 
   // Cliente elegido (default: el primero de la cartera en cuanto carga).
   const cuitActivo = cuit || cartera[0]?.cuit || '';
@@ -96,6 +101,27 @@ export function IVA() {
     () => (libro?.lineas ?? []).some(l => l.iva !== 0),
     [libro]
   );
+
+  async function importarBorrador(file: File) {
+    if (!cuitActivo) return;
+    setImportando(true);
+    setAvisoImport(null);
+    try {
+      const r = await importarBorradorIva(cuitActivo, file);
+      setAvisoImport(
+        `Importado: ${r.actualizados} comprobante${r.actualizados === 1 ? '' : 's'} actualizado${r.actualizados === 1 ? '' : 's'}` +
+          (r.sin_match ? ` · ${r.sin_match} sin coincidencia` : '')
+      );
+      // Refrescar posición, libro e inconsistencias del cliente (ahora con la percepción IVA real).
+      qc.invalidateQueries({ queryKey: ['iva', 'posicion', cuitActivo] });
+      qc.invalidateQueries({ queryKey: ['iva', 'libro', cuitActivo] });
+      qc.invalidateQueries({ queryKey: ['iva', 'inconsistencias', cuitActivo] });
+    } catch (e) {
+      setAvisoImport(mensajeDeError(e));
+    } finally {
+      setImportando(false);
+    }
+  }
 
   async function descargarLid(dir: DireccionIva) {
     if (!cuitActivo || !periodoActivo) return;
@@ -194,7 +220,7 @@ export function IVA() {
             </Tabs>
           )}
           {periodoActivo && (
-            <div className="flex items-center gap-2 sm:ml-auto">
+            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
               <span className="hidden text-xs text-muted-foreground sm:inline">Libro IVA Digital:</span>
               {(['ventas', 'compras'] as const).map(dir => (
                 <Button
@@ -213,10 +239,36 @@ export function IVA() {
                   {dir === 'ventas' ? 'Ventas' : 'Compras'}
                 </Button>
               ))}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileRef.current?.click()}
+                disabled={importando}
+                title="Importá el borrador que bajás del Portal IVA de AFIP (ZIP o CSV) para traer las percepciones reales"
+              >
+                {importando ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="mr-2 h-4 w-4" />
+                )}
+                Importar de AFIP
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".zip,.csv,text/csv,application/zip"
+                className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) importarBorrador(f);
+                  e.target.value = ''; // permite re-subir el mismo archivo
+                }}
+              />
             </div>
           )}
         </div>
         {errorDescarga && <p className="mt-2 text-sm text-danger">{errorDescarga}</p>}
+        {avisoImport && <p className="mt-2 text-sm text-muted-foreground">{avisoImport}</p>}
       </Card>
 
       {/* Revisiones sugeridas (inconsistencias) — visible en ambas vistas */}
@@ -330,9 +382,9 @@ function PosicionView({
       <div className="flex items-start gap-2 rounded-lg bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>
-          Cálculo preliminar del período: no incluye saldo a favor de períodos anteriores,
-          retenciones ni percepciones de IVA sufridas (se suman más adelante). La alícuota se estima
-          por comprobante; los que combinan varias alícuotas aparecen en “Otras”.
+          El saldo a favor anterior y las retenciones los cargás abajo. La percepción IVA sale del
+          borrador de AFIP que importes (botón “Importar de AFIP”); si no lo importaste, queda en 0.
+          La alícuota se estima por comprobante; los que combinan varias alícuotas aparecen en “Otras”.
         </span>
       </div>
     </div>
