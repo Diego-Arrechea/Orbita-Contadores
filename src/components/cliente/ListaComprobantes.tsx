@@ -34,7 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatCurrency, formatDate, formatCuit, cn } from '@/lib/utils';
+import { formatMonto, formatDate, formatCuit, cn } from '@/lib/utils';
 import type { Cliente } from '@/types';
 
 interface Props {
@@ -89,7 +89,7 @@ function MontoComprobante({ c }: { c: Cliente['comprobantes'][number] }) {
       <>
         <div>
           {esNC ? '-' : ''}
-          {formatCurrency(c.montoOrigen ?? c.monto, { moneda: c.moneda })}
+          {formatMonto(c.montoOrigen ?? c.monto, { moneda: c.moneda })}
         </div>
         {!!c.cotizacion && c.cotizacion !== 1 && (
           <div className="text-[11px] font-normal text-muted-foreground">
@@ -105,7 +105,7 @@ function MontoComprobante({ c }: { c: Cliente['comprobantes'][number] }) {
   return (
     <>
       {esNC ? '-' : ''}
-      {formatCurrency(c.monto)}
+      {formatMonto(c.monto)}
     </>
   );
 }

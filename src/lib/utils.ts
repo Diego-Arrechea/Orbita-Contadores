@@ -5,7 +5,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(value: number, options?: { compact?: boolean; moneda?: string }) {
+export function formatCurrency(
+  value: number,
+  options?: { compact?: boolean; moneda?: string; decimales?: boolean },
+) {
   const moneda = options?.moneda ?? 'ARS';
   if (options?.compact && Math.abs(value) >= 1_000_000) {
     return `$${(value / 1_000_000).toFixed(1).replace('.', ',')}M`;
@@ -17,13 +20,27 @@ export function formatCurrency(value: number, options?: { compact?: boolean; mon
     return new Intl.NumberFormat('es-AR', {
       style: 'currency',
       currency: moneda,
-      // ARS sin decimales (como siempre); moneda extranjera con 2 (un total de US$ 81,31 los necesita).
-      maximumFractionDigits: moneda === 'ARS' ? 0 : 2,
+      // ARS sin decimales por defecto (tarjetas, gráficos); con `decimales: true` van los centavos.
+      // Las cifras que el contador coteja contra el organismo (facturado del período, semestres,
+      // histórico, detalle de comprobantes) SÍ los piden: redondear al peso comprobante por
+      // comprobante arrastra diferencias de varios pesos en el total. Moneda extranjera: siempre 2.
+      minimumFractionDigits: moneda !== 'ARS' || options?.decimales ? 2 : 0,
+      maximumFractionDigits: moneda !== 'ARS' || options?.decimales ? 2 : 0,
     }).format(value);
   } catch {
     // Código de moneda no reconocido por Intl: fallback a "<código> <número>".
     return `${moneda} ${value.toLocaleString('es-AR', { maximumFractionDigits: 2 })}`;
   }
+}
+
+/**
+ * Importe CON centavos. Se usa en todo lo que el contador coteja contra el organismo (facturado del
+ * período, semestres de recategorización, histórico y detalle de comprobantes): ahí el redondeo al
+ * peso de cada comprobante se acumula y hace que el total no cierre. El resto de la app (tarjetas
+ * resumidas, gráficos, deuda) sigue con `formatCurrency`, redondeado.
+ */
+export function formatMonto(value: number, options?: { moneda?: string }) {
+  return formatCurrency(value, { ...options, decimales: true });
 }
 
 export function formatPercent(value: number, decimals = 0) {

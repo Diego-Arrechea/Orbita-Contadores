@@ -43,7 +43,7 @@ export const TIPO_NOVEDAD_META: Record<
 export const NOVEDADES: Novedad[] = [
   {
     id: '2026-08-10-aviso-domicilio-fiscal-electronico',
-    fecha: '2026-08-10',
+    fecha: '2026-08-12',
     titulo: 'Te avisamos cuando le entra una comunicación al Domicilio Fiscal Electrónico',
     resumen:
       'Ya no hace falta entrar a mirar cliente por cliente: la comunicación nueva te busca a vos.',
@@ -57,6 +57,20 @@ export const NOVEDADES: Novedad[] = [
         tipo: 'nuevo',
         texto:
           'Si tenés activado el aviso por WhatsApp, también te llega por ahí (una sola vez por comunicación, y de nuevo si entran más). Podés prenderlo o apagarlo desde Configuración → Alertas, junto al resto de los avisos.',
+      },
+    ],
+  },
+  {
+    id: '2026-08-04-importes-con-centavos',
+    fecha: '2026-08-12',
+    titulo: 'Importes con centavos en la facturación',
+    resumen:
+      'Para que el facturado del período cierre exacto a la hora de recategorizar.',
+    items: [
+      {
+        tipo: 'arreglo',
+        texto:
+          'Los importes de facturación se mostraban redondeados al peso, y al sumar comprobante por comprobante aparecían pequeñas diferencias al cotejar el total. Ahora se muestran con centavos: el facturado de los últimos 12 meses, el de cada semestre de la recategorización, el histórico mensual y el detalle de comprobantes.',
       },
     ],
   },

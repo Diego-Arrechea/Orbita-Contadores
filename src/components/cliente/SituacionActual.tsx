@@ -3,7 +3,7 @@ import { TrendingUp, AlertCircle, CalendarClock, CreditCard, ArrowRight, Buildin
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ProgresoTope } from '@/components/shared/ProgresoTope';
-import { cn, formatCurrency, formatDate, formatPercent } from '@/lib/utils';
+import { cn, formatCurrency, formatMonto, formatDate, formatPercent } from '@/lib/utils';
 import { getCategoria } from '@/data/categorias';
 import { esMonotributista, etiquetaRegimen, regimenPendiente } from '@/lib/regimen';
 import { esAdminReal } from '@/lib/cuenta';
@@ -143,7 +143,7 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
             </div>
             <div className="flex items-baseline gap-3">
               <div className="text-3xl sm:text-4xl font-semibold tabular-nums tracking-tight">
-                {formatCurrency(facturacionVista)}
+                {formatMonto(facturacionVista)}
               </div>
               <div className="text-sm text-muted-foreground">
                 / {formatCurrency(topeVista)}
@@ -235,14 +235,14 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
         {!verInflacion && cliente.facturaAgro && calc.facturacionAgro12m > 0 && (
           <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <Wheat className="h-3 w-3 text-primary shrink-0" />
-            Incluye {formatCurrency(calc.facturacionAgro12m)} de facturación agropecuaria.
+            Incluye {formatMonto(calc.facturacionAgro12m)} de facturación agropecuaria.
           </div>
         )}
 
         {!verInflacion && calc.facturacionManual12m !== 0 && (
           <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <PencilLine className="h-3 w-3 text-primary shrink-0" />
-            Incluye {formatCurrency(calc.facturacionManual12m)} de comprobantes cargados a mano.
+            Incluye {formatMonto(calc.facturacionManual12m)} de comprobantes cargados a mano.
           </div>
         )}
 
@@ -254,7 +254,7 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
                 comprobantes se trajeron bien comparando contra el dato oficial): sólo el superadmin
                 lo ve, aunque esté impersonando a un contador. */}
             {esAdminReal() && Math.abs(calc.facturacionUltimos12 - facturacionMostrada) > 1 && (
-              <span> · Órbita estima {formatCurrency(calc.facturacionUltimos12)} al día de hoy</span>
+              <span> · Órbita estima {formatMonto(calc.facturacionUltimos12)} al día de hoy</span>
             )}
           </div>
         )}
@@ -289,7 +289,7 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
                       {mesCorto(s.desde)} – {mesCorto(s.hasta)}
                     </span>
                   </span>
-                  <span className="tabular-nums font-medium">{formatCurrency(s.facturado)}</span>
+                  <span className="tabular-nums font-medium">{formatMonto(s.facturado)}</span>
                 </div>
               ))}
               {/* Total anual: la suma de ambos semestres y la categoría que le correspondería. */}
@@ -300,7 +300,7 @@ export function SituacionActual({ cliente, calc, onVerComprobantes }: Props) {
                 </div>
                 <div className="ml-auto flex items-center gap-3">
                   <span className="text-lg font-semibold tabular-nums">
-                    {formatCurrency(evalVentana.facturado)}
+                    {formatMonto(evalVentana.facturado)}
                   </span>
                   <span className="inline-flex items-center gap-1.5">
                     {evalDebe && <TrendingUp className="h-4 w-4 text-warning-foreground" />}

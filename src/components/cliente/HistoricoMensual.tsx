@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, formatMonto, cn } from '@/lib/utils';
 import { VerDetalle } from '@/components/cliente/VerDetalle';
 import { detalleHistorico } from '@/lib/trazabilidad';
 import { useHistorico } from '@/lib/queries';
@@ -160,7 +160,7 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
                 borderRadius: 8,
                 fontSize: 12,
               }}
-              formatter={(value: number) => formatCurrency(value)}
+              formatter={(value: number) => formatMonto(value)}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
             {(vista === 'ambos' || vista === 'emitidas') && (
@@ -193,7 +193,7 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span>
-          {vista === 'recibidas' ? 'Compras' : 'Facturado'} acumulado: {formatCurrency(totalMostrado)}
+          {vista === 'recibidas' ? 'Compras' : 'Facturado'} acumulado: {formatMonto(totalMostrado)}
         </span>
         {real && (
           <span>
@@ -221,7 +221,7 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
               <TableRow key={f.periodo}>
                 <TableCell className="font-medium">{formatPeriodoLargo(f.periodo, esAnio)}</TableCell>
                 <TableCell className="text-right tabular-nums font-medium">
-                  {formatCurrency(f.emit)}
+                  {formatMonto(f.emit)}
                 </TableCell>
                 {hayIngresos && (
                   <TableCell
@@ -230,10 +230,10 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
                       f.ing > 0 ? 'text-warning-foreground font-medium' : 'text-muted-foreground',
                     )}
                   >
-                    {f.ing > 0 ? formatCurrency(f.ing) : '—'}
+                    {f.ing > 0 ? formatMonto(f.ing) : '—'}
                   </TableCell>
                 )}
-                <TableCell className="text-right tabular-nums">{formatCurrency(f.recib)}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatMonto(f.recib)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -246,7 +246,7 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
             <div className="flex items-center justify-between">
               <span className="font-medium">{formatPeriodoLargo(f.periodo, esAnio)}</span>
               <span className="text-sm tabular-nums font-medium">
-                {formatCurrency(f.emit)}{' '}
+                {formatMonto(f.emit)}{' '}
                 <span className="text-xs font-normal text-muted-foreground">emitidas</span>
               </span>
             </div>
@@ -260,13 +260,13 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
                       f.ing > 0 ? 'text-warning-foreground font-medium' : 'text-muted-foreground',
                     )}
                   >
-                    {f.ing > 0 ? formatCurrency(f.ing) : '—'}
+                    {f.ing > 0 ? formatMonto(f.ing) : '—'}
                   </span>
                 </div>
               )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Recibidas</span>
-                <span className="tabular-nums">{formatCurrency(f.recib)}</span>
+                <span className="tabular-nums">{formatMonto(f.recib)}</span>
               </div>
             </div>
           </div>
