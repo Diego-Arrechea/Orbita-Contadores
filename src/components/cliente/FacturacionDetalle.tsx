@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { formatCurrency, formatDate, formatCuit, cn } from '@/lib/utils';
+import { formatMonto, formatDate, formatCuit, cn } from '@/lib/utils';
 import { HOY } from '@/lib/monotributo';
 import type { Cliente, Comprobante } from '@/types';
 
@@ -44,12 +44,12 @@ function MontoComp({ c }: { c: Comprobante }) {
       <>
         <div>
           {neg ? '-' : ''}
-          {formatCurrency(c.montoOrigen ?? c.monto, { moneda: c.moneda })}
+          {formatMonto(c.montoOrigen ?? c.monto, { moneda: c.moneda })}
         </div>
         {!!c.cotizacion && c.cotizacion !== 1 && (
           <div className="text-[11px] font-normal text-muted-foreground">
             = {neg ? '-' : ''}
-            {formatCurrency(c.monto)}
+            {formatMonto(c.monto)}
           </div>
         )}
       </>
@@ -58,7 +58,7 @@ function MontoComp({ c }: { c: Comprobante }) {
   return (
     <>
       {neg ? '-' : ''}
-      {formatCurrency(c.monto)}
+      {formatMonto(c.monto)}
     </>
   );
 }
@@ -183,7 +183,7 @@ export function FacturacionDetalle({ cliente }: Props) {
         <div className="mt-4 grid gap-4 sm:grid-cols-3">
           <div>
             <div className="text-xs text-muted-foreground">Facturado bruto</div>
-            <div className="text-2xl font-semibold tabular-nums">{formatCurrency(bruto)}</div>
+            <div className="text-2xl font-semibold tabular-nums">{formatMonto(bruto)}</div>
             <div className="mt-0.5 text-[11px] text-muted-foreground">
               {cant - cantNC} {cant - cantNC === 1 ? 'comprobante' : 'comprobantes'}
             </div>
@@ -191,7 +191,7 @@ export function FacturacionDetalle({ cliente }: Props) {
           <div>
             <div className="text-xs text-muted-foreground">Notas de crédito</div>
             <div className="text-2xl font-semibold tabular-nums text-danger">
-              - {formatCurrency(nc)}
+              - {formatMonto(nc)}
             </div>
             <div className="mt-0.5 text-[11px] text-muted-foreground">
               {cantNC} {cantNC === 1 ? 'nota' : 'notas'}
@@ -200,7 +200,7 @@ export function FacturacionDetalle({ cliente }: Props) {
           <div className="sm:border-l sm:border-border/60 sm:pl-4">
             <div className="text-xs text-muted-foreground">Facturado neto (base del tope)</div>
             <div className="text-2xl font-semibold tabular-nums text-primary">
-              {formatCurrency(neto)}
+              {formatMonto(neto)}
             </div>
             <div className="mt-0.5 text-[11px] text-muted-foreground">{cant} en total</div>
           </div>
@@ -208,7 +208,7 @@ export function FacturacionDetalle({ cliente }: Props) {
         {difOficial && (
           <div className="mt-4 rounded-lg border border-border/60 bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
             El total oficial informado para el período es{' '}
-            <span className="font-medium text-foreground">{formatCurrency(oficial!)}</span>. Puede
+            <span className="font-medium text-foreground">{formatMonto(oficial!)}</span>. Puede
             diferir del neto de los comprobantes cargados si incluye operaciones que el contribuyente
             no emite directamente.
           </div>
@@ -216,7 +216,7 @@ export function FacturacionDetalle({ cliente }: Props) {
         {manual !== 0 && (
           <div className="mt-3 text-[11px] text-muted-foreground">
             Incluye{' '}
-            <span className="font-medium text-foreground">{formatCurrency(manual)}</span> de
+            <span className="font-medium text-foreground">{formatMonto(manual)}</span> de
             comprobantes cargados a mano.
           </div>
         )}
@@ -250,7 +250,7 @@ export function FacturacionDetalle({ cliente }: Props) {
                       {p.cant}
                     </TableCell>
                     <TableCell className="text-right font-medium tabular-nums">
-                      {formatCurrency(p.neto)}
+                      {formatMonto(p.neto)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -271,7 +271,7 @@ export function FacturacionDetalle({ cliente }: Props) {
                     {p.cant} {p.cant === 1 ? 'comprobante' : 'comprobantes'}
                   </div>
                 </div>
-                <div className="text-sm font-semibold tabular-nums">{formatCurrency(p.neto)}</div>
+                <div className="text-sm font-semibold tabular-nums">{formatMonto(p.neto)}</div>
               </div>
             ))}
           </div>
@@ -279,7 +279,7 @@ export function FacturacionDetalle({ cliente }: Props) {
             <span className="text-sm font-medium">
               Total · {porPV.length} puntos de venta
             </span>
-            <span className="text-sm font-semibold tabular-nums">{formatCurrency(neto)}</span>
+            <span className="text-sm font-semibold tabular-nums">{formatMonto(neto)}</span>
           </div>
         </Card>
       )}
@@ -306,7 +306,7 @@ export function FacturacionDetalle({ cliente }: Props) {
                       {mesLargo(g.mes)}
                     </TableCell>
                     <TableCell className="text-right font-semibold tabular-nums">
-                      {formatCurrency(g.neto)}
+                      {formatMonto(g.neto)}
                     </TableCell>
                   </TableRow>
                   {g.comps.map(c => (
@@ -355,7 +355,7 @@ export function FacturacionDetalle({ cliente }: Props) {
             <div key={g.mes}>
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-semibold">{mesLargo(g.mes)}</span>
-                <span className="text-sm font-semibold tabular-nums">{formatCurrency(g.neto)}</span>
+                <span className="text-sm font-semibold tabular-nums">{formatMonto(g.neto)}</span>
               </div>
               <div className="space-y-2">
                 {g.comps.map(c => (
@@ -398,7 +398,7 @@ export function FacturacionDetalle({ cliente }: Props) {
         {/* Total general del período */}
         <div className="flex items-center justify-between gap-3 border-t border-border/60 bg-muted/30 px-5 py-3.5">
           <span className="text-sm font-medium">Facturado neto del período</span>
-          <span className="text-sm font-semibold tabular-nums">{formatCurrency(neto)}</span>
+          <span className="text-sm font-semibold tabular-nums">{formatMonto(neto)}</span>
         </div>
       </Card>
     </div>
