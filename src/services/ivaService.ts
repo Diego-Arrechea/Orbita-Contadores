@@ -113,6 +113,28 @@ export function guardarAjustesIva(
   return apiPatch(`/iva/clientes/${cuit}/ajustes?periodo=${encodeURIComponent(periodo)}`, ajuste);
 }
 
+/** Lo declarado en el IVA de un período ya presentado (para completar los ajustes y comparar). */
+export interface IvaDjPresentada {
+  periodo: string;
+  formulario: number | null;
+  presentadaEn: string | null;
+  debitoFiscal: number;
+  creditoFiscal: number;
+  saldoTecnico: number;
+  percepciones: number;
+  retenciones: number;
+  otrosPagos: number;
+  saldoFavorAnterior: number;
+  saldoImpuesto: number;
+}
+
+/** Declaración de IVA presentada del período. 404 si el período todavía no se presentó. */
+export function getDjPresentadaIva(cuit: string, periodo: string): Promise<IvaDjPresentada> {
+  return apiGet<IvaDjPresentada>(
+    `/iva/clientes/${cuit}/dj-presentada?periodo=${encodeURIComponent(periodo)}`
+  );
+}
+
 /** Una revisión sugerida detectada en los comprobantes del período. */
 export interface IvaInconsistencia {
   tipo: string; // iva_cero | alicuota_atipica | compra_sin_cuit

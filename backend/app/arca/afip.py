@@ -187,6 +187,11 @@ SETI_PADRON_BASE = "https://seti.afip.gob.ar/padron-puc-consulta-internet"
 # caduco). El entry SSO es default.aspx. Ver el método facilidades().
 MISFACIL_BASE = "https://serviciossegsoc.afip.gob.ar/tramites_con_clave_fiscal/MisFacilidadesNet"
 
+# Portal IVA ("Presentación del Libro de IVA Digital e IVA simple"): SPA con API REST propia. De
+# acá se leen las DDJJ de IVA ya presentadas (ver el método dj_iva). El detalle POR COMPROBANTE vive
+# en la otra app (liva.afip.gob.ar), a la que NO entramos: abrir un período deja un borrador.
+SIAP_IVA_BASE = "https://siapweb.cloud.afip.gob.ar/iva"
+
 # Entry point (paso c de abrir_servicio) de servicios conocidos. Tenerlo acá
 # permite saltar el GET de metadata (que solo servía para descubrir esta URL).
 SERVICIOS_ENTRY = {
@@ -206,6 +211,8 @@ SERVICIOS_ENTRY = {
     "padron-puc-consulta-internet": f"{SETI_PADRON_BASE}/AccessPointAction.do",
     # Mis Facilidades (planes de facilidades de pago).
     "misfacilidades": f"{MISFACIL_BASE}/default.aspx",
+    # Portal IVA (Libro IVA Digital + DDJJ). Entry = la SPA; su API REST cuelga de esa misma base.
+    "siap_web_iva": f"{SIAP_IVA_BASE}/",
 }
 
 # Comprobantes en Línea (rcel) en fe.afip.gob.ar. NO es mcmp: rcel es el facturador web, y su
@@ -2103,6 +2110,88 @@ class AFIP:
             return f"{int(y):04d}-{int(m):02d}-{int(d):02d}"
         except (ValueError, TypeError):
             return None
+
+    # --- Portal IVA: declaración jurada YA PRESENTADA (solo lectura) ----------
+    # El Portal IVA son 2 apps: la SPA de siapweb (API REST de consulta) y la app del Libro IVA
+    # (liva.afip.gob.ar), donde vive el detalle por comprobante. Acá SÓLO se usa la API de consulta
+    # de la SPA: son GETs sin efectos. ⚠️ NO entrar a la app del Libro IVA para leer: abrir un
+    # período crea un borrador en la cuenta del cliente (y en uno ya presentado, una rectificativa
+    # que le bloquea presentar otros períodos). Ver la memoria `lid-portal-integracion`.
+    @staticmethod
+    def _dj_num(nodo: dict | None, campo: str) -> float:
+        """Importe de la DJ (vienen como str '2578363.81' o float). Ausente/ilegible -> 0.0."""
+        try:
+            return float((nodo or {}).get(campo) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def dj_iva(self, periodo: str | None = None) -> dict | None:
+        """Declaración jurada de IVA ya PRESENTADA del período ('AAAAMM'; default: la última).
+
+        Devuelve los importes TAL COMO SE DECLARARON, que es la fuente autoritativa de lo que Órbita
+        no puede derivar de los comprobantes (percepciones y retenciones sufridas, saldo a favor del
+        período anterior):
+            {periodo: 'AAAAMM', formulario: int, presentada_en: str|None,
+             debito_fiscal, credito_fiscal, saldo_tecnico, percepciones, retenciones,
+             otros_pagos, saldo_favor_anterior, saldo_impuesto: float}
+        None si ese período no tiene declaración presentada. Sólo TITULAR (la consulta es sobre el
+        contribuyente de la sesión).
+        """
+        if not self.logged_in:
+            self.login()
+        self.abrir_servicio("siap_web_iva")
+        ref = {"Accept": "application/json, text/plain, */*", "Referer": f"{SIAP_IVA_BASE}/"}
+        r = self.session.get(f"{SIAP_IVA_BASE}/api/app/ddjj_anteriores", headers=ref)
+        try:
+            presentadas = r.json()
+        except ValueError:
+            raise AFIPError("El portal de IVA no devolvió las declaraciones presentadas.")
+        if not isinstance(presentadas, dict) or not presentadas:
+            return None
+        clave = str(periodo) if periodo else sorted(presentadas)[-1]
+        filas = presentadas.get(clave) or []
+        if not filas:
+            self.log.info("dj_iva: %s sin declaración presentada", clave)
+            return None
+        # El id que consume /api/dj/dj/ es el INTERNO del comprobante, no el nroTransaccion.
+        cab = filas[0] or {}
+        comp = cab.get("comprobante") or {}
+        id_dj = comp.get("id")
+        if not id_dj:
+            return None
+        r = self.session.get(f"{SIAP_IVA_BASE}/api/dj/dj/{id_dj}", headers=ref)
+        try:
+            dj = (r.json() or {}).get("dj") or {}
+        except ValueError:
+            raise AFIPError("El portal de IVA no devolvió la declaración del período.")
+        if not dj:
+            return None
+
+        dcf = dj.get("debitoCreditoFiscal") or {}
+        det = dj.get("determinacionImpuesto") or {}
+        rp = dj.get("retencionesPercepciones") or {}
+        saldos = (dj.get("administracionSaldos") or {}).get("saldoLibrePeriodoAnt") or {}
+        out = {
+            "periodo": str(dj.get("periodoFiscal") or clave),
+            "formulario": cab.get("formulario") or comp.get("formulario"),
+            "presentada_en": comp.get("fechaPresentacion"),
+            "debito_fiscal": self._dj_num(dcf, "totalDebitoFiscal"),
+            "credito_fiscal": self._dj_num(dcf, "totalCreditoFiscal"),
+            "saldo_tecnico": self._dj_num(det, "subtotalSaldoTecnicoC4_6"),
+            "percepciones": self._dj_num(
+                rp.get("percepcionesImpositivas"), "totalNetoPercepciones"
+            ),
+            "retenciones": self._dj_num(rp.get("retenciones"), "totalNetoRetenciones"),
+            "otros_pagos": self._dj_num(det, "pagosACuenta"),
+            "saldo_favor_anterior": self._dj_num(saldos, "saldoNetoAFavorPeriodoAnt"),
+            "saldo_impuesto": self._dj_num(det, "saldoImpuestoAfipC7_13"),
+        }
+        self.log.info(
+            "dj_iva %s: débito %.2f · crédito %.2f · percep %.2f · retenc %.2f",
+            out["periodo"], out["debito_fiscal"], out["credito_fiscal"],
+            out["percepciones"], out["retenciones"],
+        )
+        return out
 
     def impuestos_padron(self, cuit: str | None = None) -> list[dict]:
         """Impuestos inscriptos del CUIT en el padrón: GET /portal/api/cuit/{cuit}/tipoCuitImpuestos.

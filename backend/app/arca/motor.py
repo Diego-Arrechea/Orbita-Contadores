@@ -127,6 +127,14 @@ def facilidades(cuit_login: str, clave: str, cuit_objetivo: str | None = None) -
     return motor_http.facilidades(cuit_login, clave, cuit_objetivo=cuit_objetivo)
 
 
+# --- Portal IVA: DDJJ de IVA presentada — SÓLO HTTP (afip.py) -----------------
+def dj_iva(cuit_login: str, clave: str, periodo: str | None = None) -> dict | None:
+    """Declaración jurada de IVA ya presentada del período ('AAAAMM'). None si no hay. Sólo HTTP."""
+    from . import motor_http
+
+    return motor_http.dj_iva(cuit_login, clave, periodo=periodo)
+
+
 # --- Domicilio Fiscal Electrónico / e-ventanilla — SÓLO HTTP (afip.py) --------
 def comunicaciones(
     cuit_login: str, clave: str, cuit_objetivo: str | None = None, desde=None, hasta=None

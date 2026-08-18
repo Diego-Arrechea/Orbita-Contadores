@@ -29,6 +29,7 @@ import {
   getPosicionIva,
   guardarAjustesIva,
   getInconsistenciasIva,
+  getDjPresentadaIva,
   importarBorradorIva,
   descargarLibroIvaDigital,
   type DireccionIva,
@@ -37,6 +38,7 @@ import {
   type IvaPosicion,
   type IvaLado,
   type IvaInconsistencia,
+  type IvaDjPresentada,
 } from '@/services/ivaService';
 import { mensajeDeError } from '@/services/authService';
 import { formatCurrency, formatCuit, cn } from '@/lib/utils';
@@ -387,9 +389,10 @@ function PosicionView({
       <div className="flex items-start gap-2 rounded-lg bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>
-          El saldo a favor anterior y las retenciones los cargás abajo. La percepción IVA sale del
-          borrador de AFIP que importes (botón “Importar de AFIP”); si no lo importaste, queda en 0.
-          La alícuota se estima por comprobante; los que combinan varias alícuotas aparecen en “Otras”.
+          El saldo a favor anterior y las retenciones los cargás abajo, o los completás de una con
+          “Traer lo declarado” si el período ya está presentado. La percepción IVA sale del borrador
+          de AFIP que importes (botón “Importar de AFIP”); si no lo importaste, queda en 0. La
+          alícuota se estima por comprobante; los que combinan varias alícuotas aparecen en “Otras”.
         </span>
       </div>
     </div>
@@ -416,6 +419,8 @@ function AjustesPosicion({
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
+  const [dj, setDj] = useState<IvaDjPresentada | null>(null);
+  const [trayendo, setTrayendo] = useState(false);
 
   // Re-sincroniza los inputs cuando cambia el cliente/período o llega la posición fresca.
   useEffect(() => {
@@ -425,6 +430,31 @@ function AjustesPosicion({
     setOk(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cuit, periodo, p.saldoFavorAnterior, p.retenciones, p.otrosPagos]);
+
+  // Lo declarado es de un período puntual: al cambiar de cliente/período deja de aplicar.
+  useEffect(() => {
+    setDj(null);
+    setError(null);
+  }, [cuit, periodo]);
+
+  /** Trae lo declarado en el período (si ya se presentó) y completa los ajustes con esos valores. */
+  async function traerDeclarado() {
+    setTrayendo(true);
+    setError(null);
+    setOk(false);
+    try {
+      const d = await getDjPresentadaIva(cuit, periodo);
+      setDj(d);
+      setSaldoAnt(num(d.saldoFavorAnterior));
+      setReten(num(d.retenciones));
+      setOtros(num(d.otrosPagos));
+    } catch (e) {
+      setDj(null);
+      setError(mensajeDeError(e));
+    } finally {
+      setTrayendo(false);
+    }
+  }
 
   const parse = (s: string) => Number(s.replace(/\./g, '').replace(',', '.')) || 0;
 
@@ -466,12 +496,44 @@ function AjustesPosicion({
 
   return (
     <Card className="p-4">
-      <div className="mb-3 text-sm font-medium">Ajustes del período</div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm font-medium">Ajustes del período</div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={traerDeclarado}
+          disabled={trayendo}
+          title="Completa los ajustes con lo que figura declarado en el período, si ya lo presentaste"
+        >
+          {trayendo ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <FileText className="mr-2 h-4 w-4" />
+          )}
+          Traer lo declarado
+        </Button>
+      </div>
       <div className="grid gap-3 sm:grid-cols-3">
         {campo('Saldo a favor período anterior', saldoAnt, setSaldoAnt, 'Libre disponibilidad que traés')}
         {campo('Retenciones de IVA', reten, setReten, 'Retenciones sufridas en el período')}
         {campo('Otros pagos a cuenta', otros, setOtros, 'Otros conceptos a favor')}
       </div>
+      {dj && (
+        <div className="mt-3 rounded-lg bg-muted/30 p-3">
+          <div className="mb-2 text-xs font-medium">
+            Declaración del período
+            {dj.presentadaEn ? ` · presentada el ${fechaPresentacion(dj.presentadaEn)}` : ''}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Cotejo label="Débito fiscal" declarado={dj.debitoFiscal} calculado={p.debitoFiscal} />
+            <Cotejo label="Crédito fiscal" declarado={dj.creditoFiscal} calculado={p.creditoFiscal} />
+            <Cotejo label="Percepciones" declarado={dj.percepciones} calculado={p.percepciones} />
+          </div>
+          <div className="mt-2 text-[11px] text-muted-foreground">
+            Los ajustes de arriba quedaron completados con lo declarado. Revisalos y guardá.
+          </div>
+        </div>
+      )}
       <div className="mt-3 flex items-center gap-3">
         <Button size="sm" onClick={guardar} disabled={guardando}>
           {guardando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
@@ -481,6 +543,35 @@ function AjustesPosicion({
         {error && <span className="text-sm text-danger">{error}</span>}
       </div>
     </Card>
+  );
+}
+
+/** Fecha+hora ISO con zona ('…T12:35:10.000-03:00') -> 'dd/mm/aaaa'. Crudo si no se puede parsear. */
+function fechaPresentacion(iso: string): string {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('es-AR');
+}
+
+/** Un concepto declarado vs lo que calculó Órbita: coincide o difiere (y en cuánto). */
+function Cotejo({
+  label,
+  declarado,
+  calculado,
+}: {
+  label: string;
+  declarado: number;
+  calculado: number;
+}) {
+  const dif = Math.round((declarado - calculado) * 100) / 100;
+  const coincide = Math.abs(dif) < 0.5;
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-sm font-medium tabular-nums">{formatCurrency(declarado)}</div>
+      <div className={cn('text-[11px]', coincide ? 'text-success' : 'text-warning')}>
+        {coincide ? 'Coincide con lo calculado' : `Difiere en ${formatCurrency(Math.abs(dif))}`}
+      </div>
+    </div>
   );
 }
 

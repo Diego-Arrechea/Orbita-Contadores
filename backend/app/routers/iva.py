@@ -21,12 +21,13 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..db import get_db
-from ..services import lid_export, lid_import
+from ..services import iva_dj, lid_export, lid_import
 from ..schemas import (
     TIPOS_MONOTRIBUTO,
     TIPOS_NOTA_CREDITO,
     IvaAjusteIn,
     IvaAlicuotaOut,
+    IvaDjPresentadaOut,
     IvaInconsistenciaOut,
     IvaLadoOut,
     IvaLibroOut,
@@ -355,6 +356,46 @@ def guardar_ajustes(
     aj.actualizado_en = dt.datetime.now(dt.timezone.utc)
     db.commit()
     return {"ok": True}
+
+
+@router.get("/clientes/{cuit}/dj-presentada", response_model=IvaDjPresentadaOut)
+def dj_presentada(
+    cuit: str,
+    periodo: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="aaaa-mm"),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_iva),
+):
+    """Lo declarado en el IVA del período, si ya fue presentado: débito, crédito, percepciones y
+    retenciones sufridas, saldo a favor anterior y saldo del impuesto. Con esto el contador completa
+    los ajustes sin tipearlos y compara contra lo que calcula Órbita."""
+    _cliente_propio(db, cuit, usuario)
+    try:
+        datos = iva_dj.traer_dj_presentada(db, cuit, periodo)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:  # noqa: BLE001 — falla de la consulta, no del pedido
+        raise HTTPException(
+            status_code=502,
+            detail="No pudimos consultar la declaración de IVA del período. Probá de nuevo en unos minutos.",
+        )
+    if not datos:
+        raise HTTPException(
+            status_code=404,
+            detail="Este período todavía no tiene una declaración de IVA presentada.",
+        )
+    return IvaDjPresentadaOut(
+        periodo=datos.get("periodo") or periodo,
+        formulario=datos.get("formulario"),
+        presentadaEn=datos.get("presentada_en"),
+        debitoFiscal=round(float(datos.get("debito_fiscal") or 0), 2),
+        creditoFiscal=round(float(datos.get("credito_fiscal") or 0), 2),
+        saldoTecnico=round(float(datos.get("saldo_tecnico") or 0), 2),
+        percepciones=round(float(datos.get("percepciones") or 0), 2),
+        retenciones=round(float(datos.get("retenciones") or 0), 2),
+        otrosPagos=round(float(datos.get("otros_pagos") or 0), 2),
+        saldoFavorAnterior=round(float(datos.get("saldo_favor_anterior") or 0), 2),
+        saldoImpuesto=round(float(datos.get("saldo_impuesto") or 0), 2),
+    )
 
 
 # --- Detección de inconsistencias (revisiones sugeridas) --------------------------------------------
