@@ -83,6 +83,7 @@ def importar_contactos(
         cambio = False
         if email:
             cliente.email_cliente = email
+            cliente.email_cliente_origen = None  # cargado por el contador: la sync no lo pisa
             cambio = True
         if telefono:
             cliente.telefono_cliente = telefono

@@ -42,6 +42,30 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-08-17-contacto-de-clientes-automatico',
+    fecha: '2026-08-17',
+    titulo: 'El mail de contacto de tus clientes ya viene cargado',
+    resumen:
+      'Para mandarles el recordatorio de vencimiento ya no hace falta que cargues los contactos a mano.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'El mail de contacto de tus clientes aparece completo en la ficha, sin que tengas que cargarlo. Es el que cada cliente tiene registrado como contacto, y es el que usamos para el recordatorio mensual de vencimiento.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Cuando el mail registrado es el del estudio y no el del cliente —pasa seguido, porque los trámites los hacés vos—, lo dejamos vacío en vez de completarlo mal: así el recordatorio del vencimiento nunca termina en tu propia casilla. Esos clientes los podés completar a mano en la ficha o con el import por Excel, como hasta ahora.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Si vos cargás o corregís el mail de un cliente, ese dato queda tuyo: no lo pisamos ni lo volvemos a cambiar.',
+      },
+    ],
+  },
+  {
     id: '2026-08-10-aviso-domicilio-fiscal-electronico',
     fecha: '2026-08-12',
     titulo: 'Te avisamos cuando le entra una comunicación al Domicilio Fiscal Electrónico',

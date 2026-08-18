@@ -325,12 +325,20 @@ def datos_monotributo(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: st
         acts = afip.actividades(obj)
     except Exception:  # noqa: BLE001
         acts = []
+    # Mails registrados del contribuyente: mismo criterio que las actividades (aplican a cualquier
+    # cliente y salen de /persona, ya cacheado → sin requests extra). Son candidatos a contacto.
+    try:
+        mails = afip.emails(obj)
+    except Exception:  # noqa: BLE001
+        mails = []
     if reg.get("es_monotributista") is False:
         salida = {"es_monotributista": False}
         if reg.get("regimen"):
             salida["regimen"] = reg["regimen"]  # responsable_inscripto / no_monotributo
         if acts:
             salida["actividades"] = acts
+        if mails:
+            salida["emails"] = mails
         return salida
 
     m = afip.monotributo()
@@ -347,6 +355,8 @@ def datos_monotributo(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: st
             salida["regimen"] = reg["regimen"]
         if acts:
             salida["actividades"] = acts
+        if mails:
+            salida["emails"] = mails
         return salida
     pv = m.get("proximo_vencimiento") or {}
     out = {
@@ -361,6 +371,8 @@ def datos_monotributo(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: st
     }
     if acts:
         out["actividades"] = acts
+    if mails:
+        out["emails"] = mails
     # Ventana de recategorización REAL (fechas oficiales de ARCA): reemplaza el calendario hardcodeado.
     # best-effort: si el endpoint no responde, se omite y el front cae a las ventanas de la config.
     recat = afip.debe_recategorizar(obj)

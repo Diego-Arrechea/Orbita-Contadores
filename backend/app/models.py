@@ -210,13 +210,22 @@ class ClienteARCA(Base):
     # ledger de movimientos por período. Lo llena scraping/ccma.py vía sincronización. Nullable.
     deuda_detalle: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Contacto del cliente FINAL (no confundir con el email/teléfono del CONTADOR, que viven en
-    # Usuario). Lo carga el contador a mano (en la ficha) o por importación masiva desde un Excel;
-    # ARCA no lo provee. Alimenta el recordatorio mensual de vencimientos por mail. Sólo se usa el
-    # mail; el teléfono se guarda para un canal futuro (hoy no se envía nada por ahí). `venc_avisos`
-    # = opt-out por cliente: None/True lo incluye en los recordatorios, False lo excluye. Nullable.
+    # Usuario). Llega por dos vías: lo carga el contador (ficha o importación masiva desde un Excel)
+    # o lo completa la sincronización con el mail que el contribuyente tiene registrado, si pasa el
+    # filtro de services/contactos.py. Alimenta el recordatorio mensual de vencimientos por mail.
+    # Sólo se usa el mail; el teléfono se guarda para un canal futuro (hoy no se envía nada por ahí
+    # y la sincronización NO lo completa). `venc_avisos` = opt-out por cliente: None/True lo incluye
+    # en los recordatorios, False lo excluye. Nullable.
     email_cliente: Mapped[str | None] = mapped_column(String(200), nullable=True)
     telefono_cliente: Mapped[str | None] = mapped_column(String(40), nullable=True)
     venc_avisos: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Mails REGISTRADOS del contribuyente (JSON de strings, en el orden en que vienen). Son
+    # CANDIDATOS, no el contacto efectivo: muy seguido el mail registrado es el del estudio que le
+    # hace los trámites. Quién pasa el filtro se decide en services/contactos.py.
+    emails_padron_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Quién completó `email_cliente`: 'padron' = lo eligió la sincronización (se recalcula, y se
+    # borra solo si deja de ser plausible) · NULL con mail cargado = lo puso el contador, intocable.
+    email_cliente_origen: Mapped[str | None] = mapped_column(String(10), nullable=True)
     # Último período (aaaa-mm) en que se le envió el recordatorio de vencimiento. Hace idempotente el
     # job mensual: si ya se avisó este mes, no se reenvía (sobrevive reinicios/redeploys del worker,
     # a diferencia de un contador en memoria). NULL = nunca se le avisó. Ver services/vencimientos.py.
