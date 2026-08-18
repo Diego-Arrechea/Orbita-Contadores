@@ -429,6 +429,12 @@ def facilidades(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: str | No
     return afip.facilidades(cuit_objetivo or cuit_login)
 
 
+@_con_sesion
+def dj_iva(afip: AFIP, cuit_login: str, clave: str, periodo: str | None = None) -> dict | None:
+    """DDJJ de IVA ya presentada del período ('AAAAMM'). Solo lectura. Ver afip.dj_iva()."""
+    return afip.dj_iva(periodo)
+
+
 # --- Puntos de venta (ABM pvel) — sólo HTTP (afip.py; el browser nunca lo hizo) -
 @_con_sesion
 def puntos_venta_pvel(afip: AFIP, cuit_login: str, clave: str) -> list[dict]:

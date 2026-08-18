@@ -937,6 +937,24 @@ class IvaAjusteIn(BaseModel):
     otrosPagos: float = 0  # noqa: N815
 
 
+class IvaDjPresentadaOut(BaseModel):
+    """Lo que se declaró en el IVA de un período que ya fue presentado. Sirve para dos cosas:
+    completar los ajustes que Órbita no deriva de los comprobantes (percepciones, retenciones, saldo
+    a favor anterior) y contrastar el débito/crédito calculado contra lo declarado."""
+
+    periodo: str  # aaaa-mm
+    formulario: int | None = None
+    presentadaEn: str | None = None  # noqa: N815
+    debitoFiscal: float = 0   # noqa: N815
+    creditoFiscal: float = 0  # noqa: N815
+    saldoTecnico: float = 0   # noqa: N815
+    percepciones: float = 0
+    retenciones: float = 0
+    otrosPagos: float = 0          # noqa: N815
+    saldoFavorAnterior: float = 0  # noqa: N815
+    saldoImpuesto: float = 0       # noqa: N815
+
+
 class IvaInconsistenciaOut(BaseModel):
     """Una revisión sugerida detectada en los comprobantes del período (posible error a chequear
     antes de declarar). No corrige nada: sólo marca para que el contador lo revise."""
