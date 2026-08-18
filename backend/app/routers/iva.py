@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import models
+from ..arca.afip import LivaOcupadoError
 from ..db import get_db
 from ..services import iva_dj, lid_export, lid_import
 from ..schemas import (
@@ -356,6 +357,42 @@ def guardar_ajustes(
     aj.actualizado_en = dt.datetime.now(dt.timezone.utc)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/clientes/{cuit}/importar-de-afip")
+def importar_percepciones_de_afip(
+    cuit: str,
+    periodo: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="aaaa-mm"),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_iva),
+):
+    """Trae el detalle del período directo de AFIP (percepciones IVA/IIBB/municipales separadas por
+    comprobante) y lo aplica sobre el Libro IVA — sin descargar ni subir archivos. Sólo funciona
+    sobre períodos que todavía no presentaron el Libro IVA; para uno ya presentado queda el import
+    por archivo. Tarda un rato (AFIP procesa la consulta): el front debe mostrar progreso."""
+    _cliente_propio(db, cuit, usuario)
+    try:
+        return iva_dj.importar_percepciones_auto(db, cuit, periodo)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except LivaOcupadoError as e:
+        if e.motivo == "presentado":
+            raise HTTPException(
+                status_code=409,
+                detail="El Libro IVA de este período ya está presentado, así que el detalle no se "
+                "puede traer al instante. Descargá el archivo del período desde el Portal IVA e "
+                "importalo acá con el botón de subir archivo.",
+            )
+        raise HTTPException(
+            status_code=409,
+            detail="Hay un borrador del Libro IVA abierto para este cliente en el Portal IVA. "
+            "Presentalo o descartalo y volvé a intentar.",
+        )
+    except Exception:  # noqa: BLE001 — falla de la consulta, no del pedido
+        raise HTTPException(
+            status_code=502,
+            detail="No pudimos traer el detalle del período en este momento. Probá de nuevo en unos minutos.",
+        )
 
 
 @router.get("/clientes/{cuit}/dj-presentada", response_model=IvaDjPresentadaOut)

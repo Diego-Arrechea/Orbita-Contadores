@@ -86,6 +86,7 @@ import random
 import logging
 import html as _html
 import datetime as _dt
+from urllib.parse import urljoin
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -189,8 +190,12 @@ MISFACIL_BASE = "https://serviciossegsoc.afip.gob.ar/tramites_con_clave_fiscal/M
 
 # Portal IVA ("Presentación del Libro de IVA Digital e IVA simple"): SPA con API REST propia. De
 # acá se leen las DDJJ de IVA ya presentadas (ver el método dj_iva). El detalle POR COMPROBANTE vive
-# en la otra app (liva.afip.gob.ar), a la que NO entramos: abrir un período deja un borrador.
+# en la otra app (liva.afip.gob.ar, abajo): entrar a un período crea un BORRADOR, así que sólo se
+# entra a períodos sin presentar y con las guardas de liva_percepciones.
 SIAP_IVA_BASE = "https://siapweb.cloud.afip.gob.ar/iva"
+# App del Libro IVA (Struts): grillas de comprobantes del borrador + importación desde ARCA +
+# descarga del CSV por comprobante. Los .do viven bajo /jsp/ (fuera de ahí: 404/403).
+LIVA_JSP_BASE = "https://liva.afip.gob.ar/liva/jsp"
 
 # Entry point (paso c de abrir_servicio) de servicios conocidos. Tenerlo acá
 # permite saltar el GET de metadata (que solo servía para descubrir esta URL).
@@ -437,6 +442,20 @@ class RespuestaPaginaError(AFIPError):
     reabrir 4× + 3 logins completos fallaban todos); es un throttle transitorio de ARCA que se
     destraba solo en la pasada siguiente. Subclase propia para que el scheduler NO gaste reintentos
     (que sólo martillan y ocupan el slot minutos) — ver `_NO_REINTENTABLES`."""
+
+
+class LivaOcupadoError(AFIPError):
+    """El Libro IVA del período no está disponible para el ciclo automático de percepciones:
+    - motivo='presentado': el período ya tiene el libro presentado (entrar crearía una RECTIFICATIVA
+      borrador, jamás hacerlo — ver la memoria `lid-portal-integracion`).
+    - motivo='borrador': hay un borrador abierto que NO creamos nosotros (puede ser trabajo del
+      contador en el Portal IVA); no se toca nada.
+    Subclase propia para que el caller lo distinga de un fallo transitorio y le explique al contador
+    qué hacer (presentar/descartar su borrador, o importar el archivo del período presentado)."""
+
+    def __init__(self, motivo: str, detalle: str = ""):
+        super().__init__(detalle or motivo)
+        self.motivo = motivo
 
 
 class AFIP:
@@ -2208,6 +2227,181 @@ class AFIP:
             out["percepciones"], out["retenciones"],
         )
         return out
+
+    # --- Portal IVA: detalle por comprobante del período EN CURSO (percepciones separadas) --------
+    _LIVA_XHR = {"X-Requested-With": "XMLHttpRequest"}
+
+    @staticmethod
+    def _liva_form(txt: str) -> tuple[str, dict]:
+        """Form de SSO auto-submit del Portal IVA: (action, {campos ocultos, incl. uno llamado
+        'action'}). Como _lsp_form pero tolera comillas simples o dobles (el markup de liva mezcla)."""
+        m = re.search(r"""<form[^>]*action=['"]([^'"]+)['"]""", txt, re.I)
+        if not m:
+            raise AFIPError("No se encontró el form de SSO del Portal IVA.")
+        campos = {
+            k: _html.unescape(v)
+            for k, v in re.findall(r"""name=['"]([^'"]+)['"][^>]*value=['"]([^'"]*)['"]""", txt)
+        }
+        return m.group(1), campos
+
+    def _liva_sin_presentar(self) -> str:
+        """Texto crudo de api/app/periodos_sin_presentar (ej. '[(202608,2083)]*[(202608,442)]')."""
+        r = self.session.get(
+            f"{SIAP_IVA_BASE}/api/app/periodos_sin_presentar",
+            headers={"Accept": "application/json, text/plain, */*", "Referer": f"{SIAP_IVA_BASE}/"},
+        )
+        return r.text or ""
+
+    def _liva_esperar_tarea(self, t_oper: int, ref: dict) -> dict:
+        """Espera a que la tarea de importación del lado `t_oper` termine (poll listaTareas cada 5s,
+        máx ~150s). Devuelve la tarea (estado 'TE' = terminada, trae cantidadRegistros)."""
+        ultima: dict = {}
+        for _ in range(30):
+            time.sleep(5)
+            r = self.session.get(
+                f"{LIVA_JSP_BASE}/ajax.do", params={"f": "listaTareas", "c": t_oper},
+                headers={**self._LIVA_XHR, **ref},
+            )
+            try:
+                tareas = (r.json() or {}).get("datos") or []
+            except ValueError:
+                continue
+            if not tareas:
+                continue
+            ultima = tareas[0]
+            if ultima.get("fechaFinProc"):
+                return ultima
+        raise AFIPError(f"La importación del Libro IVA (lado {t_oper}) no terminó a tiempo: {ultima}")
+
+    def liva_percepciones(self, periodo: str) -> dict:
+        """Detalle POR COMPROBANTE del período con las percepciones separadas (IVA/IIBB/municipal/
+        otros), que Mis Comprobantes no expone. `periodo` = 'AAAAMM', tiene que estar SIN presentar.
+
+        Ciclo (validado end-to-end, ver la memoria `lid-portal-integracion`): entra al borrador del
+        período → corre la "Importación desde ARCA" de compras y ventas → baja el ZIP por comprobante
+        de cada lado → DESCARTA el borrador al salir (finally, pase lo que pase). Devuelve
+        {"ventas": bytes, "compras": bytes}: cada uno es el ZIP con el CSV que ya parsea
+        services/lid_import.
+
+        ⚠️ Deja una huella TRANSITORIA (el borrador) en la cuenta del cliente. Guardas:
+        - período presentado → LivaOcupadoError('presentado') SIN entrar (entrar crearía una
+          rectificativa borrador que bloquea otros períodos);
+        - ya hay un borrador abierto (del contador, o de otro período) → LivaOcupadoError('borrador')
+          sin tocar nada.
+        """
+        if not self.logged_in:
+            self.login()
+        self.abrir_servicio("siap_web_iva")
+
+        # Guarda 1: el período tiene que figurar sin presentar.
+        sin_presentar = self._liva_sin_presentar()
+        if str(periodo) not in sin_presentar:
+            raise LivaOcupadoError(
+                "presentado", f"El período {periodo} no figura sin presentar ({sin_presentar[:120]})"
+            )
+
+        # Doble SSO siapweb -> auth -> app del Libro IVA (mismo patrón que el agro).
+        r = self.session.get(
+            f"{SIAP_IVA_BASE}/api/app/liva?tipo=normal&periodoFiscal={periodo}&secuencia=0"
+            f"&time={int(time.time() * 1000)}",
+            headers={"Referer": f"{SIAP_IVA_BASE}/"},
+        )
+        a1, f1 = self._liva_form(r.text)
+        r = self.session.post(
+            urljoin(r.url, a1), data=f1, allow_redirects=True,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        a2, f2 = self._liva_form(r.text)
+        r = self.session.post(
+            urljoin(r.url, a2), data=f2, allow_redirects=True,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        r = self.session.get(
+            f"{LIVA_JSP_BASE}/setearContribuyente.do?idContribuyente=0",
+            headers={"Referer": f"{LIVA_JSP_BASE}/index_bis.jsp"},
+        )
+        # Guarda 2: la pantalla tiene que ofrecer un borrador NUEVO. Si ya había uno (la app
+        # muestra "Tiene un borrador sin presentar…" o retoma uno existente), NO es nuestro: afuera.
+        pagina = r.content.decode("latin-1", "replace")
+        if "Nuevo Borrador" not in pagina or "verDatosInicialesPresentacion" not in r.url:
+            raise LivaOcupadoError("borrador", f"pantalla de ingreso inesperada: {r.url}")
+
+        anio, mes = int(str(periodo)[:4]), int(str(periodo)[4:])
+        ult_dia = ((_dt.date(anio + (mes == 12), (mes % 12) + 1, 1)) - _dt.timedelta(days=1)).day
+        ref_ingreso = {"Referer": r.url}
+        self.log.info("liva %s: creando el borrador para importar percepciones", periodo)
+        try:
+            # Datos iniciales mínimos: con movimientos, sin operaciones especiales. OJO: el select
+            # de prorrateo manda su default "1" aunque esté oculto; vacío da "prorrateo inválido".
+            r = self.session.get(
+                f"{LIVA_JSP_BASE}/guardarDatosInicialesPresentacion.do",
+                params={
+                    "periodo": periodo, "conMovimientos": "true",
+                    "operacionesNoGravadasExentas": "false", "tipoProrrateo": "1",
+                    "importacionDefinitivaBienes": "false", "importacionServicios": "false",
+                    "regimenTurIVA": "false", "bienesUsadosMaterialReciclable": "false",
+                },
+                headers={**self._LIVA_XHR, **ref_ingreso},
+            )
+            if '"estado":"ok"' not in r.text.replace(" ", ""):
+                raise AFIPError(f"No se pudo iniciar el borrador del Libro IVA: {r.text[:200]}")
+            self.session.get(f"{LIVA_JSP_BASE}/menuPresentacion.do", headers=ref_ingreso)
+
+            out: dict[str, bytes] = {}
+            for t_oper, lado, pantalla in (
+                (21, "compras", "verCompras.do?t=21"),
+                (31, "ventas", "verVentas.do?t=31"),
+            ):
+                ref = {"Referer": f"{LIVA_JSP_BASE}/{pantalla}"}
+                self.session.get(
+                    f"{LIVA_JSP_BASE}/{pantalla}",
+                    headers={"Referer": f"{LIVA_JSP_BASE}/menuPresentacion.do"},
+                )
+                r = self.session.get(
+                    f"{LIVA_JSP_BASE}/ajax.do", params={"f": "nuevoIdRequest"},
+                    headers={**self._LIVA_XHR, **ref},
+                )
+                id_req = (r.json() or {}).get("datos")
+                # "Importación desde ARCA": precarga la grilla con los comprobantes del mes y sus
+                # percepciones separadas. filtroAccion 1 = conservar lo ya incluido (no pisa).
+                r = self.session.post(
+                    f"{LIVA_JSP_BASE}/importarAFIP.do",
+                    json={
+                        "idRequest": id_req, "filtroTipoOper": t_oper,
+                        "filtroFechaDesde": f"01/{mes:02d}/{anio}",
+                        "filtroFechaHasta": f"{ult_dia}/{mes:02d}/{anio}",
+                        "filtroAccion": "1",
+                    },
+                    headers={**self._LIVA_XHR, **ref},
+                )
+                if '"estado":"ok"' not in r.text.replace(" ", ""):
+                    raise AFIPError(f"Importación de {lado} rechazada: {r.text[:200]}")
+                tarea = self._liva_esperar_tarea(t_oper, ref)
+                self.log.info(
+                    "liva %s %s: tarea %s, %s registro(s)",
+                    periodo, lado, tarea.get("estado"), tarea.get("cantidadRegistros"),
+                )
+                r = self.session.get(
+                    f"{LIVA_JSP_BASE}/descargarComprobantes.do",
+                    params={"t": t_oper, "s": "false"}, headers=ref,
+                )
+                if not r.content.startswith(b"PK"):
+                    raise AFIPError(
+                        f"La descarga de {lado} no devolvió el archivo esperado "
+                        f"(ct={r.headers.get('Content-Type')}, {len(r.content)} bytes)"
+                    )
+                out[lado] = r.content
+            return out
+        finally:
+            # Pase lo que pase, el borrador que creamos NO queda: se descarta al salir.
+            try:
+                r = self.session.get(
+                    f"{LIVA_JSP_BASE}/eliminarBorradorDesdeIngreso.do", params={"p": periodo},
+                    headers={**self._LIVA_XHR, "Referer": f"{LIVA_JSP_BASE}/menuPresentacion.do"},
+                )
+                self.log.info("liva %s: borrador descartado -> %s", periodo, r.text[:80])
+            except Exception:  # noqa: BLE001 — el descarte es best-effort; se loguea y no enmascara
+                self.log.warning("liva %s: no se pudo descartar el borrador", periodo)
 
     def impuestos_padron(self, cuit: str | None = None) -> list[dict]:
         """Impuestos inscriptos del CUIT en el padrón: GET /portal/api/cuit/{cuit}/tipoCuitImpuestos.

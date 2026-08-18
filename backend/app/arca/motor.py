@@ -135,6 +135,14 @@ def dj_iva(cuit_login: str, clave: str, periodo: str | None = None) -> dict | No
     return motor_http.dj_iva(cuit_login, clave, periodo=periodo)
 
 
+def liva_percepciones(cuit_login: str, clave: str, periodo: str) -> dict:
+    """Detalle por comprobante del período SIN presentar ({'ventas': zip, 'compras': zip}), con las
+    percepciones separadas. Crea y descarta un borrador en el Libro IVA. Sólo HTTP."""
+    from . import motor_http
+
+    return motor_http.liva_percepciones(cuit_login, clave, periodo=periodo)
+
+
 # --- Domicilio Fiscal Electrónico / e-ventanilla — SÓLO HTTP (afip.py) --------
 def comunicaciones(
     cuit_login: str, clave: str, cuit_objetivo: str | None = None, desde=None, hasta=None

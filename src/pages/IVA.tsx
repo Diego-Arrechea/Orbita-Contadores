@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Percent, Loader2, FileText, Info, Scale, Download, Check, AlertTriangle, Upload } from 'lucide-react';
+import { Percent, Loader2, FileText, Info, Scale, Download, Check, AlertTriangle, Upload, RefreshCw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ import {
   guardarAjustesIva,
   getInconsistenciasIva,
   getDjPresentadaIva,
+  importarPercepcionesAfip,
   importarBorradorIva,
   descargarLibroIvaDigital,
   type DireccionIva,
@@ -61,7 +62,8 @@ export function IVA() {
   const [periodo, setPeriodo] = useState<string>('');
   const [descargando, setDescargando] = useState<DireccionIva | null>(null);
   const [errorDescarga, setErrorDescarga] = useState<string | null>(null);
-  const [importando, setImportando] = useState(false);
+  // null = quieto · 'afip' = trayendo directo de AFIP · 'archivo' = subiendo un archivo
+  const [importando, setImportando] = useState<null | 'afip' | 'archivo'>(null);
   const [avisoImport, setAvisoImport] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
@@ -109,24 +111,48 @@ export function IVA() {
     [libro]
   );
 
-  async function importarBorrador(file: File) {
-    if (!cuitActivo) return;
-    setImportando(true);
+  function resumenImport(r: { actualizados: number; sin_match: number }) {
+    return (
+      `Importado: ${r.actualizados} comprobante${r.actualizados === 1 ? '' : 's'} actualizado${r.actualizados === 1 ? '' : 's'}` +
+      (r.sin_match ? ` · ${r.sin_match} sin coincidencia` : '')
+    );
+  }
+
+  function refrescarTrasImport() {
+    // Refrescar posición, libro e inconsistencias del cliente (ahora con la percepción IVA real).
+    qc.invalidateQueries({ queryKey: ['iva', 'posicion', cuitActivo] });
+    qc.invalidateQueries({ queryKey: ['iva', 'libro', cuitActivo] });
+    qc.invalidateQueries({ queryKey: ['iva', 'inconsistencias', cuitActivo] });
+  }
+
+  /** Trae el detalle del período directo de AFIP (sin archivos). Tarda un ratito: spinner largo. */
+  async function importarDeAfip() {
+    if (!cuitActivo || !periodoActivo) return;
+    setImportando('afip');
     setAvisoImport(null);
     try {
-      const r = await importarBorradorIva(cuitActivo, file);
-      setAvisoImport(
-        `Importado: ${r.actualizados} comprobante${r.actualizados === 1 ? '' : 's'} actualizado${r.actualizados === 1 ? '' : 's'}` +
-          (r.sin_match ? ` · ${r.sin_match} sin coincidencia` : '')
-      );
-      // Refrescar posición, libro e inconsistencias del cliente (ahora con la percepción IVA real).
-      qc.invalidateQueries({ queryKey: ['iva', 'posicion', cuitActivo] });
-      qc.invalidateQueries({ queryKey: ['iva', 'libro', cuitActivo] });
-      qc.invalidateQueries({ queryKey: ['iva', 'inconsistencias', cuitActivo] });
+      const r = await importarPercepcionesAfip(cuitActivo, periodoActivo);
+      setAvisoImport(resumenImport(r));
+      refrescarTrasImport();
     } catch (e) {
       setAvisoImport(mensajeDeError(e));
     } finally {
-      setImportando(false);
+      setImportando(null);
+    }
+  }
+
+  async function importarBorrador(file: File) {
+    if (!cuitActivo) return;
+    setImportando('archivo');
+    setAvisoImport(null);
+    try {
+      const r = await importarBorradorIva(cuitActivo, file);
+      setAvisoImport(resumenImport(r));
+      refrescarTrasImport();
+    } catch (e) {
+      setAvisoImport(mensajeDeError(e));
+    } finally {
+      setImportando(null);
     }
   }
 
@@ -247,18 +273,31 @@ export function IVA() {
                 </Button>
               ))}
               <Button
+                size="sm"
+                onClick={importarDeAfip}
+                disabled={importando !== null || !periodoActivo}
+                title="Trae las percepciones del período directo de AFIP y las aplica al Libro IVA. Sólo períodos con el Libro IVA aún no presentado; puede tardar un minuto."
+              >
+                {importando === 'afip' ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                {importando === 'afip' ? 'Trayendo de AFIP…' : 'Traer de AFIP'}
+              </Button>
+              <Button
                 variant="outline"
                 size="sm"
                 onClick={() => fileRef.current?.click()}
-                disabled={importando}
-                title="Importá el borrador que bajás del Portal IVA de AFIP (ZIP o CSV) para traer las percepciones reales"
+                disabled={importando !== null}
+                title="Subí el archivo del período que descargás del Portal IVA (ZIP o CSV). Es el camino para períodos con el Libro IVA ya presentado."
               >
-                {importando ? (
+                {importando === 'archivo' ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <Upload className="mr-2 h-4 w-4" />
                 )}
-                Importar de AFIP
+                Subir archivo
               </Button>
               <input
                 ref={fileRef}
