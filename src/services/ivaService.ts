@@ -2,7 +2,7 @@
  * Apartado de IVA (Libro IVA / posición). Sólo HTTP contra el backend, que además valida el gate
  * (allowlist IVA_EMAILS + admins) en cada endpoint: el front esconde el menú con puedeVerIVA().
  */
-import { apiGet, apiGetBlob, apiPatch, BASE_URL } from './apiClient';
+import { apiGet, apiGetBlob, apiPatch, apiPost, BASE_URL } from './apiClient';
 import { tokenActual } from '@/lib/cuenta';
 
 export interface IvaPeriodo {
@@ -157,6 +157,18 @@ export interface ImportBorradorResumen {
   actualizados: number;
   sin_match: number;
   total: number;
+}
+
+/** Trae el detalle del período directo de AFIP (percepciones separadas por comprobante) y lo aplica
+ *  al Libro IVA, sin archivos de por medio. Sólo períodos con el Libro IVA aún no presentado (409 si
+ *  ya se presentó o hay un borrador abierto, con el motivo en el detail). Tarda: no cortar el spinner. */
+export function importarPercepcionesAfip(
+  cuit: string,
+  periodo: string
+): Promise<ImportBorradorResumen> {
+  return apiPost<ImportBorradorResumen>(
+    `/iva/clientes/${cuit}/importar-de-afip?periodo=${encodeURIComponent(periodo)}`
+  );
 }
 
 /** Importa el borrador del Libro IVA Digital de AFIP (el ZIP o CSV que se baja del Portal IVA) para

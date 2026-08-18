@@ -447,6 +447,13 @@ def dj_iva(afip: AFIP, cuit_login: str, clave: str, periodo: str | None = None) 
     return afip.dj_iva(periodo)
 
 
+@_con_sesion
+def liva_percepciones(afip: AFIP, cuit_login: str, clave: str, periodo: str) -> dict:
+    """ZIPs por comprobante (ventas/compras) del período SIN presentar, con las percepciones
+    separadas. Crea y descarta un borrador en el Libro IVA. Ver afip.liva_percepciones()."""
+    return afip.liva_percepciones(periodo)
+
+
 # --- Puntos de venta (ABM pvel) — sólo HTTP (afip.py; el browser nunca lo hizo) -
 @_con_sesion
 def puntos_venta_pvel(afip: AFIP, cuit_login: str, clave: str) -> list[dict]:
