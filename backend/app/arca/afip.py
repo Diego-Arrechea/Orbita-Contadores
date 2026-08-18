@@ -2016,6 +2016,22 @@ class AFIP:
         self.log.info("actividades: %d declarada(s) para %s", len(out), cuit or self.cuit)
         return out
 
+    def emails(self, cuit: str | None = None) -> list[str]:
+        """Mails de contacto REGISTRADOS del contribuyente, en el orden en que vienen. Salen del
+        mismo /persona que el nombre y el domicilio (GET cacheado por instancia: no agrega tráfico).
+        Devuelve [] si no hay o si el payload no los trae. OJO: el mail registrado seguido es el del
+        ESTUDIO que hace los trámites, no el del contribuyente — quién sirve como contacto se decide
+        en services/contactos.py, no acá."""
+        d = self._persona(cuit)
+        out: list[str] = []
+        for e in d.get("emails") or []:
+            if isinstance(e, dict):  # defensivo: hoy vienen como texto plano
+                e = e.get("direccion") or e.get("email") or e.get("descripcion") or ""
+            mail = str(e).strip().lower()
+            if "@" in mail and mail not in out:
+                out.append(mail)
+        return out
+
     @staticmethod
     def _parsear_actividades(html: str) -> list[dict]:
         """Extrae las actividades del HTML de la constancia. Cada una viene como

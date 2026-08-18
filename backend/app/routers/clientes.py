@@ -489,6 +489,9 @@ def editar_cliente(
     # no override en edicion_json. Cadena vacía = borrar el dato (se guarda NULL).
     if "emailCliente" in payload:
         cliente.email_cliente = (payload.pop("emailCliente") or "").strip() or None
+        # Lo que toca el contador pasa a ser MANUAL: contactos.recalcular_estudio no lo vuelve a
+        # tocar (ni para reemplazarlo ni para borrarlo). Borrarlo también cuenta como decisión suya.
+        cliente.email_cliente_origen = None
     if "telefonoCliente" in payload:
         cliente.telefono_cliente = (payload.pop("telefonoCliente") or "").strip() or None
     if "vencAvisos" in payload:

@@ -29,6 +29,7 @@ from ..arca.afip import (
 from ..config import settings
 from ..crypto import descifrar
 from ..scraping import miscomprobantes  # sólo helpers motor-agnósticos: ventanas() + PLAN_*
+from . import contactos
 
 
 def _texto_corto(valor: str | None, largo: int) -> str | None:
@@ -463,6 +464,15 @@ def sincronizar_padron(db: Session, cuit: str, headless: bool | None = None) -> 
     # motor_http omite la clave si el portal no las trajo, así no borramos una lista buena.
     if isinstance(datos.get("actividades"), list) and datos["actividades"]:
         cliente.actividades_json = json.dumps(datos["actividades"], ensure_ascii=False)
+    # Mails registrados del contribuyente: se guardan como CANDIDATOS y contactos.py decide cuál (si
+    # alguno) queda como contacto del cliente para el recordatorio de vencimientos. Se reevalúa el
+    # estudio ENTERO porque la regla es cruzada: un mail parece propio hasta que aparece en otra
+    # ficha. Sólo cuando la lista cambió (la primera sync del cliente, después casi nunca).
+    if isinstance(datos.get("emails"), list) and datos["emails"]:
+        candidatos = json.dumps(datos["emails"], ensure_ascii=False)
+        if candidatos != (cliente.emails_padron_json or ""):
+            cliente.emails_padron_json = candidatos
+            contactos.recalcular_estudio(db, cliente.usuario_id)
     if datos:
         db.commit()
     return datos
