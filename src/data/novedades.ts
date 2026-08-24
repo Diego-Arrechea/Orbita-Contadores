@@ -45,8 +45,7 @@ export const NOVEDADES: Novedad[] = [
     id: '2026-08-24-iva-contabilidad-suscripcion',
     fecha: '2026-08-24',
     titulo: 'IVA y Contabilidad, para todos',
-    resumen:
-      'Se habilitan los apartados de IVA y de Contabilidad en todas las cuentas, y sumamos tu suscripción en Configuración.',
+    resumen: 'Se habilitan los apartados de IVA y de Contabilidad en todas las cuentas.',
     items: [
       {
         tipo: 'nuevo',
@@ -57,11 +56,6 @@ export const NOVEDADES: Novedad[] = [
         tipo: 'nuevo',
         texto:
           'Contabilidad: el libro diario se arma solo con los comprobantes y los movimientos del extracto, y podés imputar cada uno a la cuenta que quieras, cargar asientos a mano, ver el mayor, las sumas y saldos, y cerrar el período para obtener los estados contables. Cada número te muestra de dónde sale y quién decidió que fuera así.',
-      },
-      {
-        tipo: 'nuevo',
-        texto:
-          'Mi suscripción: en Configuración sumamos una solapa con tu plan, hasta cuándo está al día tu cuenta, qué incluye cada plan y los pagos registrados. Si el vencimiento se acerca, te avisamos en el panel principal.',
       },
     ],
   },

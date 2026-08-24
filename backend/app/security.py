@@ -176,6 +176,14 @@ def usuario_contabilidad(usuario: models.Usuario = Depends(usuario_actual)) -> m
     return usuario
 
 
+def usuario_puede_suscripcion(usuario: models.Usuario) -> bool:
+    """¿Puede ver el apartado "Mi suscripción"? Por ahora NO se les muestra a los contadores: sólo
+    lo ve el equipo de Órbita (rol admin) y las sesiones impersonadas por un admin (claim 'adm' del
+    token), para poder mirar la pantalla tal como la vería el contador. Mismo bonus de impersonación
+    que facturación; al revés que IVA/Contabilidad, que reflejan el acceso real de la cuenta."""
+    return usuario.rol == "admin" or bool(getattr(usuario, "_imp_admin", False))
+
+
 def admin_actual(usuario: models.Usuario = Depends(usuario_actual)) -> models.Usuario:
     """Dependencia FastAPI: exige que el usuario logueado sea administrador (panel superadmin).
     Reusa `usuario_actual` (token válido + cuenta activa) y además chequea el rol."""
