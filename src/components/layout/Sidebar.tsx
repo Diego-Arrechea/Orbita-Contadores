@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import {
   cuentaActual,
   esAdmin,
+  esAdminReal,
   esEmpleado,
   impersonando,
   logoutCuenta,
@@ -40,7 +41,6 @@ const nav = [
   { to: '/conciliacion', label: 'Conciliación', icon: Landmark },
   { to: '/clientes/nuevo', label: 'Nuevo cliente', icon: UserPlus },
   { to: '/usuarios', label: 'Gestión de usuarios', icon: Users },
-  { to: '/suscripcion', label: 'Mi suscripción', icon: CreditCard },
   { to: '/configuracion', label: 'Configuración', icon: Settings },
   { to: '/novedades', label: 'Novedades', icon: Sparkles },
 ];
@@ -51,6 +51,19 @@ const ivaItem = { to: '/iva', label: 'IVA', icon: Percent };
 
 // Apartado de Contabilidad: mismo rollout gateado, con su propia allowlist. Va detrás de IVA.
 const contabilidadItem = { to: '/contabilidad', label: 'Contabilidad', icon: BookOpen };
+
+// "Mi suscripción": todavía NO se les muestra a los contadores. Aparece para los admins y durante
+// una impersonación (así el admin ve la pantalla como la vería el contador). Va antes de
+// Configuración; el backend valida el mismo gate.
+const suscripcionItem = { to: '/suscripcion', label: 'Mi suscripción', icon: CreditCard };
+
+/** Inserta "Mi suscripción" antes de Configuración, sólo si la sesión lo tiene habilitado. */
+function conSuscripcion(items: typeof nav): typeof nav {
+  if (!esAdminReal()) return items;
+  const i = items.findIndex(x => x.to === '/configuracion');
+  const at = i >= 0 ? i : items.length;
+  return [...items.slice(0, at), suscripcionItem, ...items.slice(at)];
+}
 
 /** Inserta los apartados gateados (IVA, Contabilidad) que la cuenta tenga habilitados, justo
  *  después de Conciliación y en ese orden. */
@@ -65,25 +78,25 @@ function conIva(items: typeof nav): typeof nav {
   return [...items.slice(0, at), ...extra, ...items.slice(at)];
 }
 
-/** Menú según la cuenta. Usuario del estudio (empleado): sin Gestión, Configuración, Novedades ni
- *  Mi suscripción (la suscripción es del titular del estudio), y
+/** Menú según la cuenta. Usuario del estudio (empleado): sin Gestión, Configuración ni Novedades, y
  *  "Nuevo cliente" sólo si el titular le dio el permiso. Cuenta plena: todo (+ Superadmin si admin).
  *  El apartado de IVA aparece sólo si la cuenta lo tiene habilitado (piloto acotado). */
 function itemsSegunCuenta() {
   if (esEmpleado()) {
     return conIva(
       nav.filter(item => {
-        if (['/usuarios', '/configuracion', '/novedades', '/suscripcion'].includes(item.to))
-          return false;
+        if (['/usuarios', '/configuracion', '/novedades'].includes(item.to)) return false;
         if (item.to === '/clientes/nuevo') return tienePermiso('nuevo_cliente');
         return true;
       })
     );
   }
   return conIva(
-    esAdmin()
-      ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
-      : nav
+    conSuscripcion(
+      esAdmin()
+        ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
+        : nav
+    )
   );
 }
 

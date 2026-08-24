@@ -1,8 +1,12 @@
 /**
  * "Mi suscripción": el plan del estudio, hasta cuándo está al día, cuánto de la cartera usa y el
- * historial de pagos. Sólo lectura para el contador (los cambios de plan y los cobros los carga el
- * equipo de Órbita desde el panel). Los usuarios del estudio no ven este apartado: la suscripción
- * es del titular.
+ * historial de pagos. Sólo lectura (los cambios de plan y los cobros los carga el equipo de Órbita
+ * desde el panel).
+ *
+ * OJO — todavía NO está abierto a los contadores: la pantalla la ven sólo los admins y las sesiones
+ * impersonadas por un admin (así se puede revisar cómo la vería el contador antes de habilitarla).
+ * El gate vive en RequireSuscripcion (front) y en usuario_puede_suscripcion (backend). Los usuarios
+ * del estudio nunca la ven: la suscripción es del titular.
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -14,6 +18,7 @@ import {
   CalendarClock,
   Check,
   CreditCard,
+  EyeOff,
   Loader2,
   MessageCircle,
   Users,
@@ -30,6 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { impersonando } from '@/lib/cuenta';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
 import {
   ESTADO_SUSCRIPCION_META,
@@ -177,6 +183,7 @@ export function Suscripcion() {
     queryFn: obtenerMiSuscripcion,
   });
   const { data: planes = [] } = useQuery({ queryKey: ['planes'], queryFn: listarPlanes });
+  const quienImpersona = impersonando();
 
   if (isLoading) {
     return (
@@ -210,6 +217,15 @@ export function Suscripcion() {
         <p className="text-base text-muted-foreground mt-2">
           Tu plan, el estado de la cuenta y los pagos registrados.
         </p>
+      </div>
+
+      {/* Recordatorio de que el apartado todavía no está abierto: sólo lo ve el equipo de Órbita
+          (y, mientras dura una impersonación, la pantalla del contador tal como la vería él). */}
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm text-muted-foreground">
+        <EyeOff className="h-4 w-4 shrink-0" />
+        {quienImpersona
+          ? 'Vista interna: así vería el contador este apartado. Todavía no lo tiene disponible.'
+          : 'Apartado interno: los contadores todavía no ven esta pantalla.'}
       </div>
 
       {/* Aviso cuando hay algo para hacer */}
@@ -311,7 +327,7 @@ export function Suscripcion() {
           <p className="mt-1 text-sm text-muted-foreground">
             Podés cambiar de plan cuando quieras: escribinos y lo ajustamos en el día.
           </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {planes.map(p => {
               const actual = p.clave === sus.plan;
               return (
@@ -343,6 +359,16 @@ export function Suscripcion() {
                   <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
                     {p.descripcion}
                   </p>
+                  {p.incluye.length > 0 && (
+                    <ul className="mt-3 space-y-1.5 border-t border-border pt-3">
+                      {p.incluye.map((linea, i) => (
+                        <li key={i} className="flex items-start gap-2 text-sm">
+                          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+                          <span className="leading-snug">{linea}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               );
             })}

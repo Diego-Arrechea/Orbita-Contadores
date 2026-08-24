@@ -42,29 +42,6 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
-    id: '2026-08-24-mi-suscripcion',
-    fecha: '2026-08-24',
-    titulo: 'Mi suscripción',
-    resumen: 'Un apartado nuevo para ver tu plan, hasta cuándo estás al día y los pagos de tu cuenta.',
-    items: [
-      {
-        tipo: 'nuevo',
-        texto:
-          'En el menú vas a encontrar "Mi suscripción": ahí ves qué plan tenés, cuánto pagás, cada cuánto se renueva y hasta qué fecha está paga tu cuenta. Si el vencimiento está cerca, te lo avisamos con tiempo.',
-      },
-      {
-        tipo: 'nuevo',
-        texto:
-          'También ves cuántos clientes estás usando de los que incluye tu plan y el detalle de los pagos registrados, con fecha, importe y período que cubre cada uno.',
-      },
-      {
-        tipo: 'nuevo',
-        texto:
-          'Desde el mismo apartado podés escribirnos para cambiar de plan, ampliar el lugar para más clientes o consultar por la facturación.',
-      },
-    ],
-  },
-  {
     id: '2026-08-24-puntos-de-venta-con-nombre',
     fecha: '2026-08-24',
     titulo: 'Los puntos de venta, con nombre',
