@@ -30,6 +30,7 @@ from ..models import ClienteARCA, Extraccion, WorkerHeartbeat
 from ..services.agro import paso_worker as agro_paso_worker
 from ..services.aportes import paso_worker as aportes_paso_worker
 from ..services.facilidades import paso_worker as facilidades_paso_worker
+from ..services.puntos_venta import paso_worker as puntos_venta_paso_worker
 from ..services.alertas import evaluar_y_notificar
 from ..services.scheduler import _sincronizar_con_reintento
 from ..services.sincronizacion import sincronizar_padron
@@ -188,6 +189,15 @@ def _worker(idx: int) -> None:
                 if rf is not None:
                     vig = sum(1 for p in rf if p.get("vigente"))
                     logger.info("[w%d] %s facilidades -> %s plan(es) (%s vigentes)", idx, cuit, len(rf), vig)
+            except Exception:  # noqa: BLE001
+                db.rollback()
+            # Puntos de venta (nombre de fantasía, sistema y domicilio de cada punto): una sola
+            # consulta por cliente, para poder mostrarlos con nombre y no sólo con el número.
+            # best-effort: si falla queda marcado el intento y se reintenta pasados unos días.
+            try:
+                rpv = puntos_venta_paso_worker(db, cuit)
+                if rpv is not None:
+                    logger.info("[w%d] %s puntos de venta -> %s", idx, cuit, len(rpv))
             except Exception:  # noqa: BLE001
                 db.rollback()
             logger.info("[w%d] %s OK -> %s comprobantes nuevos", idx, cuit, n)

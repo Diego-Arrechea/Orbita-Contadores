@@ -266,6 +266,21 @@ class FacilidadOut(BaseModel):
     vigente: bool = False
 
 
+class PuntoVentaOut(BaseModel):
+    """Un punto de venta del cliente, para mostrarlo con nombre y no sólo con el número.
+
+    `nombre` ya viene resuelto: el que puso el contador a mano gana sobre el registrado (y en ese
+    caso `manual` es True). None = ninguno de los dos, se muestra sólo el número (y el `sistema`
+    como referencia)."""
+
+    nro: int
+    nombre: str | None = None
+    manual: bool = False  # el nombre lo puso el contador
+    sistema: str | None = None  # sistema de emisión (Factura en Línea, Imprenta, Web Services…)
+    domicilio: str | None = None
+    baja: bool = False  # dado de baja (puede seguir teniendo facturación histórica)
+
+
 class ClienteOut(BaseModel):
     cuit: str
     nombre: str
@@ -341,6 +356,9 @@ class ClienteOut(BaseModel):
     facturacion_agro_total: float = 0
     # Comunicaciones NUEVAS del Domicilio Fiscal Electrónico que el contador todavía no abrió (sólo
     # las posteriores al baseline del cliente). Alimenta el aviso proactivo (alerta 'dfe').
+    # Puntos de venta del cliente con su nombre. Vacío = todavía no se consultaron y el contador
+    # tampoco les puso nombre: se muestran sólo con el número.
+    puntos_venta: list[PuntoVentaOut] = []
     comunicaciones_sin_ver: int = 0
     # ¿El contador tiene activo el monitoreo de este cliente? En false queda "pausado": no se le
     # actualizan los datos y en la lista se muestra atenuado como "Desactivado".
@@ -406,6 +424,9 @@ class EdicionClienteIn(BaseModel):
     emailCliente: str | None = None  # noqa: N815
     telefonoCliente: str | None = None  # noqa: N815
     vencAvisos: bool | None = None  # noqa: N815 — incluir al cliente en el recordatorio de vencimientos
+    # Nombre que el contador le pone a cada punto de venta: {"2": "Local Centro"}. Merge por clave;
+    # cadena vacía = borrar el nombre y volver al registrado.
+    puntosVentaNombres: dict[str, str] | None = None  # noqa: N815
 
 
 class ContactoClienteIn(BaseModel):

@@ -33,6 +33,20 @@ export interface HistorialMes {
 
 /** Un período del histórico de facturación (mes 'aaaa-mm' o año 'aaaa'), con importes nominales y
  *  expresados en pesos del mes de referencia (ajustados por inflación). */
+/** Un punto de venta del cliente, para mostrarlo con nombre y no sólo con el número. */
+export interface PuntoVentaCliente {
+  nro: number;
+  /** Nombre ya resuelto: el que puso el contador gana sobre el registrado. undefined = ninguno. */
+  nombre?: string;
+  /** El nombre lo puso el contador (se puede editar/quitar y vuelve el registrado). */
+  manual?: boolean;
+  /** Sistema de emisión del punto (Factura en Línea, Imprenta, Web Services…). */
+  sistema?: string;
+  domicilio?: string;
+  /** Dado de baja: puede seguir teniendo facturación en los períodos históricos. */
+  baja?: boolean;
+}
+
 /** Lo emitido desde un punto de venta en un período del histórico (nominal y en pesos de hoy). */
 export interface HistoricoPuntoVenta {
   puntoVenta: number;
@@ -226,6 +240,9 @@ export interface Cliente {
   /** Comunicaciones NUEVAS del Domicilio Fiscal Electrónico que el contador todavía no abrió (las que
    *  llegaron después de que empezamos a seguirle el domicilio). Dispara la alerta 'dfe'. */
   comunicacionesSinVer?: number;
+  /** Puntos de venta del cliente con su nombre, para mostrarlos junto al número en la facturación.
+   *  Vacío = no se conocen y el contador no les puso nombre (se muestra sólo el número). */
+  puntosVenta?: PuntoVentaCliente[];
   // Facturómetro oficial del padrón (ARCA): ingresos brutos 12m, tope de su categoría y la fecha de
   // corte que informa ARCA. Numerador/denominador OFICIALES del gauge (el cálculo por comprobantes
   // queda como estimación al día). Sólo titular monotributista.

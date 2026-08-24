@@ -456,10 +456,11 @@ def liva_percepciones(afip: AFIP, cuit_login: str, clave: str, periodo: str) -> 
 
 # --- Puntos de venta (ABM pvel) — sólo HTTP (afip.py; el browser nunca lo hizo) -
 @_con_sesion
-def puntos_venta_pvel(afip: AFIP, cuit_login: str, clave: str) -> list[dict]:
+def puntos_venta_pvel(afip: AFIP, cuit_login: str, clave: str, incluir_baja: bool = False) -> list[dict]:
     """Lista los PV del cliente desde el ABM (pvel): [{nro, sistema, baja, bloqueado, …}].
-    Distinto de wsfev1.listar_puntos_venta (que sólo trae los habilitados para WS)."""
-    return afip.pventa_listar(incluir_baja=False)
+    Distinto de wsfev1.listar_puntos_venta (que sólo trae los habilitados para WS). `incluir_baja`
+    suma los dados de baja: siguen apareciendo en la facturación histórica del cliente."""
+    return afip.pventa_listar(incluir_baja=incluir_baja)
 
 
 @_con_sesion

@@ -29,6 +29,7 @@ from ..schemas import (
     HistoricoOut,
     HistoricoPeriodoOut,
     HistoricoPuntoVentaOut,
+    PuntoVentaOut,
     HistorialMesOut,
     JobOut,
     LiquidacionAgroOut,
@@ -276,6 +277,49 @@ def _motivo_amigable(motivo: str | None) -> str | None:
     return motivo
 
 
+def _puntos_venta(c: models.ClienteARCA, edic: dict) -> list[PuntoVentaOut]:
+    """Puntos de venta del cliente para mostrarlos con nombre además del número.
+
+    El nombre que puso el contador a mano (edicion_json → puntosVentaNombres) GANA sobre el nombre
+    de fantasía registrado, que muy seguido viene vacío. También devuelve los puntos que sólo
+    nombró el contador: así puede nombrar los de un cliente cuyo listado todavía no se consultó.
+    """
+    try:
+        data = json.loads(c.puntos_venta_json) if c.puntos_venta_json else []
+    except (ValueError, TypeError):
+        data = []
+    alias = edic.get("puntosVentaNombres") or {}
+    if not isinstance(alias, dict):
+        alias = {}
+    salida: list[PuntoVentaOut] = []
+    for p in data if isinstance(data, list) else []:
+        nro = p.get("nro")
+        if nro is None:
+            continue
+        propio = (alias.get(str(nro)) or "").strip()
+        salida.append(
+            PuntoVentaOut(
+                nro=int(nro),
+                nombre=propio or (p.get("nombre_fantasia") or None),
+                manual=bool(propio),
+                sistema=p.get("sistema_desc") or p.get("sistema"),
+                domicilio=p.get("domicilio"),
+                baja=bool(p.get("baja")),
+            )
+        )
+    conocidos = {p.nro for p in salida}
+    for k, v in alias.items():
+        nombre = (v or "").strip()
+        try:
+            nro = int(k)
+        except (TypeError, ValueError):
+            continue
+        if nro in conocidos or not nombre:
+            continue
+        salida.append(PuntoVentaOut(nro=nro, nombre=nombre, manual=True))
+    return sorted(salida, key=lambda p: p.nro)
+
+
 def construir_cliente_out(
     db: Session, c: models.ClienteARCA, datos: dict | None = None, meses_historial: int = 12
 ) -> ClienteOut:
@@ -344,6 +388,7 @@ def construir_cliente_out(
         factura_agro=bool(c.factura_agro),
         facturacion_agro_12m=agro_12m,
         facturacion_agro_total=agro_total,
+        puntos_venta=_puntos_venta(c, edic),
         comunicaciones_sin_ver=datos["dfe"],
         activo=bool(c.activo),
     )
@@ -514,7 +559,24 @@ def editar_cliente(
         cliente.telefono_cliente = (payload.pop("telefonoCliente") or "").strip() or None
     if "vencAvisos" in payload:
         cliente.venc_avisos = bool(payload.pop("vencAvisos"))
+    # Nombres de los puntos de venta: merge por número (no pisa los que no vinieron) y cadena vacía
+    # borra el nombre propio, con lo que vuelve a mostrarse el registrado.
     actual: dict = json.loads(cliente.edicion_json) if cliente.edicion_json else {}
+    if "puntosVentaNombres" in payload:
+        nombres = actual.get("puntosVentaNombres") or {}
+        if not isinstance(nombres, dict):
+            nombres = {}
+        for k, v in (payload.pop("puntosVentaNombres") or {}).items():
+            try:
+                clave_pv = str(int(k))
+            except (TypeError, ValueError):
+                continue
+            nombre = (v or "").strip()[:60]
+            if nombre:
+                nombres[clave_pv] = nombre
+            else:
+                nombres.pop(clave_pv, None)
+        payload["puntosVentaNombres"] = nombres
     actual.update(payload)
     cliente.edicion_json = json.dumps(actual, ensure_ascii=False)
     db.add(cliente)

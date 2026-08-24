@@ -1,7 +1,10 @@
 import { Fragment, useMemo, useState } from 'react';
-import { Receipt, CalendarRange, Store } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Receipt, CalendarRange, Store, Pencil, Check, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
@@ -13,7 +16,11 @@ import {
 } from '@/components/ui/table';
 import { formatMonto, formatDate, formatCuit, cn } from '@/lib/utils';
 import { HOY } from '@/lib/monotributo';
-import type { Cliente, Comprobante } from '@/types';
+import { etiquetaPuntoVenta, formatPuntoVenta, indicePuntosVenta } from '@/lib/puntosVenta';
+import { editarCliente } from '@/services/clientesService';
+import { mensajeDeError } from '@/services/authService';
+import { qkCliente, qkClientes } from '@/lib/queries';
+import type { Cliente, Comprobante, PuntoVentaCliente } from '@/types';
 
 interface Props {
   cliente: Cliente;
@@ -68,6 +75,99 @@ function MontoComp({ c }: { c: Comprobante }) {
 type VistaPV = 'total' | 'mensual';
 
 /**
+ * Nombre de un punto de venta, con edición en el lugar. Muestra el nombre que tenga (el que le puso
+ * el contador o el que el cliente tiene registrado); si no hay ninguno, deja el sistema con el que
+ * emite como referencia y ofrece ponerle uno. Vaciar el campo borra el nombre propio y vuelve el
+ * registrado.
+ */
+function NombrePuntoVenta({
+  cliente,
+  nro,
+  pv,
+}: {
+  cliente: Cliente;
+  nro: number;
+  pv?: PuntoVentaCliente;
+}) {
+  const qc = useQueryClient();
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(pv?.nombre ?? '');
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState('');
+  const esReal = cliente.fuente === 'arca';
+
+  async function guardar() {
+    setGuardando(true);
+    setError('');
+    try {
+      await editarCliente(cliente.cuit, { puntosVentaNombres: { [nro]: valor.trim() } });
+      await qc.invalidateQueries({ queryKey: qkCliente(cliente.cuit) });
+      void qc.invalidateQueries({ queryKey: qkClientes });
+      setEditando(false);
+    } catch (e) {
+      setError(mensajeDeError(e));
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  if (editando) {
+    return (
+      <div className="mt-1 space-y-1">
+        <div className="flex items-center gap-1">
+          <Input
+            value={valor}
+            onChange={e => setValor(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') void guardar();
+              if (e.key === 'Escape') setEditando(false);
+            }}
+            maxLength={60}
+            autoFocus
+            placeholder="Nombre del punto de venta"
+            className="h-7 w-44 text-xs"
+          />
+          <Button size="icon" variant="ghost" className="h-7 w-7" disabled={guardando} onClick={() => void guardar()}>
+            <Check className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7"
+            disabled={guardando}
+            onClick={() => {
+              setValor(pv?.nombre ?? '');
+              setEditando(false);
+            }}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        {error && <div className="text-[11px] text-danger">{error}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="group/pv mt-0.5 flex items-center gap-1">
+      <span className={cn('text-[11px]', pv?.nombre ? 'text-foreground' : 'text-muted-foreground')}>
+        {pv?.nombre ?? pv?.sistema ?? 'Sin nombre'}
+      </span>
+      {esReal && (
+        <button
+          type="button"
+          onClick={() => setEditando(true)}
+          title={pv?.nombre ? 'Cambiar el nombre' : 'Ponerle un nombre'}
+          className="text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus:opacity-100 group-hover/pv:opacity-100"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
  * Detalle de la facturación de los últimos 12 meses: lista todos los comprobantes EMITIDOS que
  * componen el número, agrupados por mes, con la reconciliación bruto − notas de crédito = neto.
  *
@@ -78,6 +178,8 @@ type VistaPV = 'total' | 'mensual';
  */
 export function FacturacionDetalle({ cliente }: Props) {
   const [vistaPV, setVistaPV] = useState<VistaPV>('total');
+  // Nombre de cada punto de venta (el del contador gana sobre el registrado), por número.
+  const pvIndex = useMemo(() => indicePuntosVenta(cliente), [cliente]);
   const {
     grupos, porPV, pvs, matrizPV, bruto, nc, neto, cant, cantNC, periodo, oficial, manual,
   } = useMemo(() => {
@@ -288,8 +390,9 @@ export function FacturacionDetalle({ cliente }: Props) {
               <TableBody>
                 {porPV.map(p => (
                   <TableRow key={p.pv}>
-                    <TableCell className="font-medium tabular-nums">
-                      {p.pv.toString().padStart(5, '0')}
+                    <TableCell className="align-top">
+                      <div className="font-medium tabular-nums">{formatPuntoVenta(p.pv)}</div>
+                      <NombrePuntoVenta cliente={cliente} nro={p.pv} pv={pvIndex.get(p.pv)} />
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-muted-foreground">
                       {p.cant}
@@ -309,10 +412,11 @@ export function FacturacionDetalle({ cliente }: Props) {
                   key={p.pv}
                   className="flex items-center justify-between rounded-xl border border-border/60 p-3"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-sm font-medium tabular-nums">
-                      Punto {p.pv.toString().padStart(5, '0')}
+                      Punto {formatPuntoVenta(p.pv)}
                     </div>
+                    <NombrePuntoVenta cliente={cliente} nro={p.pv} pv={pvIndex.get(p.pv)} />
                     <div className="text-[11px] text-muted-foreground">
                       {p.cant} {p.cant === 1 ? 'comprobante' : 'comprobantes'}
                     </div>
@@ -330,8 +434,13 @@ export function FacturacionDetalle({ cliente }: Props) {
                 <TableRow>
                   <TableHead>Mes</TableHead>
                   {pvs.map(pv => (
-                    <TableHead key={pv} className="whitespace-nowrap text-right tabular-nums">
-                      {pv.toString().padStart(5, '0')}
+                    <TableHead key={pv} className="whitespace-nowrap text-right">
+                      <div className="tabular-nums">{formatPuntoVenta(pv)}</div>
+                      {pvIndex.get(pv)?.nombre && (
+                        <div className="max-w-[9rem] truncate text-[11px] font-normal normal-case text-muted-foreground">
+                          {pvIndex.get(pv)!.nombre}
+                        </div>
+                      )}
                     </TableHead>
                   ))}
                   <TableHead className="text-right">Total</TableHead>
@@ -394,7 +503,7 @@ export function FacturacionDetalle({ cliente }: Props) {
                           className="flex items-center justify-between text-[11px] text-muted-foreground"
                         >
                           <span className="tabular-nums">
-                            Punto {pv.toString().padStart(5, '0')}
+                            {etiquetaPuntoVenta(pv, pvIndex.get(pv))}
                           </span>
                           <span className="tabular-nums">{v == null ? '—' : formatMonto(v)}</span>
                         </div>

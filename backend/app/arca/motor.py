@@ -95,10 +95,10 @@ def listar_representados(cuit: str, clave: str, headless: bool | None = None) ->
 
 
 # --- Puntos de venta (ABM pvel) — SÓLO HTTP (afip.py; el browser nunca lo hizo) -
-def puntos_venta_pvel(cuit_login: str, clave: str) -> list[dict]:
+def puntos_venta_pvel(cuit_login: str, clave: str, incluir_baja: bool = False) -> list[dict]:
     from . import motor_http
 
-    return motor_http.puntos_venta_pvel(cuit_login, clave)
+    return motor_http.puntos_venta_pvel(cuit_login, clave, incluir_baja=incluir_baja)
 
 
 def crear_punto_venta(

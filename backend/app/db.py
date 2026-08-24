@@ -231,6 +231,12 @@ def _migrar_clientes_arca(conn) -> None:
     if "facilidades_chequeado_en" not in cols:
         tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
         conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN facilidades_chequeado_en {tipo}"))
+    # Puntos de venta del contribuyente (JSON) + cuándo se intentó traerlos (TIMESTAMP portable).
+    if "puntos_venta_json" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN puntos_venta_json TEXT"))
+    if "pv_chequeado_en" not in cols:
+        tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
+        conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN pv_chequeado_en {tipo}"))
     # ¿Tiene relación de dependencia? (valor auto-detectado; el override manual va en edicion_json).
     # BOOLEAN anda igual en SQLite y Postgres.
     if "relacion_dependencia" not in cols:
