@@ -63,7 +63,7 @@ import {
   ESTADO_SUSCRIPCION_META,
   borrarPago,
   editarSuscripcion,
-  listarPlanes,
+  obtenerCatalogo,
   listarSuscripciones,
   obtenerSuscripcion,
   registrarPago,
@@ -149,7 +149,8 @@ function DialogEditar({
   onOpenChange: (o: boolean) => void;
 }) {
   const qc = useQueryClient();
-  const { data: planes = [] } = useQuery({ queryKey: ['planes'], queryFn: listarPlanes });
+  const { data: catalogo } = useQuery({ queryKey: ['planes'], queryFn: obtenerCatalogo });
+  const planes = catalogo?.planes ?? [];
   const [plan, setPlan] = useState(sus.plan);
   const [estado, setEstado] = useState<EstadoSuscripcion>(sus.estado_guardado);
   const [ciclo, setCiclo] = useState<CicloSuscripcion>(sus.ciclo);

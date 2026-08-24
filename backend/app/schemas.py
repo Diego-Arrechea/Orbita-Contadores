@@ -1524,6 +1524,14 @@ class CategoriaOficialOut(BaseModel):
 # --- Suscripciones (apartado "Mi suscripción" + gestión desde el panel admin) ------------------
 
 
+class FuncionPlanOut(BaseModel):
+    """Una función del producto, para armar la comparativa (una fila por función)."""
+
+    clave: str
+    nombre: str
+    grupo: str  # encabezado bajo el que se agrupa en la tabla
+
+
 class PlanOut(BaseModel):
     """Un plan del catálogo, para mostrarlo en la comparativa."""
 
@@ -1532,7 +1540,15 @@ class PlanOut(BaseModel):
     precio: float           # de lista, por mes, en pesos
     limite_clientes: int | None = None  # None = sin tope
     descripcion: str
-    incluye: list[str] = []  # qué trae el plan, en criollo (bullets de la comparativa)
+    funciones: list[str] = []  # claves de FuncionPlanOut que incluye este plan
+
+
+class CatalogoPlanesOut(BaseModel):
+    """El catálogo completo: los planes y el universo de funciones que se comparan entre ellos.
+    Con esto el front arma la matriz (fila = función, columna = plan, tilde o cruz en el cruce)."""
+
+    planes: list[PlanOut]
+    funciones: list[FuncionPlanOut]
 
 
 class PagoSuscripcionOut(BaseModel):
