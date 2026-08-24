@@ -49,6 +49,8 @@ export interface AsientoLinea {
 
 export interface Asiento {
   id: string;
+  /** Correlativo dentro del período, en orden de fecha. */
+  numero: number;
   fecha: string; // ISO aaaa-mm-dd
   lado: 'ventas' | 'compras' | 'cobros' | 'pagos' | 'manual';
   comprobante: string;
@@ -101,6 +103,10 @@ export interface Diario {
   totales: DiarioTotales;
   /** true = el cliente todavía no tiene plan de cuentas (hay que armarlo antes del diario). */
   sinPlan: boolean;
+  /** true = el período está cerrado: sus asientos no se pueden modificar. */
+  cerrado: boolean;
+  /** Movimientos que entraron después de haber cerrado el período. */
+  nuevosDesdeCierre: number;
 }
 
 export interface PeriodoContable {
@@ -260,5 +266,67 @@ export function getMayor(
 export function getSumasYSaldos(cuit: string, desde: string, hasta: string): Promise<SumasSaldos> {
   return apiGet<SumasSaldos>(
     `/contabilidad/clientes/${cuit}/sumas-y-saldos?desde=${desde}&hasta=${hasta}`
+  );
+}
+
+export interface Cierre {
+  periodo: string; // aaaa-mm
+  label: string;
+  asientos: number;
+  debe: number;
+  haber: number;
+  cerradoPor: string;
+  cerradoEn: string | null;
+}
+
+export interface LineaEstado {
+  codigo: string;
+  cuenta: string;
+  tipo: TipoCuenta;
+  importe: number;
+}
+
+export interface Estados {
+  cuit: string;
+  desde: string;
+  hasta: string;
+  resultados: LineaEstado[];
+  ingresos: number;
+  egresos: number;
+  resultado: number;
+  activo: LineaEstado[];
+  pasivo: LineaEstado[];
+  patrimonio: LineaEstado[];
+  totalActivo: number;
+  totalPasivo: number;
+  totalPatrimonio: number;
+  resultadoAcumulado: number;
+  /** true = el activo cierra contra pasivo + patrimonio. */
+  cierra: boolean;
+  sinPlan: boolean;
+}
+
+/** Períodos ya cerrados del cliente. */
+export function getCierres(cuit: string): Promise<Cierre[]> {
+  return apiGet<Cierre[]>(`/contabilidad/clientes/${cuit}/cierres`);
+}
+
+/** Cierra el período: sus asientos quedan quietos y sus saldos guardados. */
+export function cerrarPeriodo(
+  cuit: string,
+  periodo: string
+): Promise<{ periodo: string; asientos: number; revisar: number }> {
+  return apiPost(`/contabilidad/clientes/${cuit}/cierres?periodo=${encodeURIComponent(periodo)}`);
+}
+
+/** Reabre un período cerrado. */
+export function reabrirPeriodo(cuit: string, periodo: string): Promise<{ ok: boolean }> {
+  return apiDelete<{ ok: boolean }>(`/contabilidad/clientes/${cuit}/cierres/${periodo}`);
+}
+
+/** Estado de resultados del rango + situación patrimonial a la fecha de cierre del rango. */
+export function getEstados(cuit: string, desde: string, hasta: string): Promise<Estados> {
+  return apiGet<Estados>(
+    `/contabilidad/clientes/${cuit}/estados?desde=${desde}&hasta=${hasta}`
   );
 }

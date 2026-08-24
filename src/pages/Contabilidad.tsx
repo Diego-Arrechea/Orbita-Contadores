@@ -8,6 +8,7 @@ import {
   Download,
   Info,
   Loader2,
+  Lock,
   Pencil,
   Plus,
   Sparkles,
@@ -48,6 +49,7 @@ import {
   borrarAsientoManual,
   borrarCuenta,
   borrarRegla,
+  cerrarPeriodo,
   crearAsientoManual,
   crearCuenta,
   editarCuenta,
@@ -58,6 +60,7 @@ import {
   importarPlanCuentas,
   imputarComprobante,
   quitarImputacion,
+  reabrirPeriodo,
   sembrarPlanCuentas,
   TIPOS_CUENTA,
   type Asiento,
@@ -69,13 +72,14 @@ import {
 import {
   bajarExcel,
   fechaCorta,
+  VistaEstados,
   VistaMayor,
   VistaSumas,
 } from '@/components/contabilidad/informes';
 import { mensajeDeError } from '@/services/authService';
 import { formatCurrency, formatCuit, cn } from '@/lib/utils';
 
-type VistaContable = 'diario' | 'mayor' | 'sumas' | 'plan' | 'reglas';
+type VistaContable = 'diario' | 'mayor' | 'sumas' | 'estados' | 'plan' | 'reglas';
 
 const CUENTA_VACIA: CuentaNueva = { codigo: '', nombre: '', tipo: 'activo', imputable: true };
 
@@ -217,6 +221,11 @@ export function Contabilidad() {
     qc.invalidateQueries({ queryKey: ['contabilidad', 'plan', cuitActivo] });
     qc.invalidateQueries({ queryKey: ['contabilidad', 'diario', cuitActivo] });
     qc.invalidateQueries({ queryKey: ['contabilidad', 'reglas', cuitActivo] });
+    // Los informes salen del mismo cálculo que el diario: si cambia una imputación o un cierre,
+    // mayor, sumas y saldos y estados quedan viejos.
+    for (const informe of ['mayor', 'sumas', 'estados']) {
+      qc.invalidateQueries({ queryKey: ['contabilidad', informe, cuitActivo] });
+    }
   }
 
   async function conAviso(accion: () => Promise<string>) {
@@ -348,6 +357,7 @@ export function Contabilidad() {
                 <TabsTrigger value="diario">Libro diario</TabsTrigger>
                 <TabsTrigger value="mayor">Mayor</TabsTrigger>
                 <TabsTrigger value="sumas">Sumas y saldos</TabsTrigger>
+                <TabsTrigger value="estados">Estados</TabsTrigger>
                 <TabsTrigger value="plan">Plan de cuentas</TabsTrigger>
                 <TabsTrigger value="reglas">Imputaciones</TabsTrigger>
               </TabsList>
@@ -443,6 +453,13 @@ export function Contabilidad() {
           periodos={periodos}
           cliente={clienteActivo?.nombre ?? cuitActivo}
         />
+      ) : vista === 'estados' ? (
+        <VistaEstados
+          cuit={cuitActivo}
+          periodo={periodoActivo}
+          periodos={periodos}
+          cliente={clienteActivo?.nombre ?? cuitActivo}
+        />
       ) : vista === 'plan' ? (
         <VistaPlan cuit={cuitActivo} plan={plan} onCambio={refrescar} />
       ) : (
@@ -510,6 +527,24 @@ function VistaDiario({
   onCambio: () => void;
 }) {
   const [nuevoAbierto, setNuevoAbierto] = useState(false);
+  const [cerrando, setCerrando] = useState(false);
+  const [errorCierre, setErrorCierre] = useState<string | null>(null);
+  const cerrado = diario?.cerrado ?? false;
+
+  async function cambiarCierre() {
+    if (!diario) return;
+    setCerrando(true);
+    setErrorCierre(null);
+    try {
+      if (cerrado) await reabrirPeriodo(cuit, diario.periodo);
+      else await cerrarPeriodo(cuit, diario.periodo);
+      onCambio();
+    } catch (e) {
+      setErrorCierre(mensajeDeError(e));
+    } finally {
+      setCerrando(false);
+    }
+  }
 
   function exportar() {
     if (!diario) return;
@@ -591,16 +626,56 @@ function VistaDiario({
           <Totalizador label="Total al debe" valor={formatCurrency(t.debe)} />
           <Totalizador label="Total al haber" valor={formatCurrency(t.haber)} />
         </div>
-        <div className="mt-4 flex flex-wrap justify-end gap-2 border-t pt-4">
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+          {cerrado && (
+            <Badge variant="outline" className="mr-auto border-success/50 bg-success/10 text-success">
+              Período cerrado
+            </Badge>
+          )}
           <Button variant="outline" size="sm" onClick={exportar}>
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
-          {botonAgregar}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={cambiarCierre}
+            disabled={cerrando}
+            title={
+              cerrado
+                ? 'Reabrí el período para poder volver a modificar sus asientos'
+                : 'Cerrá el período: sus asientos quedan quietos y sus saldos, guardados'
+            }
+          >
+            {cerrando ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Lock className="mr-2 h-4 w-4" />
+            )}
+            {cerrado ? 'Reabrir período' : 'Cerrar período'}
+          </Button>
+          {!cerrado && botonAgregar}
         </div>
+        {errorCierre && (
+          <div className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {errorCierre}
+          </div>
+        )}
       </Card>
 
-      {t.revisar > 0 && (
+      {diario.nuevosDesdeCierre > 0 && (
+        <Card className="flex items-start gap-2 border-warning/40 bg-warning/5 px-4 py-3 text-sm">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-foreground" />
+          <span>
+            {diario.nuevosDesdeCierre === 1
+              ? 'Entró 1 movimiento con fecha de este período después de haberlo cerrado.'
+              : `Entraron ${diario.nuevosDesdeCierre} movimientos con fecha de este período después de haberlo cerrado.`}{' '}
+            Revisá si corresponde rectificar y volvé a cerrarlo para actualizar los saldos.
+          </span>
+        </Card>
+      )}
+
+      {t.revisar > 0 && !cerrado && (
         <Card className="flex items-start gap-2 border-warning/40 bg-warning/5 px-4 py-3 text-sm">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-foreground" />
           <span>
@@ -612,7 +687,14 @@ function VistaDiario({
 
       <div className="space-y-3">
         {diario.asientos.map(a => (
-          <AsientoCard key={a.id} asiento={a} cuit={cuit} cuentas={cuentas} onCambio={onCambio} />
+          <AsientoCard
+            key={a.id}
+            asiento={a}
+            cuit={cuit}
+            cuentas={cuentas}
+            bloqueado={cerrado}
+            onCambio={onCambio}
+          />
         ))}
       </div>
 
@@ -646,11 +728,14 @@ function AsientoCard({
   asiento,
   cuit,
   cuentas,
+  bloqueado,
   onCambio,
 }: {
   asiento: Asiento;
   cuit: string;
   cuentas: Cuenta[];
+  /** El período está cerrado: se puede mirar, no tocar. */
+  bloqueado: boolean;
   onCambio: () => void;
 }) {
   const [editando, setEditando] = useState(false);
@@ -662,7 +747,7 @@ function AsientoCard({
   const imputables = useMemo(() => cuentas.filter(c => c.imputable), [cuentas]);
   const esManual = asiento.origen === 'manual';
   const esBanco = asiento.origen === 'banco';
-  const puedeImputar = !esManual && !!asiento.cuentaImputada;
+  const puedeImputar = !bloqueado && !esManual && !!asiento.cuentaImputada;
   const etiquetaLado = {
     ventas: 'Venta',
     compras: 'Compra',
@@ -695,6 +780,7 @@ function AsientoCard({
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b bg-muted/20 px-4 py-2.5">
+        <span className="text-xs tabular-nums text-muted-foreground">#{asiento.numero}</span>
         <span className="text-sm font-medium">{asiento.comprobante}</span>
         <Badge variant="outline" className="text-xs">
           {etiquetaLado}
@@ -712,7 +798,7 @@ function AsientoCard({
               <Pencil className="h-4 w-4" />
             </Button>
           )}
-          {esManual && (
+          {esManual && !bloqueado && (
             <Button
               variant="ghost"
               size="sm"
