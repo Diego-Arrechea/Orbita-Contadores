@@ -23,6 +23,7 @@ from .routers import (
     movimientos,
     notificaciones,
     onboarding,
+    suscripciones,
     vencimientos,
 )
 from .services.scheduler import detener_scheduler, iniciar_scheduler
@@ -65,6 +66,8 @@ app.include_router(iva.router)
 app.include_router(movimientos.router)
 app.include_router(notificaciones.router)
 app.include_router(onboarding.router)
+app.include_router(suscripciones.router)
+app.include_router(suscripciones.router_admin)
 app.include_router(vencimientos.router)
 
 

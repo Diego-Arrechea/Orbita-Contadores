@@ -9,6 +9,7 @@ import {
   UserPlus,
   Users,
   Settings,
+  CreditCard,
   Sparkles,
   Orbit,
   LogOut,
@@ -39,6 +40,7 @@ const nav = [
   { to: '/conciliacion', label: 'Conciliación', icon: Landmark },
   { to: '/clientes/nuevo', label: 'Nuevo cliente', icon: UserPlus },
   { to: '/usuarios', label: 'Gestión de usuarios', icon: Users },
+  { to: '/suscripcion', label: 'Mi suscripción', icon: CreditCard },
   { to: '/configuracion', label: 'Configuración', icon: Settings },
   { to: '/novedades', label: 'Novedades', icon: Sparkles },
 ];
@@ -63,14 +65,16 @@ function conIva(items: typeof nav): typeof nav {
   return [...items.slice(0, at), ...extra, ...items.slice(at)];
 }
 
-/** Menú según la cuenta. Usuario del estudio (empleado): sin Gestión, Configuración ni Novedades, y
+/** Menú según la cuenta. Usuario del estudio (empleado): sin Gestión, Configuración, Novedades ni
+ *  Mi suscripción (la suscripción es del titular del estudio), y
  *  "Nuevo cliente" sólo si el titular le dio el permiso. Cuenta plena: todo (+ Superadmin si admin).
  *  El apartado de IVA aparece sólo si la cuenta lo tiene habilitado (piloto acotado). */
 function itemsSegunCuenta() {
   if (esEmpleado()) {
     return conIva(
       nav.filter(item => {
-        if (['/usuarios', '/configuracion', '/novedades'].includes(item.to)) return false;
+        if (['/usuarios', '/configuracion', '/novedades', '/suscripcion'].includes(item.to))
+          return false;
         if (item.to === '/clientes/nuevo') return tienePermiso('nuevo_cliente');
         return true;
       })

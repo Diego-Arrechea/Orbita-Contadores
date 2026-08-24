@@ -27,7 +27,7 @@ simplemente *tuviera* el dato. Los comentarios de código (para devs) sí pueden
   - `schemas.py` — Pydantic (in/out). `security.py` — JWT + bcrypt + deps `usuario_actual`/`admin_actual`.
   - `db.py` — engine + `asegurar_columnas()` (migración ligera, ver abajo).
   - `routers/` — un router por dominio (auth, admin, clientes, configuracion, movimientos,
-    notificaciones, onboarding). Se registran en `main.py`.
+    notificaciones, onboarding, suscripciones). Se registran en `main.py`.
   - `arca/`, `scraping/`, `services/` — integración con ARCA y lógica de negocio.
 - `deploy/docker/` — docker-compose + `.env.example` para el VPS.
 
