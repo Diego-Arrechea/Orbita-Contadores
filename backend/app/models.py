@@ -563,6 +563,34 @@ class LineaAsientoManual(Base):
     haber: Mapped[float] = mapped_column(Numeric(15, 2), default=0)
 
 
+class CierreContable(Base):
+    """Un período contable cerrado: lo que se declaró queda quieto.
+
+    Cerrar hace dos cosas. (1) Congela: no se puede cambiar la imputación de un movimiento con fecha
+    en ese período, ni agregar o borrar asientos manuales ahí. (2) Guarda los SALDOS acumulados al
+    cierre (`saldos_json` = {código: saldo}), así los informes de los meses siguientes arrancan de
+    ahí en vez de recalcular todo el historial del cliente.
+
+    `asientos`, `debe` y `haber` son la foto del período al momento de cerrarlo: si después aparece
+    un comprobante con fecha vieja (la sincronización con el organismo no sabe de nuestros cierres),
+    la diferencia se le avisa al contador."""
+
+    __tablename__ = "cierres_contables"
+    __table_args__ = (UniqueConstraint("cuit", "periodo", name="uq_cierre"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cuit: Mapped[str] = mapped_column(String(11), ForeignKey("clientes_arca.cuit"), index=True)
+    periodo: Mapped[str] = mapped_column(String(7))  # aaaa-mm
+    saldos_json: Mapped[str] = mapped_column(Text, default="{}")
+    asientos: Mapped[int] = mapped_column(Integer, default=0)
+    debe: Mapped[float] = mapped_column(Numeric(15, 2), default=0)
+    haber: Mapped[float] = mapped_column(Numeric(15, 2), default=0)
+    cerrado_por: Mapped[str] = mapped_column(String(120), default="")
+    cerrado_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class LiquidacionAgro(Base):
     """Liquidación Electrónica del sector primario (agro) de un cliente productor.
 

@@ -412,9 +412,20 @@ def _saldos_hasta(
     db: Session, cuit: str, hasta: dt.date, nombres: dict, reglas: list, imputaciones: dict
 ) -> dict[str, float]:
     """Saldo (debe − haber) de cada cuenta con todo lo anterior a `hasta`. Es el 'saldo anterior'
-    con el que arrancan el mayor y las sumas y saldos."""
+    con el que arrancan el mayor y las sumas y saldos.
+
+    Si hay un período CERRADO que llega hasta antes de esa fecha, arranca de los saldos que quedaron
+    guardados en ese cierre y sólo recorre lo posterior: sin eso, cada informe tendría que rearmar
+    todos los asientos del cliente desde el principio."""
+    base = _cierre_base(db, cuit, hasta)
     saldos: dict[str, float] = {}
-    for asiento in asientos_entre(db, cuit, None, hasta, nombres, reglas, imputaciones):
+    arranque = None
+    if base is not None:
+        saldos = {k: float(v) for k, v in json.loads(base.saldos_json or "{}").items()}
+        arranque = _inicio_siguiente(base.periodo)
+        if arranque >= hasta:
+            return saldos
+    for asiento in asientos_entre(db, cuit, arranque, hasta, nombres, reglas, imputaciones):
         for linea in asiento["lineas"]:
             saldos[linea["codigo"]] = round(
                 saldos.get(linea["codigo"], 0) + linea["debe"] - linea["haber"], 2
@@ -435,6 +446,10 @@ def diario(db: Session, cuit: str, periodo: str) -> dict:
 
     desde, hasta = rango_mes(periodo)
     asientos = asientos_entre(db, cuit, desde, hasta, nombres, reglas, imputaciones)
+    for numero, asiento in enumerate(asientos, start=1):
+        asiento["numero"] = numero  # correlativo dentro del período, en orden de fecha
+    cie = models.CierreContable
+    cierre = db.scalar(select(cie).where(cie.cuit == cuit, cie.periodo == periodo))
     debe = round(sum(linea["debe"] for a in asientos for linea in a["lineas"]), 2)
     haber = round(sum(linea["haber"] for a in asientos for linea in a["lineas"]), 2)
     return {
@@ -448,6 +463,12 @@ def diario(db: Session, cuit: str, periodo: str) -> dict:
             "revisar": sum(1 for a in asientos if a["revisar"]),
         },
         "sinPlan": False,
+        "cerrado": cierre is not None,
+        # Movimientos que entraron DESPUÉS de cerrar (la sincronización no sabe de nuestros cierres):
+        # el contador tiene que decidir si rectifica.
+        "nuevosDesdeCierre": (
+            max(0, len(asientos) - cierre.asientos) if cierre is not None else 0
+        ),
     }
 
 
@@ -507,6 +528,7 @@ def guardar_imputacion(
         lado = "ventas" if comp.direccion == "emitido" else "compras"
         doc = _solo_digitos(comp.doc_nro)
         texto = (comp.contraparte_nombre or "").strip()
+    _exigir_abierto(db, cuit, mov.fecha if es_banco else comp.fecha)
 
     imp = models.ImputacionComprobante
     actual = db.scalar(select(imp).where(imp.cuit == cuit, imp.comprobante_id == comprobante_id))
@@ -646,6 +668,7 @@ def asientos_manuales(
 
 def crear_asiento_manual(db: Session, cuit: str, datos, email: str) -> int:
     """Crea un asiento manual (el schema ya validó que cierre). Devuelve su id."""
+    _exigir_abierto(db, cuit, datos.fecha)
     for linea in datos.lineas:
         _cuenta_imputable(db, cuit, linea.cuentaId)
     cabecera = models.AsientoManual(
@@ -669,6 +692,7 @@ def borrar_asiento_manual(db: Session, cuit: str, asiento_id: int) -> bool:
     cabecera = db.get(models.AsientoManual, asiento_id)
     if cabecera is None or cabecera.cuit != cuit:
         return False
+    _exigir_abierto(db, cuit, cabecera.fecha)
     lin = models.LineaAsientoManual
     for fila in db.execute(select(lin).where(lin.asiento_id == asiento_id)).scalars():
         db.delete(fila)
@@ -866,3 +890,180 @@ def movimiento_por_id(db: Session, cuit: str, asiento_id: str) -> models.Movimie
     if mov is None or mov.cuit != cuit:
         raise ValueError("No encontramos ese movimiento.")
     return mov
+
+
+# --- Cierre de período ---------------------------------------------------------------------------
+def _periodo_de(fecha: dt.date) -> str:
+    return fecha.strftime("%Y-%m")
+
+
+def _inicio_siguiente(periodo: str) -> dt.date:
+    """Primer día del mes SIGUIENTE al período: hasta ahí llegan los saldos de su cierre."""
+    return rango_mes(periodo)[1]
+
+
+def cierres_de(db: Session, cuit: str) -> list[models.CierreContable]:
+    """Períodos cerrados del cliente, del más viejo al más nuevo."""
+    cie = models.CierreContable
+    return list(db.execute(
+        select(cie).where(cie.cuit == cuit).order_by(cie.periodo)
+    ).scalars())
+
+
+def periodo_cerrado(db: Session, cuit: str, fecha: dt.date) -> str | None:
+    """El período cerrado en el que cae esa fecha, o None si está abierto."""
+    cie = models.CierreContable
+    periodo = _periodo_de(fecha)
+    existe = db.scalar(select(cie).where(cie.cuit == cuit, cie.periodo == periodo))
+    return periodo if existe is not None else None
+
+
+def _exigir_abierto(db: Session, cuit: str, fecha: dt.date) -> None:
+    """Corta si la fecha cae en un período ya cerrado (hay que reabrirlo para tocarlo)."""
+    cerrado = periodo_cerrado(db, cuit, fecha)
+    if cerrado:
+        raise ValueError(
+            f"{label_periodo(cerrado)} está cerrado. Reabrí el período si necesitás modificarlo."
+        )
+
+
+def _cierre_base(db: Session, cuit: str, hasta: dt.date) -> models.CierreContable | None:
+    """El último cierre cuyos saldos sirven de punto de partida para calcular hasta `hasta`
+    (exclusivo). Evita recorrer todo el historial del cliente en cada informe."""
+    candidatos = [c for c in cierres_de(db, cuit) if _inicio_siguiente(c.periodo) <= hasta]
+    return candidatos[-1] if candidatos else None
+
+
+def cerrar_periodo(db: Session, cuit: str, periodo: str, email: str) -> dict:
+    """Cierra el período: guarda los saldos acumulados y la foto de sus asientos. Idempotente por
+    (cuit, período): volver a cerrarlo actualiza la foto."""
+    if not cuentas_de(db, cuit):
+        raise ValueError("Armá el plan de cuentas antes de cerrar un período.")
+    _, hasta = rango_mes(periodo)
+    cie = models.CierreContable
+    cierre = db.scalar(select(cie).where(cie.cuit == cuit, cie.periodo == periodo))
+    if cierre is not None:
+        # Volver a cerrar recalcula: si el cierre viejo siguiera ahí, sus propios saldos se usarían
+        # como punto de partida y la foto quedaría igual aunque hayan entrado movimientos nuevos.
+        db.delete(cierre)
+        db.flush()
+
+    datos = diario(db, cuit, periodo)
+    saldos = _saldos_hasta(db, cuit, hasta, *_contexto(db, cuit)[1:])
+
+    cierre = models.CierreContable(cuit=cuit, periodo=periodo, cerrado_por=email)
+    db.add(cierre)
+    cierre.saldos_json = json.dumps({k: v for k, v in saldos.items() if v})
+    cierre.asientos = datos["totales"]["asientos"]
+    cierre.debe = datos["totales"]["debe"]
+    cierre.haber = datos["totales"]["haber"]
+    cierre.cerrado_por = email
+    cierre.cerrado_en = dt.datetime.now(dt.timezone.utc)
+    db.commit()
+    return {
+        "periodo": periodo,
+        "asientos": cierre.asientos,
+        "revisar": datos["totales"]["revisar"],
+    }
+
+
+def reabrir_periodo(db: Session, cuit: str, periodo: str) -> bool:
+    """Reabre un período cerrado. False si no estaba cerrado."""
+    cie = models.CierreContable
+    cierre = db.scalar(select(cie).where(cie.cuit == cuit, cie.periodo == periodo))
+    if cierre is None:
+        return False
+    db.delete(cierre)
+    db.commit()
+    return True
+
+
+# --- Estados contables ---------------------------------------------------------------------------
+# Los tipos de cuenta que van a cada estado. El resultado acumulado entra al patrimonio para que el
+# activo cierre contra pasivo + patrimonio.
+_TIPOS_PATRIMONIALES = ("activo", "pasivo", "patrimonio")
+_TIPOS_RESULTADO = ("resultado_positivo", "resultado_negativo")
+
+
+def estados(db: Session, cuit: str, desde: dt.date, hasta: dt.date) -> dict:
+    """Estado de resultados del rango + situación patrimonial a la fecha de cierre del rango.
+
+    El estado de resultados toma los movimientos ENTRE las dos fechas (el ejercicio que elija el
+    contador). La situación patrimonial toma los saldos ACUMULADOS hasta `hasta`, con el resultado
+    acumulado sumado al patrimonio: por eso activo = pasivo + patrimonio."""
+    cuentas, nombres, reglas, imputaciones = _contexto(db, cuit)
+    if not cuentas:
+        return {
+            "cuit": cuit, "desde": desde.isoformat(), "hasta": hasta.isoformat(),
+            "resultados": [], "ingresos": 0, "egresos": 0, "resultado": 0,
+            "activo": [], "pasivo": [], "patrimonio": [],
+            "totalActivo": 0, "totalPasivo": 0, "totalPatrimonio": 0,
+            "resultadoAcumulado": 0, "cierra": True, "sinPlan": True,
+        }
+
+    fin = hasta + dt.timedelta(days=1)
+    por_codigo = {c.codigo: c for c in cuentas}
+    acumulados = _saldos_hasta(db, cuit, fin, nombres, reglas, imputaciones)
+
+    # Resultados del rango: sólo los movimientos de esas fechas.
+    del_rango: dict[str, float] = {}
+    for asiento in asientos_entre(db, cuit, desde, fin, nombres, reglas, imputaciones):
+        for linea in asiento["lineas"]:
+            del_rango[linea["codigo"]] = round(
+                del_rango.get(linea["codigo"], 0) + linea["debe"] - linea["haber"], 2
+            )
+
+    resultados, ingresos, egresos = [], 0.0, 0.0
+    for codigo, saldo in sorted(del_rango.items()):
+        cuenta = por_codigo.get(codigo)
+        if cuenta is None or cuenta.tipo not in _TIPOS_RESULTADO:
+            continue
+        if not saldo:
+            continue
+        # Un ingreso tiene saldo acreedor (negativo en la convención debe − haber): se muestra en positivo.
+        importe = -saldo if cuenta.tipo == "resultado_positivo" else saldo
+        resultados.append({
+            "codigo": codigo, "cuenta": cuenta.nombre, "tipo": cuenta.tipo, "importe": importe,
+        })
+        if cuenta.tipo == "resultado_positivo":
+            ingresos = round(ingresos + importe, 2)
+        else:
+            egresos = round(egresos + importe, 2)
+
+    # Situación patrimonial: saldos acumulados a la fecha.
+    grupos: dict[str, list[dict]] = {t: [] for t in _TIPOS_PATRIMONIALES}
+    totales = {t: 0.0 for t in _TIPOS_PATRIMONIALES}
+    resultado_acumulado = 0.0
+    for codigo, saldo in sorted(acumulados.items()):
+        cuenta = por_codigo.get(codigo)
+        if cuenta is None or not saldo:
+            continue
+        if cuenta.tipo in _TIPOS_RESULTADO:
+            resultado_acumulado = round(resultado_acumulado - saldo, 2)  # ingresos − egresos
+            continue
+        # El activo se muestra en positivo cuando es deudor; pasivo y patrimonio, cuando son acreedores.
+        importe = saldo if cuenta.tipo == "activo" else -saldo
+        grupos[cuenta.tipo].append({
+            "codigo": codigo, "cuenta": cuenta.nombre, "tipo": cuenta.tipo, "importe": importe,
+        })
+        totales[cuenta.tipo] = round(totales[cuenta.tipo] + importe, 2)
+
+    total_patrimonio = round(totales["patrimonio"] + resultado_acumulado, 2)
+    return {
+        "cuit": cuit,
+        "desde": desde.isoformat(),
+        "hasta": hasta.isoformat(),
+        "resultados": resultados,
+        "ingresos": ingresos,
+        "egresos": egresos,
+        "resultado": round(ingresos - egresos, 2),
+        "activo": grupos["activo"],
+        "pasivo": grupos["pasivo"],
+        "patrimonio": grupos["patrimonio"],
+        "totalActivo": totales["activo"],
+        "totalPasivo": totales["pasivo"],
+        "totalPatrimonio": total_patrimonio,
+        "resultadoAcumulado": resultado_acumulado,
+        "cierra": abs(totales["activo"] - (totales["pasivo"] + total_patrimonio)) < 0.01,
+        "sinPlan": False,
+    }

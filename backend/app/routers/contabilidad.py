@@ -7,7 +7,8 @@ El plan de cuentas es POR CLIENTE (se siembra la plantilla estándar o se import
 usa) y el libro diario se DERIVA de los comprobantes que la app ya tiene: no se persiste, se recalcula.
 Lo que sí se guarda son las decisiones del contador — la cuenta que le fija a un comprobante, las
 reglas que memoriza por contraparte y los asientos que carga a mano. Los informes (mayor / sumas y
-saldos) salen del mismo cálculo, sobre el rango de fechas que elija el contador. Ver
+saldos) salen del mismo cálculo, sobre el rango de fechas que elija el contador, igual que los
+estados contables. Cerrar un período congela sus asientos y guarda sus saldos. Ver
 services/contabilidad.py.
 """
 from __future__ import annotations
@@ -22,9 +23,11 @@ from .. import models
 from ..db import get_db
 from ..schemas import (
     AsientoManualIn,
+    CierreOut,
     CuentaIn,
     CuentaOut,
     DiarioOut,
+    EstadosOut,
     ImputacionIn,
     IvaPeriodoOut,
     MayorOut,
@@ -322,3 +325,70 @@ def sumas_y_saldos(
     if hasta < desde:
         raise HTTPException(status_code=422, detail="La fecha de fin es anterior a la de inicio.")
     return SumasSaldosOut(**contabilidad.sumas_y_saldos(db, cuit, desde, hasta))
+
+
+@router.get("/clientes/{cuit}/cierres", response_model=list[CierreOut])
+def listar_cierres(
+    cuit: str,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """Períodos ya cerrados del cliente."""
+    _cliente_propio(db, cuit, usuario)
+    return [
+        CierreOut(
+            periodo=c.periodo,
+            label=contabilidad.label_periodo(c.periodo),
+            asientos=c.asientos or 0,
+            debe=float(c.debe or 0),
+            haber=float(c.haber or 0),
+            cerradoPor=c.cerrado_por or "",
+            cerradoEn=c.cerrado_en.isoformat() if c.cerrado_en else None,
+        )
+        for c in contabilidad.cierres_de(db, cuit)
+    ]
+
+
+@router.post("/clientes/{cuit}/cierres")
+def cerrar_periodo(
+    cuit: str,
+    periodo: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="aaaa-mm"),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """Cierra el período: sus asientos quedan quietos y sus saldos, guardados. Volver a cerrarlo
+    actualiza la foto (sirve cuando entraron movimientos con fecha vieja)."""
+    _cliente_propio(db, cuit, usuario)
+    try:
+        return contabilidad.cerrar_periodo(db, cuit, periodo, usuario.email)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.delete("/clientes/{cuit}/cierres/{periodo}")
+def reabrir_periodo(
+    cuit: str,
+    periodo: str,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """Reabre un período cerrado para poder volver a tocarlo."""
+    _cliente_propio(db, cuit, usuario)
+    if not contabilidad.reabrir_periodo(db, cuit, periodo):
+        raise HTTPException(status_code=404, detail="Ese período no está cerrado.")
+    return {"ok": True}
+
+
+@router.get("/clientes/{cuit}/estados", response_model=EstadosOut)
+def estados_contables(
+    cuit: str,
+    desde: dt.date = Query(..., description="aaaa-mm-dd"),
+    hasta: dt.date = Query(..., description="aaaa-mm-dd, inclusive"),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """Estado de resultados del rango y situación patrimonial a la fecha de cierre del rango."""
+    _cliente_propio(db, cuit, usuario)
+    if hasta < desde:
+        raise HTTPException(status_code=422, detail="La fecha de fin es anterior a la de inicio.")
+    return EstadosOut(**contabilidad.estados(db, cuit, desde, hasta))

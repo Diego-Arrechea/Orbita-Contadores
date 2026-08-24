@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
-import { Download, Loader2 } from 'lucide-react';
+import { Download, Info, Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,16 +22,18 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
+  getEstados,
   getMayor,
   getSumasYSaldos,
   type Cuenta,
+  type LineaEstado,
   type PeriodoContable,
 } from '@/services/contabilidadService';
-import { formatCurrency } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 
 /**
- * Informes del apartado de Contabilidad: el mayor de una cuenta y el balance de sumas y saldos,
- * los dos sobre el rango de fechas que elija el contador y exportables a Excel. Viven fuera de la
+ * Informes del apartado de Contabilidad: el mayor de una cuenta, el balance de sumas y saldos y los
+ * estados contables, todos sobre el rango de fechas que elija el contador y exportables a Excel. Viven fuera de la
  * página para que no siga creciendo (ver pages/Contabilidad.tsx).
  */
 /** Rangos que puede pedir el contador para el mayor y las sumas y saldos. */
@@ -466,3 +468,194 @@ export function VistaSumas({
   );
 }
 
+
+/** Bloque de un estado contable: una lista de cuentas con su total. */
+function BloqueEstado({
+  titulo,
+  lineas,
+  total,
+  extra,
+}: {
+  titulo: string;
+  lineas: LineaEstado[];
+  total: number;
+  extra?: { etiqueta: string; importe: number };
+}) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="border-b px-4 py-3 font-medium">{titulo}</div>
+      <ul className="divide-y">
+        {lineas.length === 0 && !extra && (
+          <li className="px-4 py-3 text-sm text-muted-foreground">Sin saldos</li>
+        )}
+        {lineas.map(l => (
+          <li key={l.codigo} className="flex items-baseline gap-3 px-4 py-2 text-sm">
+            <span className="tabular-nums text-muted-foreground">{l.codigo}</span>
+            <span className="min-w-0 flex-1">{l.cuenta}</span>
+            <span className="tabular-nums">{formatCurrency(l.importe)}</span>
+          </li>
+        ))}
+        {extra && (
+          <li className="flex items-baseline gap-3 px-4 py-2 text-sm">
+            <span className="min-w-0 flex-1 pl-[3.25rem] italic">{extra.etiqueta}</span>
+            <span className="tabular-nums">{formatCurrency(extra.importe)}</span>
+          </li>
+        )}
+        <li className="flex items-baseline gap-3 bg-muted/30 px-4 py-2.5 text-sm font-medium">
+          <span className="min-w-0 flex-1">Total</span>
+          <span className="tabular-nums">{formatCurrency(total)}</span>
+        </li>
+      </ul>
+    </Card>
+  );
+}
+
+/** Estados contables: resultados del rango y situación patrimonial a esa fecha. */
+export function VistaEstados({
+  cuit,
+  periodo,
+  periodos,
+  cliente,
+}: {
+  cuit: string;
+  periodo: string;
+  periodos: PeriodoContable[];
+  cliente: string;
+}) {
+  const [modo, setModo] = useState<ModoRango>('anio');
+  const { desde, hasta } = rangoDe(modo, periodo, periodos);
+
+  const { data: estados, isLoading } = useQuery({
+    queryKey: ['contabilidad', 'estados', cuit, desde, hasta],
+    queryFn: () => getEstados(cuit, desde, hasta),
+    enabled: !!cuit && !!periodo,
+  });
+
+  function exportar() {
+    if (!estados) return;
+    const filas: (string | number)[][] = [
+      ['Estados contables'],
+      [cliente, `${fechaCorta(estados.desde)} al ${fechaCorta(estados.hasta)}`],
+      [],
+      ['Estado de resultados'],
+      ['Código', 'Cuenta', 'Importe'],
+    ];
+    for (const l of estados.resultados) filas.push([l.codigo, l.cuenta, l.importe]);
+    filas.push(['', 'Ingresos', estados.ingresos]);
+    filas.push(['', 'Egresos', estados.egresos]);
+    filas.push(['', 'Resultado del período', estados.resultado]);
+    filas.push([]);
+    filas.push([`Situación patrimonial al ${fechaCorta(estados.hasta)}`]);
+    filas.push(['Código', 'Cuenta', 'Importe']);
+    for (const l of estados.activo) filas.push([l.codigo, l.cuenta, l.importe]);
+    filas.push(['', 'Total activo', estados.totalActivo]);
+    for (const l of estados.pasivo) filas.push([l.codigo, l.cuenta, l.importe]);
+    filas.push(['', 'Total pasivo', estados.totalPasivo]);
+    for (const l of estados.patrimonio) filas.push([l.codigo, l.cuenta, l.importe]);
+    filas.push(['', 'Resultado acumulado', estados.resultadoAcumulado]);
+    filas.push(['', 'Total patrimonio neto', estados.totalPatrimonio]);
+    bajarExcel(`Estados contables - ${cliente}.xlsx`, 'Estados', filas, [12, 44, 18]);
+  }
+
+  if (!periodo) {
+    return (
+      <Card className="p-8 text-center text-sm text-muted-foreground">
+        Este cliente todavía no tiene movimientos para armar los estados.
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <BarraInforme
+        modo={modo}
+        onModo={setModo}
+        desde={desde}
+        hasta={hasta}
+        onExportar={exportar}
+        puedeExportar={!!estados && !estados.sinPlan}
+      />
+
+      {isLoading || !estados ? (
+        <Card className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Armando los estados…
+        </Card>
+      ) : (
+        <>
+          <Card className="p-4">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Ingresos</div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums">
+                  {formatCurrency(estados.ingresos)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Egresos</div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums">
+                  {formatCurrency(estados.egresos)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {estados.resultado >= 0 ? 'Ganancia del período' : 'Pérdida del período'}
+                </div>
+                <div
+                  className={cn(
+                    'mt-1 text-2xl font-semibold tabular-nums',
+                    estados.resultado >= 0 ? 'text-success' : 'text-destructive'
+                  )}
+                >
+                  {formatCurrency(Math.abs(estados.resultado))}
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <BloqueEstado
+            titulo={`Estado de resultados · ${fechaCorta(estados.desde)} al ${fechaCorta(estados.hasta)}`}
+            lineas={estados.resultados}
+            total={estados.resultado}
+          />
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <BloqueEstado
+              titulo={`Activo al ${fechaCorta(estados.hasta)}`}
+              lineas={estados.activo}
+              total={estados.totalActivo}
+            />
+            <div className="space-y-4">
+              <BloqueEstado
+                titulo="Pasivo"
+                lineas={estados.pasivo}
+                total={estados.totalPasivo}
+              />
+              <BloqueEstado
+                titulo="Patrimonio neto"
+                lineas={estados.patrimonio}
+                total={estados.totalPatrimonio}
+                extra={{ etiqueta: 'Resultado acumulado', importe: estados.resultadoAcumulado }}
+              />
+            </div>
+          </div>
+
+          <div
+            className={cn(
+              'flex items-start gap-2 rounded-lg px-4 py-3 text-xs',
+              estados.cierra
+                ? 'bg-muted/30 text-muted-foreground'
+                : 'bg-destructive/10 text-destructive'
+            )}
+          >
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              {estados.cierra
+                ? 'El activo coincide con pasivo más patrimonio neto. Son estados preliminares: no incluyen amortizaciones, sueldos ni ajustes de cierre, que se cargan a mano.'
+                : 'El activo no coincide con pasivo más patrimonio neto. Revisá los asientos del período antes de usar estos números.'}
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

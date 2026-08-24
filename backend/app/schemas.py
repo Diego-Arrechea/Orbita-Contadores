@@ -1073,8 +1073,9 @@ class AsientoOut(BaseModel):
     `id` es 'manual-<n>'."""
 
     id: str
+    numero: int = 0  # correlativo dentro del período (orden de fecha)
     fecha: str  # ISO aaaa-mm-dd
-    lado: str   # ventas | compras | manual
+    lado: str   # ventas | compras | cobros | pagos | manual
     comprobante: str  # 'Factura A 00003-00001234' (o el detalle, en los manuales)
     contraparte: str
     detalle: str
@@ -1109,6 +1110,55 @@ class DiarioOut(BaseModel):
     asientos: list[AsientoOut]
     totales: DiarioTotalesOut
     # True = el cliente todavía no tiene plan de cuentas (el front ofrece sembrarlo o importarlo).
+    sinPlan: bool = False  # noqa: N815
+    cerrado: bool = False
+    # Movimientos que entraron después de cerrar el período (la sincronización no sabe de cierres).
+    nuevosDesdeCierre: int = 0  # noqa: N815
+
+
+class CierreOut(BaseModel):
+    """Un período contable cerrado."""
+
+    periodo: str  # aaaa-mm
+    label: str    # 'Julio 2026'
+    asientos: int = 0
+    debe: float = 0
+    haber: float = 0
+    cerradoPor: str = ""   # noqa: N815
+    cerradoEn: str | None = None  # noqa: N815
+
+
+class LineaEstadoOut(BaseModel):
+    """Una cuenta dentro de un estado contable, con su importe ya en positivo."""
+
+    codigo: str
+    cuenta: str
+    tipo: str
+    importe: float = 0
+
+
+class EstadosOut(BaseModel):
+    """Estado de resultados del rango + situación patrimonial a la fecha de cierre del rango.
+
+    Los resultados son los movimientos ENTRE las dos fechas; el patrimonio son los saldos ACUMULADOS
+    hasta `hasta`, con el resultado acumulado sumado al patrimonio (por eso activo = pasivo +
+    patrimonio, y `cierra` lo verifica)."""
+
+    cuit: str
+    desde: str
+    hasta: str
+    resultados: list[LineaEstadoOut] = []
+    ingresos: float = 0
+    egresos: float = 0
+    resultado: float = 0
+    activo: list[LineaEstadoOut] = []
+    pasivo: list[LineaEstadoOut] = []
+    patrimonio: list[LineaEstadoOut] = []
+    totalActivo: float = 0      # noqa: N815
+    totalPasivo: float = 0      # noqa: N815
+    totalPatrimonio: float = 0  # noqa: N815
+    resultadoAcumulado: float = 0  # noqa: N815
+    cierra: bool = True
     sinPlan: bool = False  # noqa: N815
 
 
