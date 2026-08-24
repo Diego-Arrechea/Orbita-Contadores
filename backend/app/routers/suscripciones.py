@@ -27,6 +27,8 @@ from ..schemas import (
     AdminSuscripcionesOut,
     AdminSuscripcionesResumen,
     AdminSuscripcionPatch,
+    CatalogoPlanesOut,
+    FuncionPlanOut,
     PagoSuscripcionIn,
     PagoSuscripcionOut,
     PlanOut,
@@ -120,21 +122,24 @@ def _acceso_apartado(usuario: models.Usuario = Depends(titular_actual)) -> model
     return usuario
 
 
-@router.get("/planes", response_model=list[PlanOut])
+@router.get("/planes", response_model=CatalogoPlanesOut)
 def catalogo_planes(_: models.Usuario = Depends(_acceso_apartado)):
-    """Los planes disponibles, para la comparativa del apartado. Detrás del mismo gate: la lista de
-    precios no es pública ni se les muestra todavía a los contadores."""
-    return [
-        PlanOut(
-            clave=clave,
-            nombre=datos["nombre"],
-            precio=datos["precio"],
-            limite_clientes=datos["limite_clientes"],
-            descripcion=datos["descripcion"],
-            incluye=datos.get("incluye", []),
-        )
-        for clave, datos in svc.PLANES.items()
-    ]
+    """Los planes disponibles y el universo de funciones, para la comparativa del apartado. Detrás
+    del mismo gate: la lista de precios no es pública ni se les muestra todavía a los contadores."""
+    return CatalogoPlanesOut(
+        planes=[
+            PlanOut(
+                clave=clave,
+                nombre=datos["nombre"],
+                precio=datos["precio"],
+                limite_clientes=datos["limite_clientes"],
+                descripcion=datos["descripcion"],
+                funciones=list(datos["funciones"]),
+            )
+            for clave, datos in svc.PLANES.items()
+        ],
+        funciones=[FuncionPlanOut(**f) for f in svc.FUNCIONES],
+    )
 
 
 @router.get("", response_model=SuscripcionOut)

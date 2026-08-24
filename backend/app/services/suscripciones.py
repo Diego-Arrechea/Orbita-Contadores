@@ -31,22 +31,35 @@ from .. import models
 # OJO — el plan es INFORMATIVO: no habilita ni bloquea nada todavía. El acceso a IVA y Contabilidad
 # lo sigue decidiendo su allowlist (IVA_EMAILS / CONTABILIDAD_EMAILS) y el equipo del estudio está
 # disponible para todos. Atar el acceso al plan es el paso siguiente.
-# Lo que suma cada escalón. El catálogo las CONCATENA: cada plan lista todas sus funciones, las
-# propias y las que hereda, para que se lea solo sin remitir al plan anterior.
-_FUNCIONES_MONITOREO = [
-    "Panel de todos tus monotributistas, actualizado solo",
-    "Alertas de recategorización, tope de facturación y cuota impaga",
-    "Recordatorios de vencimientos a tus clientes",
-    "Conciliación bancaria y facturación electrónica",
-]
-_FUNCIONES_ESTUDIO = [
-    "Usuarios para tu equipo, cada uno con su acceso",
-    "Cartera repartida por responsable y permisos por persona",
-]
-_FUNCIONES_COMPLETO = [
-    "Libro IVA y declaraciones juradas",
-    "Contabilidad: diario, mayor, balances y cierre de período",
-]
+# Universo de funciones del producto, en el orden en que se muestran. Cada plan referencia las que
+# incluye (por `clave`), así el front puede armar la comparativa: una fila por función, un tilde o
+# una cruz por plan. `grupo` es el encabezado bajo el que se agrupan en esa tabla.
+FUNCIONES: tuple[dict, ...] = (
+    {"clave": "panel", "grupo": "Monotributo al día",
+     "nombre": "Panel de tus monotributistas, actualizado solo"},
+    {"clave": "alertas", "grupo": "Monotributo al día",
+     "nombre": "Alertas de recategorización, tope de facturación y cuota impaga"},
+    {"clave": "vencimientos", "grupo": "Monotributo al día",
+     "nombre": "Recordatorios de vencimientos a tus clientes"},
+    {"clave": "estado_cuenta", "grupo": "Monotributo al día",
+     "nombre": "Estado de cuenta y deuda de cada cliente"},
+    {"clave": "facturacion", "grupo": "Monotributo al día",
+     "nombre": "Facturación electrónica desde la app"},
+    {"clave": "conciliacion", "grupo": "Monotributo al día",
+     "nombre": "Conciliación bancaria"},
+    {"clave": "usuarios", "grupo": "Tu estudio",
+     "nombre": "Usuarios para tu equipo, cada uno con su acceso"},
+    {"clave": "permisos", "grupo": "Tu estudio",
+     "nombre": "Cartera por responsable y permisos por persona"},
+    {"clave": "iva", "grupo": "Impuestos y contabilidad",
+     "nombre": "Libro IVA y declaraciones juradas"},
+    {"clave": "contabilidad", "grupo": "Impuestos y contabilidad",
+     "nombre": "Contabilidad: diario, mayor, balances y cierre de período"},
+)
+
+_BASE = ("panel", "alertas", "vencimientos", "estado_cuenta", "facturacion", "conciliacion")
+_EQUIPO = ("usuarios", "permisos")
+_IMPUESTOS = ("iva", "contabilidad")
 
 PLANES: dict[str, dict] = {
     "monitoreo": {
@@ -54,21 +67,21 @@ PLANES: dict[str, dict] = {
         "precio": 25000.0,
         "limite_clientes": None,
         "descripcion": "La cartera de monotributistas al día, sin tener que entrar a buscar nada.",
-        "incluye": [*_FUNCIONES_MONITOREO],
+        "funciones": _BASE,
     },
     "estudio": {
         "nombre": "Estudio",
         "precio": 60000.0,
         "limite_clientes": None,
         "descripcion": "La cartera al día, con todo tu equipo trabajando adentro.",
-        "incluye": [*_FUNCIONES_MONITOREO, *_FUNCIONES_ESTUDIO],
+        "funciones": _BASE + _EQUIPO,
     },
     "completo": {
         "nombre": "Completo",
         "precio": 110000.0,
         "limite_clientes": None,
         "descripcion": "El estudio completo: monotributo, IVA y contabilidad en un solo lugar.",
-        "incluye": [*_FUNCIONES_MONITOREO, *_FUNCIONES_ESTUDIO, *_FUNCIONES_COMPLETO],
+        "funciones": _BASE + _EQUIPO + _IMPUESTOS,
     },
 }
 

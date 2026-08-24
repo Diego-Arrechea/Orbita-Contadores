@@ -17,7 +17,20 @@ export interface Plan {
   precio: number; // de lista, por mes
   limite_clientes: number | null; // null = sin tope
   descripcion: string;
-  incluye: string[]; // qué trae el plan (bullets de la comparativa)
+  funciones: string[]; // claves de las funciones que incluye
+}
+
+/** Una función del producto: una fila de la comparativa. */
+export interface FuncionPlan {
+  clave: string;
+  nombre: string;
+  grupo: string; // encabezado bajo el que se agrupa
+}
+
+/** Planes + universo de funciones: con esto se arma la matriz plan × función. */
+export interface CatalogoPlanes {
+  planes: Plan[];
+  funciones: FuncionPlan[];
 }
 
 export interface PagoSuscripcion {
@@ -125,8 +138,8 @@ export function obtenerMiSuscripcion(): Promise<MiSuscripcion> {
   return apiGet<MiSuscripcion>('/suscripcion');
 }
 
-export function listarPlanes(): Promise<Plan[]> {
-  return apiGet<Plan[]>('/suscripcion/planes');
+export function obtenerCatalogo(): Promise<CatalogoPlanes> {
+  return apiGet<CatalogoPlanes>('/suscripcion/planes');
 }
 
 // --- Panel admin ---

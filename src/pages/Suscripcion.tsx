@@ -8,13 +8,12 @@
  * El gate vive en RequireSuscripcion (front) y en usuario_puede_suscripcion (backend). Los usuarios
  * del estudio nunca la ven: la suscripción es del titular.
  */
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Crisp } from 'crisp-sdk-web';
 import {
   AlertTriangle,
   ArrowUpRight,
-  Building2,
   CalendarClock,
   Check,
   CreditCard,
@@ -22,6 +21,7 @@ import {
   Loader2,
   MessageCircle,
   Users,
+  X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -39,8 +39,9 @@ import { impersonando } from '@/lib/cuenta';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
 import {
   ESTADO_SUSCRIPCION_META,
-  listarPlanes,
+  obtenerCatalogo,
   obtenerMiSuscripcion,
+  type CatalogoPlanes,
   type MiSuscripcion,
   type PagoSuscripcion,
 } from '@/services/suscripcionService';
@@ -98,6 +99,196 @@ function FilaDato({
         {detalle && <p className="text-xs text-muted-foreground">{detalle}</p>}
       </div>
     </div>
+  );
+}
+
+/** Tilde o cruz de un cruce plan × función. */
+function Marca({ incluido }: { incluido: boolean }) {
+  return incluido ? (
+    <span title="Incluido">
+      <Check className="mx-auto h-4 w-4 text-success" />
+      <span className="sr-only">Incluido</span>
+    </span>
+  ) : (
+    <span title="No incluido">
+      <X className="mx-auto h-4 w-4 text-muted-foreground/50" />
+      <span className="sr-only">No incluido</span>
+    </span>
+  );
+}
+
+/** El tope de clientes de un plan, en texto (no es una función que esté o no esté). */
+function tope(limite: number | null | undefined): string {
+  return limite ? `Hasta ${limite}` : 'Sin tope';
+}
+
+/**
+ * Comparativa de planes: una fila por función y una columna por plan, con tilde donde entra y cruz
+ * donde no. Así la diferencia entre planes se ve de un vistazo, sin leer tres listas casi iguales.
+ * En mobile la matriz no entra: se vuelca a una tarjeta por plan, con la misma marca por función.
+ */
+function ComparativaPlanes({
+  catalogo,
+  planActual,
+}: {
+  catalogo: CatalogoPlanes;
+  planActual: string;
+}) {
+  const { planes, funciones } = catalogo;
+
+  // Agrupa las funciones respetando el orden en que las manda el backend.
+  const grupos: { grupo: string; items: typeof funciones }[] = [];
+  for (const f of funciones) {
+    const ultimo = grupos[grupos.length - 1];
+    if (ultimo && ultimo.grupo === f.grupo) ultimo.items.push(f);
+    else grupos.push({ grupo: f.grupo, items: [f] });
+  }
+
+  return (
+    <Card className="p-6">
+      <h2 className="text-lg font-semibold tracking-tight">Planes</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Qué entra en cada uno. Podés cambiar de plan cuando quieras: escribinos y lo ajustamos en
+        el día.
+      </p>
+
+      {/* Escritorio: matriz plan × función */}
+      <div className="mt-5 hidden overflow-x-auto lg:block">
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr>
+              <th className="w-[46%] pb-4 text-left align-bottom text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Qué incluye
+              </th>
+              {planes.map(p => {
+                const actual = p.clave === planActual;
+                return (
+                  <th
+                    key={p.clave}
+                    className={cn(
+                      'px-3 pb-4 pt-1 text-center align-bottom',
+                      actual && 'rounded-t-xl bg-primary/5'
+                    )}
+                  >
+                    <span className="block font-semibold tracking-tight">{p.nombre}</span>
+                    <span className="mt-0.5 block text-lg font-semibold tabular-nums">
+                      {formatCurrency(p.precio)}
+                    </span>
+                    <span className="block text-xs font-normal text-muted-foreground">por mes</span>
+                    {actual && (
+                      <Badge variant="default" className="mt-1.5">
+                        Tu plan
+                      </Badge>
+                    )}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {grupos.map(({ grupo, items }) => (
+              <Fragment key={grupo}>
+                <tr>
+                  <td
+                    colSpan={planes.length + 1}
+                    className="pb-1 pt-5 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                  >
+                    {grupo}
+                  </td>
+                </tr>
+                {items.map(f => (
+                  <tr key={f.clave} className="border-t border-border">
+                    <td className="py-2.5 pr-6 leading-snug">{f.nombre}</td>
+                    {planes.map(p => (
+                      <td
+                        key={p.clave}
+                        className={cn(
+                          'px-3 py-2.5 text-center',
+                          p.clave === planActual && 'bg-primary/5'
+                        )}
+                      >
+                        <Marca incluido={p.funciones.includes(f.clave)} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+            <tr className="border-t border-border">
+              <td className="py-2.5 pr-6 leading-snug">Clientes que podés cargar</td>
+              {planes.map(p => (
+                <td
+                  key={p.clave}
+                  className={cn(
+                    'px-3 py-2.5 text-center text-muted-foreground',
+                    p.clave === planActual && 'rounded-b-xl bg-primary/5'
+                  )}
+                >
+                  {tope(p.limite_clientes)}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile: una tarjeta por plan con la misma marca por función */}
+      <div className="mt-5 space-y-3 lg:hidden">
+        {planes.map(p => {
+          const actual = p.clave === planActual;
+          return (
+            <div
+              key={p.clave}
+              className={cn(
+                'rounded-xl border p-4',
+                actual ? 'border-primary bg-primary/5' : 'border-border'
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="font-semibold tracking-tight">{p.nombre}</p>
+                  <p className="text-xs text-muted-foreground">{tope(p.limite_clientes)} clientes</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-lg font-semibold tabular-nums">{formatCurrency(p.precio)}</p>
+                  <p className="text-xs text-muted-foreground">por mes</p>
+                </div>
+              </div>
+              {actual && (
+                <Badge variant="default" className="mt-2 gap-1">
+                  <Check className="h-3 w-3" /> Tu plan
+                </Badge>
+              )}
+              <ul className="mt-3 space-y-1.5 border-t border-border pt-3">
+                {funciones.map(f => {
+                  const incluido = p.funciones.includes(f.clave);
+                  return (
+                    <li
+                      key={f.clave}
+                      className={cn(
+                        'flex items-start gap-2 text-sm leading-snug',
+                        !incluido && 'text-muted-foreground/70'
+                      )}
+                    >
+                      {incluido ? (
+                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+                      ) : (
+                        <X className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                      )}
+                      <span>{f.nombre}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="mt-4 text-xs text-muted-foreground">
+        Precios de referencia sin IVA. Tu cuenta puede tener condiciones acordadas aparte.
+      </p>
+    </Card>
   );
 }
 
@@ -182,7 +373,7 @@ export function Suscripcion() {
     queryKey: ['suscripcion'],
     queryFn: obtenerMiSuscripcion,
   });
-  const { data: planes = [] } = useQuery({ queryKey: ['planes'], queryFn: listarPlanes });
+  const { data: catalogo } = useQuery({ queryKey: ['planes'], queryFn: obtenerCatalogo });
   const quienImpersona = impersonando();
 
   if (isLoading) {
@@ -320,64 +511,7 @@ export function Suscripcion() {
         </div>
       </Card>
 
-      {/* Planes */}
-      {planes.length > 0 && (
-        <Card className="p-6">
-          <h2 className="text-lg font-semibold tracking-tight">Planes</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Podés cambiar de plan cuando quieras: escribinos y lo ajustamos en el día.
-          </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {planes.map(p => {
-              const actual = p.clave === sus.plan;
-              return (
-                <div
-                  key={p.clave}
-                  className={cn(
-                    'rounded-xl border p-4 flex flex-col',
-                    actual ? 'border-primary bg-primary/5' : 'border-border'
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-semibold tracking-tight">{p.nombre}</span>
-                    {actual && (
-                      <Badge variant="default" className="gap-1">
-                        <Check className="h-3 w-3" /> Tu plan
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="mt-2 text-lg font-semibold tabular-nums">
-                    {p.precio > 0 ? formatCurrency(p.precio) : 'Sin cargo'}
-                    {p.precio > 0 && (
-                      <span className="text-xs font-normal text-muted-foreground"> /mes</span>
-                    )}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
-                    <Building2 className="h-3 w-3" />
-                    {p.limite_clientes ? `Hasta ${p.limite_clientes} clientes` : 'Clientes sin tope'}
-                  </p>
-                  <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-                    {p.descripcion}
-                  </p>
-                  {p.incluye.length > 0 && (
-                    <ul className="mt-3 space-y-1.5 border-t border-border pt-3">
-                      {p.incluye.map((linea, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm">
-                          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
-                          <span className="leading-snug">{linea}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <p className="mt-4 text-xs text-muted-foreground">
-            Precios de referencia sin IVA. Tu cuenta puede tener condiciones acordadas aparte.
-          </p>
-        </Card>
-      )}
+      {catalogo && <ComparativaPlanes catalogo={catalogo} planActual={sus.plan} />}
 
       {/* Pagos */}
       <Card className="p-6">
