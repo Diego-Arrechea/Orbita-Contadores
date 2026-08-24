@@ -49,8 +49,10 @@ export interface AsientoLinea {
 
 export interface Asiento {
   id: string;
-  /** Correlativo dentro del período, en orden de fecha. */
+  /** Correlativo dentro del período. En un período cerrado, el que quedó congelado al cerrar. */
   numero: number;
+  /** true = entró después de que el período se cerrara: no estaba en la foto. */
+  nuevo: boolean;
   fecha: string; // ISO aaaa-mm-dd
   lado: 'ventas' | 'compras' | 'cobros' | 'pagos' | 'manual';
   comprobante: string;
@@ -112,6 +114,11 @@ export interface Diario {
   cerrado: boolean;
   /** Movimientos que entraron después de haber cerrado el período. */
   nuevosDesdeCierre: number;
+  /** Los totales que quedaron registrados al cerrar. */
+  debeAlCierre: number;
+  haberAlCierre: number;
+  /** true = el período cerrado ya no coincide con su foto (asientos nuevos o importes cambiados). */
+  difiereDelCierre: boolean;
 }
 
 export interface PeriodoContable {

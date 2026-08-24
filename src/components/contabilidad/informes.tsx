@@ -31,6 +31,7 @@ import {
   type PeriodoContable,
 } from '@/services/contabilidadService';
 import { cn, formatCurrency } from '@/lib/utils';
+import { usuarioActual } from '@/lib/cuenta';
 
 /**
  * Informes del apartado de Contabilidad: el mayor de una cuenta, el balance de sumas y saldos y los
@@ -71,6 +72,32 @@ function rangoDe(
 
 export function fechaCorta(iso: string): string {
   return iso.split('-').reverse().join('/');
+}
+
+/**
+ * Encabezado que lleva toda planilla que sale del apartado: de qué cliente es, de qué fechas, y
+ * quién la emitió y cuándo. Sin esto, un Excel impreso no se puede rastrear después.
+ */
+export function encabezadoAuditoria(
+  titulo: string,
+  cliente: string,
+  cuit: string,
+  rango: string,
+  extra?: string
+): (string | number)[][] {
+  const ahora = new Date();
+  const emitida =
+    `${ahora.toLocaleDateString('es-AR')} ` +
+    `${ahora.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}`;
+  const filas: (string | number)[][] = [
+    [titulo],
+    [`${cliente} · CUIT ${cuit}`],
+    [rango],
+    [`Emitida por ${usuarioActual()?.email ?? 'la cuenta'} el ${emitida}`],
+  ];
+  if (extra) filas.push([extra]);
+  filas.push([]);
+  return filas;
 }
 
 /** Descarga una planilla con una hoja y anchos de columna fijos. */
@@ -170,9 +197,12 @@ export function VistaMayor({
   function exportar() {
     if (!mayor) return;
     const filas: (string | number)[][] = [
-      [`Mayor de ${mayor.codigo} ${mayor.cuenta}`],
-      [cliente, `${fechaCorta(mayor.desde)} al ${fechaCorta(mayor.hasta)}`],
-      [],
+      ...encabezadoAuditoria(
+        `Mayor de ${mayor.codigo} ${mayor.cuenta}`,
+        cliente,
+        cuit,
+        `Del ${fechaCorta(mayor.desde)} al ${fechaCorta(mayor.hasta)}`
+      ),
       ['Fecha', 'Detalle', 'Contraparte', 'Debe', 'Haber', 'Saldo'],
       ['', 'Saldo anterior', '', '', '', mayor.saldoAnterior],
     ];
@@ -349,9 +379,12 @@ export function VistaSumas({
   function exportar() {
     if (!sumas) return;
     const filas: (string | number)[][] = [
-      ['Sumas y saldos'],
-      [cliente, `${fechaCorta(sumas.desde)} al ${fechaCorta(sumas.hasta)}`],
-      [],
+      ...encabezadoAuditoria(
+        'Sumas y saldos',
+        cliente,
+        cuit,
+        `Del ${fechaCorta(sumas.desde)} al ${fechaCorta(sumas.hasta)}`
+      ),
       ['Código', 'Cuenta', 'Saldo anterior', 'Debe', 'Haber', 'Saldo deudor', 'Saldo acreedor'],
     ];
     for (const f of sumas.filas) {
@@ -572,9 +605,15 @@ export function VistaEstados({
   function exportar() {
     if (!estados) return;
     const filas: (string | number)[][] = [
-      ['Estados contables'],
-      [cliente, `${fechaCorta(estados.desde)} al ${fechaCorta(estados.hasta)}`],
-      [],
+      ...encabezadoAuditoria(
+        'Estados contables',
+        cliente,
+        cuit,
+        `Del ${fechaCorta(estados.desde)} al ${fechaCorta(estados.hasta)}`,
+        estados.cierra
+          ? 'Preliminares: no incluyen amortizaciones, sueldos ni ajustes de cierre.'
+          : 'ATENCIÓN: el activo no coincide con pasivo más patrimonio neto.'
+      ),
       ['Estado de resultados'],
       ['Código', 'Cuenta', 'Importe'],
     ];

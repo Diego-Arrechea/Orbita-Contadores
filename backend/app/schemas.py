@@ -1074,6 +1074,8 @@ class AsientoOut(BaseModel):
 
     id: str
     numero: int = 0  # correlativo dentro del período (orden de fecha)
+    # True = entró DESPUÉS de que el período se cerrara: no estaba en la foto.
+    nuevo: bool = False
     fecha: str  # ISO aaaa-mm-dd
     lado: str   # ventas | compras | cobros | pagos | manual
     comprobante: str  # 'Factura A 00003-00001234' (o el detalle, en los manuales)
@@ -1118,6 +1120,11 @@ class DiarioOut(BaseModel):
     cerrado: bool = False
     # Movimientos que entraron después de cerrar el período (la sincronización no sabe de cierres).
     nuevosDesdeCierre: int = 0  # noqa: N815
+    # La foto que quedó al cerrar, para poder contrastarla con lo que hay ahora.
+    debeAlCierre: float = 0   # noqa: N815
+    haberAlCierre: float = 0  # noqa: N815
+    # True = el período cerrado ya no coincide con su foto (asientos nuevos o importes cambiados).
+    difiereDelCierre: bool = False  # noqa: N815
 
 
 class EventoOut(BaseModel):

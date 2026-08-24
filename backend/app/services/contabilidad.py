@@ -441,6 +441,37 @@ def _saldos_hasta(
     return saldos
 
 
+def _numerar(asientos: list[dict], cierre: models.CierreContable | None) -> None:
+    """Numera los asientos del período, en orden de fecha.
+
+    Si el período está cerrado, respeta la numeración que quedó congelada al cerrarlo: los asientos
+    que ya estaban conservan su número y los que entraron después siguen a continuación, marcados
+    como `nuevo`. Así el asiento 7 de un período cerrado sigue siendo el 7 la semana que viene."""
+    congelados: dict[str, int] = {}
+    if cierre is not None:
+        try:
+            congelados = {k: int(v) for k, v in json.loads(cierre.numeros_json or "{}").items()}
+        except (ValueError, TypeError, AttributeError):
+            congelados = {}
+
+    if not congelados:
+        for numero, asiento in enumerate(asientos, start=1):
+            asiento["numero"] = numero
+            asiento["nuevo"] = False
+        return
+
+    siguiente = max(congelados.values()) + 1
+    for asiento in asientos:
+        numero = congelados.get(asiento["id"])
+        if numero is None:
+            asiento["numero"] = siguiente
+            asiento["nuevo"] = True
+            siguiente += 1
+        else:
+            asiento["numero"] = numero
+            asiento["nuevo"] = False
+
+
 def diario(db: Session, cuit: str, periodo: str) -> dict:
     """Libro diario del período: un asiento por comprobante, ordenado por fecha. Si el cliente
     todavía no tiene plan de cuentas devuelve vacío con `sinPlan`, para que el front ofrezca
@@ -454,10 +485,9 @@ def diario(db: Session, cuit: str, periodo: str) -> dict:
 
     desde, hasta = rango_mes(periodo)
     asientos = asientos_entre(db, cuit, desde, hasta, nombres, reglas, imputaciones)
-    for numero, asiento in enumerate(asientos, start=1):
-        asiento["numero"] = numero  # correlativo dentro del período, en orden de fecha
     cie = models.CierreContable
     cierre = db.scalar(select(cie).where(cie.cuit == cuit, cie.periodo == periodo))
+    _numerar(asientos, cierre)
     debe = round(sum(linea["debe"] for a in asientos for linea in a["lineas"]), 2)
     haber = round(sum(linea["haber"] for a in asientos for linea in a["lineas"]), 2)
     return {
@@ -474,8 +504,15 @@ def diario(db: Session, cuit: str, periodo: str) -> dict:
         "cerrado": cierre is not None,
         # Movimientos que entraron DESPUÉS de cerrar (la sincronización no sabe de nuestros cierres):
         # el contador tiene que decidir si rectifica.
-        "nuevosDesdeCierre": (
-            max(0, len(asientos) - cierre.asientos) if cierre is not None else 0
+        "nuevosDesdeCierre": sum(1 for a in asientos if a.get("nuevo")),
+        "debeAlCierre": float(cierre.debe or 0) if cierre is not None else 0,
+        "haberAlCierre": float(cierre.haber or 0) if cierre is not None else 0,
+        # True = el período cerrado ya no coincide con su foto, sea por asientos nuevos o porque
+        # cambió algún importe (una cotización que se corrige, por ejemplo).
+        "difiereDelCierre": cierre is not None and (
+            len(asientos) != (cierre.asientos or 0)
+            or round(debe - float(cierre.debe or 0), 2) != 0
+            or round(haber - float(cierre.haber or 0), 2) != 0
         ),
     }
 
@@ -1042,6 +1079,7 @@ def cerrar_periodo(db: Session, cuit: str, periodo: str, email: str) -> dict:
     cierre = models.CierreContable(cuit=cuit, periodo=periodo, cerrado_por=email)
     db.add(cierre)
     cierre.saldos_json = json.dumps({k: v for k, v in saldos.items() if v})
+    cierre.numeros_json = json.dumps({a["id"]: a["numero"] for a in datos["asientos"]})
     cierre.asientos = datos["totales"]["asientos"]
     cierre.debe = datos["totales"]["debe"]
     cierre.haber = datos["totales"]["haber"]

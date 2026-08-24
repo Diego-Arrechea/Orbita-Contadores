@@ -587,6 +587,10 @@ class CierreContable(Base):
     cuit: Mapped[str] = mapped_column(String(11), ForeignKey("clientes_arca.cuit"), index=True)
     periodo: Mapped[str] = mapped_column(String(7))  # aaaa-mm
     saldos_json: Mapped[str] = mapped_column(Text, default="{}")
+    # Numeración CONGELADA del período: {id del asiento: número}. Sin esto, un comprobante con fecha
+    # vieja que aparece después corre los números de un período ya cerrado, y el asiento 7 de hoy
+    # deja de ser el 7 de mañana.
+    numeros_json: Mapped[str] = mapped_column(Text, default="{}")
     asientos: Mapped[int] = mapped_column(Integer, default=0)
     debe: Mapped[float] = mapped_column(Numeric(15, 2), default=0)
     haber: Mapped[float] = mapped_column(Numeric(15, 2), default=0)
