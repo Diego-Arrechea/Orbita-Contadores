@@ -17,6 +17,7 @@ export interface Plan {
   precio: number; // de lista, por mes
   limite_clientes: number | null; // null = sin tope
   descripcion: string;
+  incluye: string[]; // qué trae el plan (bullets de la comparativa)
 }
 
 export interface PagoSuscripcion {

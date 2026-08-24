@@ -1,8 +1,11 @@
 """Suscripciones: el apartado "Mi suscripción" del contador + la gestión desde el panel superadmin.
 
 Dos routers en el mismo archivo porque comparten toda la lógica de armado:
-  • `/api/suscripcion`        — sólo lectura, para la cuenta logueada (exige cuenta PLENA: la
-                                suscripción es del estudio, no de cada usuario del equipo).
+  • `/api/suscripcion`        — sólo lectura, para la cuenta logueada. Exige cuenta PLENA (la
+                                suscripción es del estudio, no de cada usuario del equipo) Y el
+                                gate `usuario_puede_suscripcion`: HOY los contadores todavía NO
+                                ven este apartado; sólo los admins y las sesiones impersonadas
+                                por un admin (para mirar la pantalla como la vería el contador).
   • `/api/admin/suscripciones` — listado, edición y cobranza manual (sólo rol=admin).
 
 Hoy la suscripción NO corta el servicio: vencer cambia el estado que se muestra, nada más. Ver
@@ -29,7 +32,11 @@ from ..schemas import (
     PlanOut,
     SuscripcionOut,
 )
-from ..security import admin_actual, titular_actual, usuario_actual
+from ..security import (
+    admin_actual,
+    titular_actual,
+    usuario_puede_suscripcion,
+)
 from ..services import suscripciones as svc
 from .admin import _iso, _conteos_cartera, _registrar
 
@@ -99,13 +106,24 @@ def _fila_admin(
     )
 
 
-# ── Contador: su propia suscripción (sólo lectura) ────────────────────────────
+# ── "Mi suscripción" (sólo lectura) ───────────────────────────────────────────
+
+
+def _acceso_apartado(usuario: models.Usuario = Depends(titular_actual)) -> models.Usuario:
+    """Quién puede abrir el apartado: una cuenta PLENA que además pase el gate (admin o sesión
+    impersonada por un admin). Mientras el apartado no esté abierto a los contadores, a ellos les
+    responde 403 aunque tengan sesión válida."""
+    if not usuario_puede_suscripcion(usuario):
+        raise HTTPException(
+            status_code=403, detail="No tenés habilitado el apartado de suscripción."
+        )
+    return usuario
 
 
 @router.get("/planes", response_model=list[PlanOut])
-def catalogo_planes(_: models.Usuario = Depends(usuario_actual)):
-    """Los planes disponibles, para la comparativa del apartado. Pide sesión como el resto de la
-    API: la lista de precios no es pública."""
+def catalogo_planes(_: models.Usuario = Depends(_acceso_apartado)):
+    """Los planes disponibles, para la comparativa del apartado. Detrás del mismo gate: la lista de
+    precios no es pública ni se les muestra todavía a los contadores."""
     return [
         PlanOut(
             clave=clave,
@@ -113,6 +131,7 @@ def catalogo_planes(_: models.Usuario = Depends(usuario_actual)):
             precio=datos["precio"],
             limite_clientes=datos["limite_clientes"],
             descripcion=datos["descripcion"],
+            incluye=datos.get("incluye", []),
         )
         for clave, datos in svc.PLANES.items()
     ]
@@ -120,7 +139,7 @@ def catalogo_planes(_: models.Usuario = Depends(usuario_actual)):
 
 @router.get("", response_model=SuscripcionOut)
 def mi_suscripcion(
-    db: Session = Depends(get_db), titular: models.Usuario = Depends(titular_actual)
+    db: Session = Depends(get_db), titular: models.Usuario = Depends(_acceso_apartado)
 ):
     """El plan del estudio, hasta cuándo está al día y los pagos registrados."""
     sus = svc.obtener_o_crear(db, titular)

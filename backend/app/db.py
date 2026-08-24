@@ -399,6 +399,15 @@ def _migrar_asientos_manuales(conn) -> None:
         conn.execute(text("ALTER TABLE asientos_manuales ADD COLUMN anulado_por VARCHAR(120)"))
 
 
+def _migrar_suscripciones(conn) -> None:
+    """Renombra el plan inicial `piloto` (catálogo de la primera versión) al plan base `monitoreo`,
+    que es el primero de los tres escalones actuales. Idempotente y portable: sólo toca las filas
+    que quedaron con la clave vieja."""
+    if not _columnas(conn, "suscripciones"):
+        return
+    conn.execute(text("UPDATE suscripciones SET plan = 'monitoreo' WHERE plan = 'piloto'"))
+
+
 def asegurar_columnas() -> None:
     """Migración ligera (sin Alembic): agrega columnas nuevas a tablas ya existentes.
     create_all() crea tablas faltantes pero NO altera las existentes."""
@@ -410,6 +419,7 @@ def asegurar_columnas() -> None:
         _migrar_comprobantes_emitidos(conn)
         _migrar_movimientos_bancarios(conn)
         _migrar_asientos_manuales(conn)
+        _migrar_suscripciones(conn)
 
     # El resto son migraciones de tablas que sólo existen viejas en el SQLite de desarrollo.
     if not settings.database_url.startswith("sqlite"):

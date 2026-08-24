@@ -12,6 +12,7 @@ import { Terminos, Privacidad } from '@/pages/Legal';
 import {
   cuentaActual,
   esAdmin,
+  esAdminReal,
   esEmpleado,
   puedeVerContabilidad,
   puedeVerIVA,
@@ -46,6 +47,14 @@ function RequireAdmin({ children }: { children: ReactNode }) {
 function RequireCuentaPlena({ children }: { children: ReactNode }) {
   if (!cuentaActual()) return <Navigate to="/login" replace />;
   return esEmpleado() ? <Navigate to="/" replace /> : <>{children}</>;
+}
+
+/** Apartado "Mi suscripción": todavía NO se les muestra a los contadores. Lo ven los admins y,
+ *  mientras dure una impersonación, la sesión del admin que está "entrando como" un contador (para
+ *  mirar la pantalla tal como la vería él). El backend valida el mismo gate. */
+function RequireSuscripcion({ children }: { children: ReactNode }) {
+  if (!cuentaActual()) return <Navigate to="/login" replace />;
+  return esAdminReal() ? <>{children}</> : <Navigate to="/" replace />;
 }
 
 /** Alta de clientes: para usuarios del estudio, sólo con el permiso que da el titular. */
@@ -168,9 +177,9 @@ export default function App() {
         <Route
           path="/suscripcion"
           element={
-            <RequireCuentaPlena>
+            <RequireSuscripcion>
               <Suscripcion />
-            </RequireCuentaPlena>
+            </RequireSuscripcion>
           }
         />
         <Route

@@ -1532,6 +1532,7 @@ class PlanOut(BaseModel):
     precio: float           # de lista, por mes, en pesos
     limite_clientes: int | None = None  # None = sin tope
     descripcion: str
+    incluye: list[str] = []  # qué trae el plan, en criollo (bullets de la comparativa)
 
 
 class PagoSuscripcionOut(BaseModel):

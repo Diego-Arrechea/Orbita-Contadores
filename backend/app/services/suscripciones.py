@@ -1,9 +1,9 @@
 """Suscripciones de los contadores: catálogo de planes, estado de cada cuenta y cobranza manual.
 
 Modelo mental: cada cuenta PLENA (titular o contador independiente; los empleados del estudio se
-cubren con la suscripción del titular) tiene UNA `Suscripcion`. El catálogo `PLANES` define el
-precio de lista y el tope de clientes sugerido de cada plan; la suscripción puede pisar los dos
-(casi siempre hay un acuerdo particular).
+cubren con la suscripción del titular) tiene UNA `Suscripcion`. El catálogo `PLANES` define los
+tres escalones (monitoreo → estudio → completo) con su precio de lista; la suscripción puede pisar
+el precio y el tope de clientes (casi siempre hay un acuerdo particular).
 
 La cobranza es MANUAL: el admin registra los pagos y cada pago corre el vencimiento hacia adelante.
 El vencimiento NO corta el servicio: hoy sólo cambia el estado que se muestra. El corte automático
@@ -19,37 +19,56 @@ from sqlalchemy.orm import Session
 from .. import models
 
 # --- Catálogo de planes ----------------------------------------------------------------------
+# Tres escalones, cada uno suma funciones al anterior:
+#   monitoreo → la cartera de monotributistas (el producto base)
+#   estudio   → + el equipo del estudio (usuarios propios con permisos y cartera asignada)
+#   completo  → + IVA y Contabilidad
 # `precio` es el de lista por ciclo MENSUAL, en pesos, y sirve de referencia: el precio real de cada
 # cuenta se guarda en la suscripción (Suscripcion.precio) porque suele haber acuerdos particulares.
-# `limite_clientes = None` = sin tope. Ajustar acá cuando cambie la lista de precios.
+# `limite_clientes = None` = sin tope (el diferencial entre planes son las funciones, no la cantidad
+# de clientes; el tope se ajusta por cuenta si hace falta).
+#
+# OJO — el plan es INFORMATIVO: no habilita ni bloquea nada todavía. El acceso a IVA y Contabilidad
+# lo sigue decidiendo su allowlist (IVA_EMAILS / CONTABILIDAD_EMAILS) y el equipo del estudio está
+# disponible para todos. Atar el acceso al plan es el paso siguiente.
 PLANES: dict[str, dict] = {
-    "piloto": {
-        "nombre": "Piloto",
-        "precio": 0.0,
-        "limite_clientes": None,
-        "descripcion": "Acceso completo sin cargo mientras dure la etapa de acompañamiento.",
-    },
-    "inicial": {
-        "nombre": "Inicial",
+    "monitoreo": {
+        "nombre": "Monitoreo",
         "precio": 25000.0,
-        "limite_clientes": 15,
-        "descripcion": "Para el contador que arranca: hasta 15 clientes monitoreados.",
+        "limite_clientes": None,
+        "descripcion": "La cartera de monotributistas al día, sin tener que entrar a buscar nada.",
+        "incluye": [
+            "Panel de todos tus monotributistas, actualizado solo",
+            "Alertas de recategorización, tope de facturación y cuota impaga",
+            "Recordatorios de vencimientos a tus clientes",
+            "Conciliación bancaria y facturación electrónica",
+        ],
     },
     "estudio": {
         "nombre": "Estudio",
         "precio": 60000.0,
-        "limite_clientes": 50,
-        "descripcion": "Para estudios con equipo: hasta 50 clientes y usuarios ilimitados.",
+        "limite_clientes": None,
+        "descripcion": "Todo lo anterior, más el equipo de tu estudio trabajando adentro.",
+        "incluye": [
+            "Todo lo del plan Monitoreo",
+            "Usuarios para tu equipo, cada uno con su acceso",
+            "Cartera repartida por responsable y permisos por persona",
+        ],
     },
-    "ilimitado": {
-        "nombre": "Ilimitado",
+    "completo": {
+        "nombre": "Completo",
         "precio": 110000.0,
         "limite_clientes": None,
-        "descripcion": "Cartera sin tope, con todos los apartados habilitados.",
+        "descripcion": "El estudio completo: además del monotributo, IVA y contabilidad.",
+        "incluye": [
+            "Todo lo del plan Estudio",
+            "Libro IVA y declaraciones juradas",
+            "Contabilidad: diario, mayor, balances y cierre de período",
+        ],
     },
 }
 
-PLAN_DEFAULT = "piloto"
+PLAN_DEFAULT = "monitoreo"
 
 ESTADOS = ("prueba", "activa", "vencida", "cancelada", "sin_cargo")
 CICLOS = ("mensual", "anual")
@@ -116,9 +135,12 @@ def plan_de(sus: models.Suscripcion) -> dict:
 
 def precio_efectivo(sus: models.Suscripcion) -> float:
     """Lo que efectivamente paga la cuenta por ciclo: el acuerdo particular si lo hay, si no el de
-    lista (x12 cuando el ciclo es anual)."""
+    lista (x12 cuando el ciclo es anual). Una cuenta en 'sin_cargo' paga 0 aunque su plan tenga
+    precio de lista: el plan dice qué funciones tiene, el estado dice si se le cobra."""
     if sus.precio is not None:
         return float(sus.precio)
+    if sus.estado == "sin_cargo":
+        return 0.0
     base = float(plan_de(sus)["precio"])
     return base * 12 if sus.ciclo == "anual" else base
 
