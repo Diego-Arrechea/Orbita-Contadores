@@ -3,10 +3,11 @@
 todos los endpoints por detrás del gate del front. Multi-tenant: cada contador opera únicamente
 sobre sus propios clientes (`_cliente_propio`).
 
-Primera rebanada: el plan de cuentas es POR CLIENTE (se siembra la plantilla estándar o se importa el
-que el estudio ya usa) y el libro diario se DERIVA de los comprobantes que la app ya tiene. La
-edición puntual de imputaciones, los asientos manuales y los informes (mayor / sumas y saldos) van en
-las rebanadas siguientes. Ver services/contabilidad.py.
+El plan de cuentas es POR CLIENTE (se siembra la plantilla estándar o se importa el que el estudio ya
+usa) y el libro diario se DERIVA de los comprobantes que la app ya tiene: no se persiste, se recalcula.
+Lo que sí se guarda son las decisiones del contador — la cuenta que le fija a un comprobante, las
+reglas que memoriza por contraparte y los asientos que carga a mano. Los informes (mayor / sumas y
+saldos) van en la rebanada siguiente. Ver services/contabilidad.py.
 """
 from __future__ import annotations
 
@@ -17,11 +18,14 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..db import get_db
 from ..schemas import (
+    AsientoManualIn,
     CuentaIn,
     CuentaOut,
     DiarioOut,
+    ImputacionIn,
     IvaPeriodoOut,
     PlanImportarIn,
+    ReglaOut,
 )
 from ..security import usuario_contabilidad
 from ..services import contabilidad
@@ -155,7 +159,8 @@ def borrar_cuenta(
     usuario: models.Usuario = Depends(usuario_contabilidad),
 ):
     """Borra una cuenta del plan. No se pueden borrar las que usa el asiento automático (quedaría sin
-    dónde imputar) ni las que tengan una regla de imputación apuntándoles."""
+    dónde imputar) ni las que ya tengan movimientos: una regla, un comprobante imputado a mano o un
+    renglón de un asiento manual (además, en Postgres la FK ni siquiera lo permitiría)."""
     _cliente_propio(db, cuit, usuario)
     cuenta = _cuenta_del_cliente(db, cuit, cuenta_id)
     if cuenta.codigo in contabilidad.CUENTAS_SISTEMA:
@@ -163,11 +168,17 @@ def borrar_cuenta(
             status_code=409,
             detail="Esta cuenta la usan los asientos automáticos: podés renombrarla, pero no borrarla.",
         )
-    regla = models.ReglaImputacion
-    usada = db.scalar(select(regla).where(regla.cuenta_id == cuenta.id))
-    if usada is not None:
+    en_uso = (
+        db.scalar(select(models.ReglaImputacion).where(
+            models.ReglaImputacion.cuenta_id == cuenta.id))
+        or db.scalar(select(models.ImputacionComprobante).where(
+            models.ImputacionComprobante.cuenta_id == cuenta.id))
+        or db.scalar(select(models.LineaAsientoManual).where(
+            models.LineaAsientoManual.cuenta_id == cuenta.id))
+    )
+    if en_uso is not None:
         raise HTTPException(
-            status_code=409, detail="Hay comprobantes que se imputan a esta cuenta."
+            status_code=409, detail="Hay movimientos registrados en esta cuenta."
         )
     db.delete(cuenta)
     db.commit()
@@ -184,3 +195,89 @@ def libro_diario(
     """Libro diario del período: un asiento por comprobante, armado con el plan del cliente."""
     _cliente_propio(db, cuit, usuario)
     return DiarioOut(**contabilidad.diario(db, cuit, periodo))
+
+
+@router.put("/clientes/{cuit}/imputaciones")
+def imputar(
+    cuit: str,
+    datos: ImputacionIn,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """Cambia la cuenta con la que se registra un comprobante. Con `recordar`, deja además la regla
+    para que los próximos de esa contraparte se imputen solos igual."""
+    _cliente_propio(db, cuit, usuario)
+    try:
+        return contabilidad.guardar_imputacion(
+            db, cuit, datos.comprobanteId, datos.cuentaId, usuario.email, datos.recordar
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.delete("/clientes/{cuit}/imputaciones/{comprobante_id}")
+def quitar_imputacion(
+    cuit: str,
+    comprobante_id: str,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """Vuelve el comprobante a la cuenta que le corresponde por regla (o a la sugerida)."""
+    _cliente_propio(db, cuit, usuario)
+    return contabilidad.borrar_imputacion(db, cuit, comprobante_id)
+
+
+@router.get("/clientes/{cuit}/reglas", response_model=list[ReglaOut])
+def reglas(
+    cuit: str,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """Las imputaciones automáticas que el contador fue guardando para este cliente."""
+    _cliente_propio(db, cuit, usuario)
+    return [ReglaOut(**r) for r in contabilidad.reglas_de(db, cuit)]
+
+
+@router.delete("/clientes/{cuit}/reglas/{regla_id}")
+def quitar_regla(
+    cuit: str,
+    regla_id: int,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """Borra una imputación automática: los comprobantes de esa contraparte vuelven a la cuenta
+    sugerida (lo ya imputado a mano queda como está)."""
+    _cliente_propio(db, cuit, usuario)
+    if not contabilidad.borrar_regla(db, cuit, regla_id):
+        raise HTTPException(status_code=404, detail="Regla no encontrada")
+    return {"ok": True}
+
+
+@router.post("/clientes/{cuit}/asientos")
+def crear_asiento(
+    cuit: str,
+    datos: AsientoManualIn,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """Carga un asiento a mano (lo que no sale de un comprobante: cobros, pagos, amortizaciones,
+    ajustes). El schema ya validó que cierre; acá se valida que las cuentas sean del cliente."""
+    _cliente_propio(db, cuit, usuario)
+    try:
+        return {"id": contabilidad.crear_asiento_manual(db, cuit, datos, usuario.email)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.delete("/clientes/{cuit}/asientos/{asiento_id}")
+def borrar_asiento(
+    cuit: str,
+    asiento_id: int,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """Borra un asiento manual con sus renglones."""
+    _cliente_propio(db, cuit, usuario)
+    if not contabilidad.borrar_asiento_manual(db, cuit, asiento_id):
+        raise HTTPException(status_code=404, detail="Asiento no encontrado")
+    return {"ok": True}

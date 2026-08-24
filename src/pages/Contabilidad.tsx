@@ -28,6 +28,14 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Table,
   TableBody,
   TableCell,
@@ -37,13 +45,19 @@ import {
 } from '@/components/ui/table';
 import { useClientesReales } from '@/lib/queries';
 import {
+  borrarAsientoManual,
   borrarCuenta,
+  borrarRegla,
+  crearAsientoManual,
   crearCuenta,
   editarCuenta,
   getDiario,
   getPeriodosContables,
   getPlanCuentas,
+  getReglas,
   importarPlanCuentas,
+  imputarComprobante,
+  quitarImputacion,
   sembrarPlanCuentas,
   TIPOS_CUENTA,
   type Asiento,
@@ -55,7 +69,7 @@ import {
 import { mensajeDeError } from '@/services/authService';
 import { formatCurrency, formatCuit, cn } from '@/lib/utils';
 
-type VistaContable = 'diario' | 'plan';
+type VistaContable = 'diario' | 'plan' | 'reglas';
 
 const CUENTA_VACIA: CuentaNueva = { codigo: '', nombre: '', tipo: 'activo', imputable: true };
 
@@ -196,6 +210,7 @@ export function Contabilidad() {
   function refrescar() {
     qc.invalidateQueries({ queryKey: ['contabilidad', 'plan', cuitActivo] });
     qc.invalidateQueries({ queryKey: ['contabilidad', 'diario', cuitActivo] });
+    qc.invalidateQueries({ queryKey: ['contabilidad', 'reglas', cuitActivo] });
   }
 
   async function conAviso(accion: () => Promise<string>) {
@@ -325,6 +340,7 @@ export function Contabilidad() {
             <TabsList>
               <TabsTrigger value="diario">Libro diario</TabsTrigger>
               <TabsTrigger value="plan">Plan de cuentas</TabsTrigger>
+              <TabsTrigger value="reglas">Imputaciones</TabsTrigger>
             </TabsList>
           </Tabs>
           {!!cuitActivo && (
@@ -393,9 +409,18 @@ export function Contabilidad() {
       ) : plan.length === 0 ? (
         <SinPlan onSembrar={sembrar} onImportar={() => fileRef.current?.click()} ocupado={trabajando} />
       ) : vista === 'diario' ? (
-        <VistaDiario diario={diario} cargando={cargandoDiario} periodoElegido={!!periodoActivo} />
-      ) : (
+        <VistaDiario
+          diario={diario}
+          cargando={cargandoDiario}
+          periodoElegido={!!periodoActivo}
+          cuit={cuitActivo}
+          cuentas={plan}
+          onCambio={refrescar}
+        />
+      ) : vista === 'plan' ? (
         <VistaPlan cuit={cuitActivo} plan={plan} onCambio={refrescar} />
+      ) : (
+        <VistaReglas cuit={cuitActivo} />
       )}
     </div>
   );
@@ -437,16 +462,46 @@ function SinPlan({
   );
 }
 
-/** Libro diario del período: totales + un asiento por comprobante. */
+/** Importe tipeado por el contador (formato argentino: 1.234,56) a número. */
+const parseMonto = (s: string): number => Number(s.replace(/\./g, '').replace(',', '.')) || 0;
+
+/** Libro diario del período: totales + un asiento por comprobante + los que se cargan a mano. */
 function VistaDiario({
   diario,
   cargando,
   periodoElegido,
+  cuit,
+  cuentas,
+  onCambio,
 }: {
   diario: Diario | undefined;
   cargando: boolean;
   periodoElegido: boolean;
+  cuit: string;
+  cuentas: Cuenta[];
+  onCambio: () => void;
 }) {
+  const [nuevoAbierto, setNuevoAbierto] = useState(false);
+
+  const botonAgregar = (
+    <Button size="sm" onClick={() => setNuevoAbierto(true)}>
+      <Plus className="mr-2 h-4 w-4" />
+      Agregar asiento
+    </Button>
+  );
+  const dialogo = (
+    <NuevoAsientoDialog
+      cuit={cuit}
+      cuentas={cuentas}
+      abierto={nuevoAbierto}
+      onCerrar={() => setNuevoAbierto(false)}
+      onCreado={() => {
+        setNuevoAbierto(false);
+        onCambio();
+      }}
+    />
+  );
+
   if (!periodoElegido) {
     return (
       <Card className="p-8 text-center text-sm text-muted-foreground">
@@ -463,9 +518,15 @@ function VistaDiario({
   }
   if (diario.asientos.length === 0) {
     return (
-      <Card className="p-8 text-center text-sm text-muted-foreground">
-        No hay comprobantes en este período.
-      </Card>
+      <>
+        <Card className="p-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            No hay comprobantes en este período. Podés registrar un asiento a mano igual.
+          </p>
+          <div className="mt-4 flex justify-center">{botonAgregar}</div>
+        </Card>
+        {dialogo}
+      </>
     );
   }
 
@@ -478,6 +539,7 @@ function VistaDiario({
           <Totalizador label="Total al debe" valor={formatCurrency(t.debe)} />
           <Totalizador label="Total al haber" valor={formatCurrency(t.haber)} />
         </div>
+        <div className="mt-4 flex justify-end border-t pt-4">{botonAgregar}</div>
       </Card>
 
       {t.revisar > 0 && (
@@ -485,15 +547,15 @@ function VistaDiario({
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-foreground" />
           <span>
             {t.revisar} {t.revisar === 1 ? 'asiento quedó' : 'asientos quedaron'} con una cuenta
-            genérica de compras. Revisá a qué cuenta corresponde
-            {t.revisar === 1 ? '' : ' cada uno'} antes de cerrar el período.
+            genérica de compras. Cambiala en cada uno y, si querés, dejala guardada para ese
+            proveedor.
           </span>
         </Card>
       )}
 
       <div className="space-y-3">
         {diario.asientos.map(a => (
-          <AsientoCard key={a.id} asiento={a} />
+          <AsientoCard key={a.id} asiento={a} cuit={cuit} cuentas={cuentas} onCambio={onCambio} />
         ))}
       </div>
 
@@ -502,9 +564,11 @@ function VistaDiario({
         <span>
           Cada comprobante del período genera su asiento: las ventas contra Deudores por ventas y las
           compras contra Proveedores, con el IVA y las percepciones en sus cuentas. Las notas de
-          crédito se registran invertidas. Los cobros y pagos todavía no se registran acá.
+          crédito se registran invertidas. Los cobros, pagos y ajustes se cargan a mano con “Agregar
+          asiento”.
         </span>
       </div>
+      {dialogo}
     </div>
   );
 }
@@ -518,20 +582,86 @@ function Totalizador({ label, valor }: { label: string; valor: string }) {
   );
 }
 
-/** Un asiento con sus renglones. La tarjeta funciona igual en escritorio y en celular. */
-function AsientoCard({ asiento }: { asiento: Asiento }) {
+/** Un asiento con sus renglones, y la acción para cambiarle la cuenta (o borrarlo, si es manual).
+ *  La tarjeta funciona igual en escritorio y en celular. */
+function AsientoCard({
+  asiento,
+  cuit,
+  cuentas,
+  onCambio,
+}: {
+  asiento: Asiento;
+  cuit: string;
+  cuentas: Cuenta[];
+  onCambio: () => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [cuentaId, setCuentaId] = useState('');
+  const [recordar, setRecordar] = useState(false);
+  const [trabajando, setTrabajando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const imputables = useMemo(() => cuentas.filter(c => c.imputable), [cuentas]);
+  const esManual = asiento.origen === 'manual';
+  const puedeImputar = !esManual && !!asiento.cuentaImputada;
+
+  async function correr(accion: () => Promise<unknown>) {
+    setTrabajando(true);
+    setError(null);
+    try {
+      await accion();
+      setEditando(false);
+      onCambio();
+    } catch (e) {
+      setError(mensajeDeError(e));
+    } finally {
+      setTrabajando(false);
+    }
+  }
+
+  function abrirEdicion() {
+    setCuentaId(String(imputables.find(c => c.codigo === asiento.cuentaImputada)?.id ?? ''));
+    setRecordar(false);
+    setError(null);
+    setEditando(true);
+  }
+
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b bg-muted/20 px-4 py-2.5">
         <span className="text-sm font-medium">{asiento.comprobante}</span>
         <Badge variant="outline" className="text-xs">
-          {asiento.lado === 'ventas' ? 'Venta' : 'Compra'}
+          {esManual ? 'A mano' : asiento.lado === 'ventas' ? 'Venta' : 'Compra'}
         </Badge>
-        <span className="text-sm text-muted-foreground">{asiento.contraparte}</span>
-        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-          {asiento.fecha.split('-').reverse().join('/')}
-        </span>
+        {!esManual && <span className="text-sm text-muted-foreground">{asiento.contraparte}</span>}
+        {asiento.imputacion === 'regla' && (
+          <span className="text-xs text-muted-foreground">cuenta guardada para esta contraparte</span>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {asiento.fecha.split('-').reverse().join('/')}
+          </span>
+          {puedeImputar && !editando && (
+            <Button variant="ghost" size="sm" title="Cambiar la cuenta" onClick={abrirEdicion}>
+              <Pencil className="h-4 w-4" />
+            </Button>
+          )}
+          {esManual && (
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Borrar el asiento"
+              disabled={trabajando}
+              onClick={() =>
+                correr(() => borrarAsientoManual(cuit, Number(asiento.id.replace('manual-', ''))))
+              }
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
+
       <ul className="divide-y">
         {asiento.lineas.map((l, i) => (
           <li
@@ -555,6 +685,320 @@ function AsientoCard({ asiento }: { asiento: Asiento }) {
             <div className="text-right tabular-nums text-muted-foreground">
               {l.haber ? formatCurrency(l.haber) : <span className="hidden sm:inline">—</span>}
             </div>
+          </li>
+        ))}
+      </ul>
+
+      {editando && (
+        <div className="space-y-3 border-t bg-muted/20 px-4 py-3">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <Select value={cuentaId} onValueChange={setCuentaId}>
+              <SelectTrigger className="bg-card">
+                <SelectValue placeholder="Elegí la cuenta" />
+              </SelectTrigger>
+              <SelectContent>
+                {imputables.map(c => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.codigo} · {c.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                disabled={trabajando || !cuentaId}
+                onClick={() =>
+                  correr(() => imputarComprobante(cuit, asiento.id, Number(cuentaId), recordar))
+                }
+              >
+                {trabajando ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="mr-2 h-4 w-4" />
+                )}
+                Guardar
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setEditando(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-input"
+              checked={recordar}
+              onChange={e => setRecordar(e.target.checked)}
+            />
+            Usar esta cuenta para los próximos comprobantes de {asiento.contraparte}
+          </label>
+          {asiento.imputacion === 'manual' && (
+            <button
+              type="button"
+              className="text-xs text-muted-foreground underline"
+              disabled={trabajando}
+              onClick={() => correr(() => quitarImputacion(cuit, asiento.id))}
+            >
+              Volver a la cuenta sugerida
+            </button>
+          )}
+          {error && <div className="text-sm text-destructive">{error}</div>}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Carga de un asiento a mano: lo que no sale de un comprobante (cobros, pagos, ajustes). */
+function NuevoAsientoDialog({
+  cuit,
+  cuentas,
+  abierto,
+  onCerrar,
+  onCreado,
+}: {
+  cuit: string;
+  cuentas: Cuenta[];
+  abierto: boolean;
+  onCerrar: () => void;
+  onCreado: () => void;
+}) {
+  const hoy = new Date().toISOString().slice(0, 10);
+  const [fecha, setFecha] = useState(hoy);
+  const [detalle, setDetalle] = useState('');
+  const [lineas, setLineas] = useState([
+    { cuentaId: '', debe: '', haber: '' },
+    { cuentaId: '', debe: '', haber: '' },
+  ]);
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const imputables = useMemo(() => cuentas.filter(c => c.imputable), [cuentas]);
+  const totalDebe = lineas.reduce((s, l) => s + parseMonto(l.debe), 0);
+  const totalHaber = lineas.reduce((s, l) => s + parseMonto(l.haber), 0);
+  const cierra = totalDebe > 0 && Math.abs(totalDebe - totalHaber) < 0.005;
+  const completas = lineas.filter(
+    l => l.cuentaId && (parseMonto(l.debe) > 0 || parseMonto(l.haber) > 0)
+  );
+  const puedeGuardar = cierra && detalle.trim().length > 0 && completas.length >= 2 && !guardando;
+
+  function cambiar(i: number, campo: 'cuentaId' | 'debe' | 'haber', valor: string) {
+    setLineas(prev =>
+      prev.map((l, idx) => {
+        if (idx !== i) return l;
+        // Un renglón va al debe o al haber: cargar uno limpia el otro.
+        if (campo === 'debe') return { ...l, debe: valor, haber: '' };
+        if (campo === 'haber') return { ...l, haber: valor, debe: '' };
+        return { ...l, cuentaId: valor };
+      })
+    );
+  }
+
+  function limpiar() {
+    setFecha(hoy);
+    setDetalle('');
+    setLineas([
+      { cuentaId: '', debe: '', haber: '' },
+      { cuentaId: '', debe: '', haber: '' },
+    ]);
+    setError(null);
+  }
+
+  async function guardar() {
+    setGuardando(true);
+    setError(null);
+    try {
+      await crearAsientoManual(cuit, {
+        fecha,
+        detalle: detalle.trim(),
+        lineas: completas.map(l => ({
+          cuentaId: Number(l.cuentaId),
+          debe: parseMonto(l.debe),
+          haber: parseMonto(l.haber),
+        })),
+      });
+      limpiar();
+      onCreado();
+    } catch (e) {
+      setError(mensajeDeError(e));
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  return (
+    <Dialog open={abierto} onOpenChange={v => !v && onCerrar()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Asiento a mano</DialogTitle>
+          <DialogDescription>
+            Para lo que no sale de un comprobante: cobros, pagos, amortizaciones o ajustes. El debe y
+            el haber tienen que dar igual.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-3 sm:grid-cols-[10rem_minmax(0,1fr)]">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Fecha</label>
+            <Input type="date" value={fecha} onChange={e => setFecha(e.target.value)} className="mt-1" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Detalle</label>
+            <Input
+              placeholder="Cobro factura 0001-00000123"
+              value={detalle}
+              onChange={e => setDetalle(e.target.value)}
+              className="mt-1"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {lineas.map((l, i) => (
+            <div key={i} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_7rem_2rem]">
+              <Select value={l.cuentaId} onValueChange={v => cambiar(i, 'cuentaId', v)}>
+                <SelectTrigger className="bg-card">
+                  <SelectValue placeholder="Cuenta" />
+                </SelectTrigger>
+                <SelectContent>
+                  {imputables.map(c => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.codigo} · {c.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                placeholder="Debe"
+                inputMode="decimal"
+                value={l.debe}
+                onChange={e => cambiar(i, 'debe', e.target.value)}
+              />
+              <Input
+                placeholder="Haber"
+                inputMode="decimal"
+                value={l.haber}
+                onChange={e => cambiar(i, 'haber', e.target.value)}
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                title="Sacar el renglón"
+                disabled={lineas.length <= 2}
+                onClick={() => setLineas(prev => prev.filter((_, idx) => idx !== i))}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setLineas(prev => [...prev, { cuentaId: '', debe: '', haber: '' }])}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Agregar renglón
+          </Button>
+        </div>
+
+        <div
+          className={cn(
+            'flex flex-wrap items-center justify-end gap-x-6 border-t pt-3 text-sm tabular-nums',
+            !cierra && totalDebe + totalHaber > 0 && 'text-destructive'
+          )}
+        >
+          <span>
+            Debe <strong>{formatCurrency(totalDebe)}</strong>
+          </span>
+          <span>
+            Haber <strong>{formatCurrency(totalHaber)}</strong>
+          </span>
+          {!cierra && totalDebe + totalHaber > 0 && <span>No cierra</span>}
+        </div>
+
+        {error && <div className="text-sm text-destructive">{error}</div>}
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onCerrar} disabled={guardando}>
+            Cancelar
+          </Button>
+          <Button onClick={guardar} disabled={!puedeGuardar}>
+            {guardando ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Check className="mr-2 h-4 w-4" />
+            )}
+            Guardar asiento
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Las cuentas que el contador dejó guardadas por contraparte: se aplican solas de acá en más. */
+function VistaReglas({ cuit }: { cuit: string }) {
+  const qc = useQueryClient();
+  const { data: reglas = [], isLoading } = useQuery({
+    queryKey: ['contabilidad', 'reglas', cuit],
+    queryFn: () => getReglas(cuit),
+    enabled: !!cuit,
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  async function borrar(id: number) {
+    setError(null);
+    try {
+      await borrarRegla(cuit, id);
+      qc.invalidateQueries({ queryKey: ['contabilidad', 'reglas', cuit] });
+      qc.invalidateQueries({ queryKey: ['contabilidad', 'diario', cuit] });
+    } catch (e) {
+      setError(mensajeDeError(e));
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <Card className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" /> Cargando…
+      </Card>
+    );
+  }
+  if (reglas.length === 0) {
+    return (
+      <Card className="p-8 text-center text-sm text-muted-foreground">
+        Todavía no guardaste ninguna. Cuando cambies la cuenta de un comprobante, marcá “usar esta
+        cuenta para los próximos” y va a aparecer acá.
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="border-b px-4 py-3 font-medium">
+        {reglas.length} {reglas.length === 1 ? 'contraparte con cuenta fija' : 'contrapartes con cuenta fija'}
+      </div>
+      {error && <div className="bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div>}
+      <ul className="divide-y">
+        {reglas.map(r => (
+          <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
+            <Badge variant="outline" className="text-xs">
+              {r.lado === 'ventas' ? 'Venta' : 'Compra'}
+            </Badge>
+            <span className="font-medium">{r.contraparte}</span>
+            <span className="text-muted-foreground">
+              se registra en {r.codigo} · {r.cuenta}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              title="Dejar de usar esta cuenta"
+              onClick={() => borrar(r.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
           </li>
         ))}
       </ul>

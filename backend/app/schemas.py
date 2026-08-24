@@ -1065,19 +1065,28 @@ class AsientoLineaOut(BaseModel):
 
 
 class AsientoOut(BaseModel):
-    """Un asiento del libro diario, DERIVADO de un comprobante (no se persiste: se recalcula). El
-    `id` es el id compuesto del comprobante que lo origina, igual que en el resto de la app."""
+    """Un asiento del libro diario. Los que salen de un comprobante NO se persisten (se recalculan;
+    el `id` es el id compuesto del comprobante). Los que carga el contador a mano se guardan y su
+    `id` es 'manual-<n>'."""
 
     id: str
     fecha: str  # ISO aaaa-mm-dd
-    lado: str   # ventas | compras
-    comprobante: str  # 'Factura A 00003-00001234'
+    lado: str   # ventas | compras | manual
+    comprobante: str  # 'Factura A 00003-00001234' (o el detalle, en los manuales)
     contraparte: str
     detalle: str
     lineas: list[AsientoLineaOut]
     total: float
     # True = alguna línea quedó con la cuenta por defecto (a revisar antes de cerrar el período).
     revisar: bool = False
+    origen: str = "comprobante"  # comprobante | manual
+    # Código de la cuenta de resultado que el contador puede cambiar (None en los manuales).
+    cuentaImputada: str | None = None  # noqa: N815
+    # De dónde salió esa cuenta: 'manual' (la fijó para ESTE comprobante), 'regla' (la memorizó para
+    # la contraparte) o 'defecto' (la sugirió Órbita). El front ofrece deshacer sólo si es manual.
+    imputacion: str = "defecto"
+    # CUIT de la contraparte: con él se arma la regla "imputar siempre así a este proveedor".
+    contraparteCuit: str = ""  # noqa: N815
 
 
 class DiarioTotalesOut(BaseModel):
@@ -1098,6 +1107,57 @@ class DiarioOut(BaseModel):
     totales: DiarioTotalesOut
     # True = el cliente todavía no tiene plan de cuentas (el front ofrece sembrarlo o importarlo).
     sinPlan: bool = False  # noqa: N815
+
+
+class ImputacionIn(BaseModel):
+    """Cambio de cuenta de un comprobante. Con `recordar`, además deja la regla para que los
+    próximos comprobantes de esa misma contraparte se imputen solos igual."""
+
+    comprobanteId: str = Field(min_length=3, max_length=60)  # noqa: N815
+    cuentaId: int  # noqa: N815
+    recordar: bool = False
+
+
+class ReglaOut(BaseModel):
+    """Una regla de imputación automática guardada por el contador."""
+
+    id: int
+    lado: str  # ventas | compras
+    contraparte: str  # CUIT o texto con el que matchea
+    codigo: str  # cuenta destino
+    cuenta: str
+
+
+class LineaAsientoIn(BaseModel):
+    """Un renglón de un asiento manual: va al debe o al haber, nunca a los dos."""
+
+    cuentaId: int  # noqa: N815
+    debe: float = Field(default=0, ge=0)
+    haber: float = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _un_solo_lado(self) -> LineaAsientoIn:
+        if self.debe and self.haber:
+            raise ValueError("Cada renglón va al debe o al haber, no a los dos.")
+        if not self.debe and not self.haber:
+            raise ValueError("Cada renglón necesita un importe.")
+        return self
+
+
+class AsientoManualIn(BaseModel):
+    """Alta de un asiento manual. Tiene que cerrar: el total del debe igual al del haber."""
+
+    fecha: dt.date
+    detalle: str = Field(min_length=1, max_length=200)
+    lineas: list[LineaAsientoIn] = Field(min_length=2)
+
+    @model_validator(mode="after")
+    def _cierra(self) -> AsientoManualIn:
+        debe = round(sum(x.debe for x in self.lineas), 2)
+        haber = round(sum(x.haber for x in self.lineas), 2)
+        if debe != haber:
+            raise ValueError("El asiento no cierra: el debe y el haber tienen que dar igual.")
+        return self
 
 
 # --- Panel superadmin (sólo rol=admin; ver routers/admin.py) ---

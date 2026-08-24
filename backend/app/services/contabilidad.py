@@ -234,17 +234,26 @@ def _cuenta_percepcion(clave: str, lado: str) -> str:
     return CTA_OTROS_IMP_PAGAR
 
 
+def id_comprobante(comp: models.ComprobanteEmitido) -> str:
+    """Id compuesto del comprobante, el mismo que usa el resto de la app."""
+    return f"{comp.cuit}-{comp.direccion}-{comp.punto_venta}-{comp.cbte_tipo}-{comp.numero}"
+
+
 def asiento_de_comprobante(
     comp: models.ComprobanteEmitido,
     nombres: dict,
     reglas: list[models.ReglaImputacion],
+    imputaciones: dict[str, int] | None = None,
 ) -> dict:
     """Arma el asiento de un comprobante. Venta: Deudores por ventas al debe, contra Ventas + IVA
     débito + percepciones practicadas al haber. Compra: la cuenta de gasto + IVA crédito +
     percepciones sufridas al debe, contra Proveedores al haber. Una nota de crédito invierte todo.
 
-    El importe de la cuenta de resultado sale de total − IVA − percepciones para que el asiento
-    cierre siempre (el total es el dato canónico; el desglose puede faltar)."""
+    La cuenta de resultado sale, en este orden, de: la imputación que el contador fijó para ESE
+    comprobante, la regla que matchee su contraparte, o la cuenta por defecto del lado.
+
+    El importe de esa cuenta se calcula como total − IVA − percepciones para que el asiento cierre
+    siempre (el total es el dato canónico; el desglose puede faltar)."""
     lado = "ventas" if comp.direccion == "emitido" else "compras"
     es_nc = comp.cbte_tipo in TIPOS_NOTA_CREDITO
     total = round(float(comp.imp_total or 0), 2)
@@ -252,11 +261,17 @@ def asiento_de_comprobante(
     percep = {k: round(v, 2) for k, v in _percepciones(comp).items() if round(v, 2)}
     resultado = round(total - iva - sum(percep.values()), 2)
 
-    regla = _regla_que_matchea(comp, lado, reglas)
-    if regla is not None:
-        cta_resultado = nombres.get(regla.cuenta_id) or (CTA_VENTAS if lado == "ventas" else CTA_COMPRAS)
-        por_defecto = False
-    else:
+    comp_id = id_comprobante(comp)
+    por_defecto = False
+    origen_imputacion = "manual"
+    cta_resultado = nombres.get((imputaciones or {}).get(comp_id, 0))
+    if cta_resultado is None:
+        origen_imputacion = "regla"
+        regla = _regla_que_matchea(comp, lado, reglas)
+        if regla is not None:
+            cta_resultado = nombres.get(regla.cuenta_id)
+    if cta_resultado is None:
+        origen_imputacion = "defecto"
         cta_resultado = CTA_VENTAS if lado == "ventas" else CTA_COMPRAS
         # En ventas la cuenta por defecto casi siempre es la correcta; en compras no (puede ser
         # mercadería, un servicio, un honorario…), así que esos asientos se marcan para revisar.
@@ -295,7 +310,7 @@ def asiento_de_comprobante(
         f"{str(comp.punto_venta).zfill(5)}-{str(comp.numero).zfill(8)}"
     )
     return {
-        "id": f"{comp.cuit}-{comp.direccion}-{comp.punto_venta}-{comp.cbte_tipo}-{comp.numero}",
+        "id": comp_id,
         "fecha": comp.fecha.isoformat(),
         "lado": lado,
         "comprobante": etiqueta,
@@ -304,6 +319,10 @@ def asiento_de_comprobante(
         "lineas": lineas,
         "total": total,
         "revisar": any(linea["porDefecto"] for linea in lineas),
+        "origen": "comprobante",
+        "cuentaImputada": cta_resultado,
+        "imputacion": origen_imputacion,
+        "contraparteCuit": _solo_digitos(comp.doc_nro),
     }
 
 
@@ -343,6 +362,11 @@ def diario(db: Session, cuit: str, periodo: str) -> dict:
     reglas = list(db.execute(
         select(regla).where(regla.cuit == cuit).order_by(regla.prioridad, regla.id)
     ).scalars())
+    imp = models.ImputacionComprobante
+    imputaciones = {
+        i.comprobante_id: i.cuenta_id
+        for i in db.execute(select(imp).where(imp.cuit == cuit)).scalars()
+    }
 
     comp = models.ComprobanteEmitido
     desde, hasta = rango_mes(periodo)
@@ -352,7 +376,9 @@ def diario(db: Session, cuit: str, periodo: str) -> dict:
         .order_by(comp.fecha, comp.id)
     ).scalars())
 
-    asientos = [asiento_de_comprobante(c, nombres, reglas) for c in comprobantes]
+    asientos = [asiento_de_comprobante(c, nombres, reglas, imputaciones) for c in comprobantes]
+    asientos += asientos_manuales(db, cuit, desde, hasta, nombres)
+    asientos.sort(key=lambda a: a["fecha"])
     debe = round(sum(linea["debe"] for a in asientos for linea in a["lineas"]), 2)
     haber = round(sum(linea["haber"] for a in asientos for linea in a["lineas"]), 2)
     return {
@@ -367,3 +393,223 @@ def diario(db: Session, cuit: str, periodo: str) -> dict:
         },
         "sinPlan": False,
     }
+
+
+# --- Decisiones del contador: imputación puntual y reglas ---------------------------------------
+def _cuenta_imputable(db: Session, cuit: str, cuenta_id: int) -> models.CuentaContable:
+    """La cuenta del plan de ESE cliente, si existe y se puede imputar. ValueError si no."""
+    cuenta = db.get(models.CuentaContable, cuenta_id)
+    if cuenta is None or cuenta.cuit != cuit:
+        raise ValueError("Esa cuenta no está en el plan de este cliente.")
+    if not cuenta.imputable:
+        raise ValueError(
+            f"{cuenta.codigo} {cuenta.nombre} es un título: elegí una cuenta imputable."
+        )
+    return cuenta
+
+
+def comprobante_por_id(db: Session, cuit: str, comprobante_id: str) -> models.ComprobanteEmitido:
+    """Busca el comprobante por su id compuesto. ValueError si el id no corresponde al cliente."""
+    partes = comprobante_id.split("-")
+    if len(partes) != 5 or partes[0] != cuit:
+        raise ValueError("Comprobante inválido.")
+    _, direccion, pv, tipo, numero = partes
+    comp = models.ComprobanteEmitido
+    try:
+        fila = db.scalar(
+            select(comp).where(
+                comp.cuit == cuit,
+                comp.direccion == direccion,
+                comp.punto_venta == int(pv),
+                comp.cbte_tipo == int(tipo),
+                comp.numero == int(numero),
+            )
+        )
+    except ValueError as e:
+        raise ValueError("Comprobante inválido.") from e
+    if fila is None:
+        raise ValueError("No encontramos ese comprobante.")
+    return fila
+
+
+def guardar_imputacion(
+    db: Session, cuit: str, comprobante_id: str, cuenta_id: int, email: str, recordar: bool
+) -> dict:
+    """Fija a mano la cuenta de un comprobante. Con `recordar`, además deja la regla para que los
+    próximos de esa misma contraparte salgan imputados igual (y actualiza la regla si ya había una).
+
+    Devuelve {ok, regla}: `regla` dice si quedó guardada la preferencia para la contraparte."""
+    _cuenta_imputable(db, cuit, cuenta_id)
+    comp = comprobante_por_id(db, cuit, comprobante_id)
+
+    imp = models.ImputacionComprobante
+    actual = db.scalar(select(imp).where(imp.cuit == cuit, imp.comprobante_id == comprobante_id))
+    if actual is None:
+        actual = models.ImputacionComprobante(
+            cuit=cuit, comprobante_id=comprobante_id, creada_por=email
+        )
+        db.add(actual)
+    actual.cuenta_id = cuenta_id
+
+    guardo_regla = False
+    if recordar:
+        lado = "ventas" if comp.direccion == "emitido" else "compras"
+        doc = _solo_digitos(comp.doc_nro)
+        regla = models.ReglaImputacion
+        if len(doc) == 11:  # con CUIT la regla es exacta; si no, se matchea por el nombre
+            existente = db.scalar(
+                select(regla).where(
+                    regla.cuit == cuit, regla.lado == lado, regla.contraparte_cuit == doc
+                )
+            )
+            nueva = models.ReglaImputacion(
+                cuit=cuit, lado=lado, contraparte_cuit=doc, cuenta_id=cuenta_id,
+                prioridad=10, creada_por=email,
+            )
+        else:
+            texto = (comp.contraparte_nombre or "").strip()
+            if not texto:
+                raise ValueError("Este comprobante no tiene datos de la contraparte para recordar.")
+            existente = db.scalar(
+                select(regla).where(
+                    regla.cuit == cuit, regla.lado == lado, regla.contraparte_texto == texto
+                )
+            )
+            nueva = models.ReglaImputacion(
+                cuit=cuit, lado=lado, contraparte_texto=texto, cuenta_id=cuenta_id,
+                prioridad=20, creada_por=email,
+            )
+        if existente is not None:
+            existente.cuenta_id = cuenta_id
+        else:
+            db.add(nueva)
+        guardo_regla = True
+
+    db.commit()
+    return {"ok": True, "regla": guardo_regla}
+
+
+def borrar_imputacion(db: Session, cuit: str, comprobante_id: str) -> dict:
+    """Saca la imputación manual: el comprobante vuelve a la regla o a la cuenta por defecto."""
+    imp = models.ImputacionComprobante
+    actual = db.scalar(select(imp).where(imp.cuit == cuit, imp.comprobante_id == comprobante_id))
+    if actual is not None:
+        db.delete(actual)
+        db.commit()
+    return {"ok": True}
+
+
+def reglas_de(db: Session, cuit: str) -> list[dict]:
+    """Reglas de imputación automática del cliente, listas para mostrar."""
+    regla = models.ReglaImputacion
+    filas = list(db.execute(
+        select(regla).where(regla.cuit == cuit).order_by(regla.prioridad, regla.id)
+    ).scalars())
+    cuentas = {c.id: c for c in cuentas_de(db, cuit)}
+    salida = []
+    for r in filas:
+        cuenta = cuentas.get(r.cuenta_id)
+        salida.append({
+            "id": r.id,
+            "lado": r.lado,
+            "contraparte": r.contraparte_cuit or r.contraparte_texto or "—",
+            "codigo": cuenta.codigo if cuenta else "",
+            "cuenta": cuenta.nombre if cuenta else "(cuenta borrada)",
+        })
+    return salida
+
+
+def borrar_regla(db: Session, cuit: str, regla_id: int) -> bool:
+    """Borra una regla del cliente. False si no existe o es de otro cliente."""
+    regla = db.get(models.ReglaImputacion, regla_id)
+    if regla is None or regla.cuit != cuit:
+        return False
+    db.delete(regla)
+    db.commit()
+    return True
+
+
+# --- Asientos manuales --------------------------------------------------------------------------
+def asientos_manuales(
+    db: Session, cuit: str, desde: dt.date, hasta: dt.date, nombres: dict
+) -> list[dict]:
+    """Asientos cargados a mano con fecha en el período, con el mismo formato que los derivados."""
+    asi = models.AsientoManual
+    cabeceras = list(db.execute(
+        select(asi)
+        .where(asi.cuit == cuit, asi.fecha >= desde, asi.fecha < hasta)
+        .order_by(asi.fecha, asi.id)
+    ).scalars())
+    if not cabeceras:
+        return []
+
+    lin = models.LineaAsientoManual
+    por_asiento: dict[int, list[models.LineaAsientoManual]] = {}
+    filas = db.execute(
+        select(lin).where(lin.asiento_id.in_([c.id for c in cabeceras])).order_by(lin.id)
+    ).scalars()
+    for fila in filas:
+        por_asiento.setdefault(fila.asiento_id, []).append(fila)
+
+    salida = []
+    for cab in cabeceras:
+        lineas = []
+        for fila in por_asiento.get(cab.id, []):
+            codigo = nombres.get(fila.cuenta_id, "")
+            lineas.append({
+                "codigo": codigo,
+                "cuenta": nombres.get(codigo, codigo),
+                "debe": round(float(fila.debe or 0), 2),
+                "haber": round(float(fila.haber or 0), 2),
+                "porDefecto": False,
+            })
+        salida.append({
+            "id": f"manual-{cab.id}",
+            "fecha": cab.fecha.isoformat(),
+            "lado": "manual",
+            "comprobante": cab.detalle,
+            "contraparte": "—",
+            "detalle": cab.detalle,
+            "lineas": lineas,
+            "total": round(sum(x["debe"] for x in lineas), 2),
+            "revisar": False,
+            "origen": "manual",
+            "cuentaImputada": None,
+            "imputacion": "defecto",
+            "contraparteCuit": "",
+        })
+    return salida
+
+
+def crear_asiento_manual(db: Session, cuit: str, datos, email: str) -> int:
+    """Crea un asiento manual (el schema ya validó que cierre). Devuelve su id."""
+    for linea in datos.lineas:
+        _cuenta_imputable(db, cuit, linea.cuentaId)
+    cabecera = models.AsientoManual(
+        cuit=cuit, fecha=datos.fecha, detalle=datos.detalle.strip(), creado_por=email
+    )
+    db.add(cabecera)
+    db.flush()
+    for linea in datos.lineas:
+        db.add(models.LineaAsientoManual(
+            asiento_id=cabecera.id, cuenta_id=linea.cuentaId,
+            debe=round(linea.debe, 2), haber=round(linea.haber, 2),
+        ))
+    db.commit()
+    return cabecera.id
+
+
+def borrar_asiento_manual(db: Session, cuit: str, asiento_id: int) -> bool:
+    """Borra un asiento manual y sus renglones. False si no existe o es de otro cliente.
+
+    Los renglones se borran PRIMERO: en Postgres la FK no deja borrar el padre con hijos."""
+    cabecera = db.get(models.AsientoManual, asiento_id)
+    if cabecera is None or cabecera.cuit != cuit:
+        return False
+    lin = models.LineaAsientoManual
+    for fila in db.execute(select(lin).where(lin.asiento_id == asiento_id)).scalars():
+        db.delete(fila)
+    db.flush()
+    db.delete(cabecera)
+    db.commit()
+    return True

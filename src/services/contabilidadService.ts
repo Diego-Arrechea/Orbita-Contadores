@@ -3,7 +3,7 @@
  * además valida el gate (allowlist CONTABILIDAD_EMAILS + admins) en cada endpoint: el front sólo
  * esconde el menú con puedeVerContabilidad().
  */
-import { apiDelete, apiGet, apiPatch, apiPost } from './apiClient';
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from './apiClient';
 
 /** De qué lado suma la cuenta en los informes. */
 export type TipoCuenta =
@@ -50,13 +50,41 @@ export interface AsientoLinea {
 export interface Asiento {
   id: string;
   fecha: string; // ISO aaaa-mm-dd
-  lado: 'ventas' | 'compras';
+  lado: 'ventas' | 'compras' | 'manual';
   comprobante: string;
   contraparte: string;
   detalle: string;
   lineas: AsientoLinea[];
   total: number;
   revisar: boolean;
+  /** 'comprobante' = lo arma Órbita solo · 'manual' = lo cargó el contador. */
+  origen: 'comprobante' | 'manual';
+  /** Código de la cuenta que se puede cambiar (null en los manuales). */
+  cuentaImputada: string | null;
+  /** De dónde salió esa cuenta: fijada a mano, por una regla, o la sugerida. */
+  imputacion: 'manual' | 'regla' | 'defecto';
+  contraparteCuit: string;
+}
+
+/** Una imputación automática memorizada por el contador. */
+export interface Regla {
+  id: number;
+  lado: 'ventas' | 'compras';
+  contraparte: string;
+  codigo: string;
+  cuenta: string;
+}
+
+export interface LineaAsientoNueva {
+  cuentaId: number;
+  debe: number;
+  haber: number;
+}
+
+export interface AsientoNuevo {
+  fecha: string; // ISO aaaa-mm-dd
+  detalle: string;
+  lineas: LineaAsientoNueva[];
 }
 
 export interface DiarioTotales {
@@ -129,4 +157,43 @@ export function getDiario(cuit: string, periodo: string): Promise<Diario> {
   return apiGet<Diario>(
     `/contabilidad/clientes/${cuit}/diario?periodo=${encodeURIComponent(periodo)}`
   );
+}
+
+/** Fija la cuenta de un comprobante. Con `recordar`, la memoriza para esa contraparte. */
+export function imputarComprobante(
+  cuit: string,
+  comprobanteId: string,
+  cuentaId: number,
+  recordar: boolean
+): Promise<{ ok: boolean; regla: boolean }> {
+  return apiPut<{ ok: boolean; regla: boolean }>(`/contabilidad/clientes/${cuit}/imputaciones`, {
+    comprobanteId,
+    cuentaId,
+    recordar,
+  });
+}
+
+/** Saca la cuenta fijada a mano: el comprobante vuelve a la regla o a la sugerida. */
+export function quitarImputacion(cuit: string, comprobanteId: string): Promise<{ ok: boolean }> {
+  return apiDelete<{ ok: boolean }>(
+    `/contabilidad/clientes/${cuit}/imputaciones/${encodeURIComponent(comprobanteId)}`
+  );
+}
+
+/** Imputaciones automáticas guardadas para el cliente. */
+export function getReglas(cuit: string): Promise<Regla[]> {
+  return apiGet<Regla[]>(`/contabilidad/clientes/${cuit}/reglas`);
+}
+
+export function borrarRegla(cuit: string, id: number): Promise<{ ok: boolean }> {
+  return apiDelete<{ ok: boolean }>(`/contabilidad/clientes/${cuit}/reglas/${id}`);
+}
+
+/** Carga un asiento a mano (tiene que cerrar: debe = haber). */
+export function crearAsientoManual(cuit: string, asiento: AsientoNuevo): Promise<{ id: number }> {
+  return apiPost<{ id: number }>(`/contabilidad/clientes/${cuit}/asientos`, asiento);
+}
+
+export function borrarAsientoManual(cuit: string, id: number): Promise<{ ok: boolean }> {
+  return apiDelete<{ ok: boolean }>(`/contabilidad/clientes/${cuit}/asientos/${id}`);
 }
