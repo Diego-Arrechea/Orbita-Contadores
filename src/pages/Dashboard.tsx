@@ -48,6 +48,7 @@ import { esMonotributista, etiquetaRegimenCorta } from '@/lib/regimen';
 import { derivarAlertas, estadoDesdeAlertas } from '@/lib/alertas';
 import { useClientesReales } from '@/lib/queries';
 import { RecordatoriosContactosBanner } from '@/components/shared/RecordatoriosContactosBanner';
+import { BannerSuscripcion } from '@/components/shared/BannerSuscripcion';
 import { useCargas } from '@/context/CargasContext';
 import { cuentaActual, tienePermiso } from '@/lib/cuenta';
 import { formatCuit, formatPercent, formatDate } from '@/lib/utils';
@@ -276,6 +277,10 @@ export function Dashboard() {
           <ChevronRight className="h-5 w-5 shrink-0 text-danger transition-transform group-hover:translate-x-0.5" />
         </button>
       )}
+
+      {/* Vencimiento de la suscripción: el apartado vive en Configuración, así que el aviso sale
+          a buscar al contador acá. Sólo aparece si hay algo que hacer. */}
+      <BannerSuscripcion />
 
       {tienePermiso('editar_cliente') && (
         <RecordatoriosContactosBanner clientes={reales} onImported={() => void refetch()} />
