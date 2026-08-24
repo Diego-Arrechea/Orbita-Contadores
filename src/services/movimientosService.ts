@@ -6,7 +6,10 @@ import { apiGet, apiPost, apiDelete } from './apiClient';
 export interface ImportarResumen {
   importados: number;
   duplicadosOmitidos: number;
-  debitosOmitidos: number;
+  /** Filas que no se pudieron leer (sin fecha, en cero o en blanco). */
+  descartados: number;
+  /** Pagos guardados: no entran en la conciliación, quedan para la contabilidad. */
+  debitos: number;
   matcheadosAuto: number;
   pendientes: number;
   movimientos: MovimientoBancario[];

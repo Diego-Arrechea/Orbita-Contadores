@@ -375,6 +375,19 @@ def _migrar_comprobantes_emitidos(conn) -> None:
         conn.execute(text("ALTER TABLE comprobantes_emitidos ADD COLUMN percepciones_json TEXT"))
 
 
+def _migrar_movimientos_bancarios(conn) -> None:
+    """Agrega `tipo` (credito|debito) a `movimientos_bancarios`. Hasta esta columna sólo se guardaban
+    acreditaciones, así que todo lo que ya está es 'credito'. Portable SQLite + Postgres."""
+    cols = _columnas(conn, "movimientos_bancarios")
+    if not cols:
+        return
+    if "tipo" not in cols:
+        conn.execute(text(
+            "ALTER TABLE movimientos_bancarios ADD COLUMN tipo VARCHAR(10) DEFAULT 'credito'"
+        ))
+        conn.execute(text("UPDATE movimientos_bancarios SET tipo = 'credito' WHERE tipo IS NULL"))
+
+
 def asegurar_columnas() -> None:
     """Migración ligera (sin Alembic): agrega columnas nuevas a tablas ya existentes.
     create_all() crea tablas faltantes pero NO altera las existentes."""
@@ -384,6 +397,7 @@ def asegurar_columnas() -> None:
         _migrar_alertas_enviadas(conn)
         _migrar_clientes_arca(conn)
         _migrar_comprobantes_emitidos(conn)
+        _migrar_movimientos_bancarios(conn)
 
     # El resto son migraciones de tablas que sólo existen viejas en el SQLite de desarrollo.
     if not settings.database_url.startswith("sqlite"):

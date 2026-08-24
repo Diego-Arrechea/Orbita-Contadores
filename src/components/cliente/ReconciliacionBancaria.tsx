@@ -483,8 +483,12 @@ function SuccessBannerReal({
             {resumen.duplicadosOmitidos > 0 && (
               <> Se omitieron <span className="font-medium">{resumen.duplicadosOmitidos} ya cargadas</span>.</>
             )}
-            {resumen.debitosOmitidos > 0 && (
-              <> Se descartaron <span className="font-medium">{resumen.debitosOmitidos} débitos</span>.</>
+            {resumen.debitos > 0 && (
+              <> Los <span className="font-medium">{resumen.debitos} pagos</span> del extracto quedaron
+              guardados para la contabilidad.</>
+            )}
+            {resumen.descartados > 0 && (
+              <> No pudimos leer <span className="font-medium">{resumen.descartados} filas</span>.</>
             )}
           </div>
         </div>

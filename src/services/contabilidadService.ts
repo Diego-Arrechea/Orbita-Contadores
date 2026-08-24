@@ -50,15 +50,15 @@ export interface AsientoLinea {
 export interface Asiento {
   id: string;
   fecha: string; // ISO aaaa-mm-dd
-  lado: 'ventas' | 'compras' | 'manual';
+  lado: 'ventas' | 'compras' | 'cobros' | 'pagos' | 'manual';
   comprobante: string;
   contraparte: string;
   detalle: string;
   lineas: AsientoLinea[];
   total: number;
   revisar: boolean;
-  /** 'comprobante' = lo arma Órbita solo · 'manual' = lo cargó el contador. */
-  origen: 'comprobante' | 'manual';
+  /** De dónde sale el asiento: de un comprobante, de un movimiento del extracto, o cargado a mano. */
+  origen: 'comprobante' | 'banco' | 'manual';
   /** Código de la cuenta que se puede cambiar (null en los manuales). */
   cuentaImputada: string | null;
   /** De dónde salió esa cuenta: fijada a mano, por una regla, o la sugerida. */
@@ -69,7 +69,7 @@ export interface Asiento {
 /** Una imputación automática memorizada por el contador. */
 export interface Regla {
   id: number;
-  lado: 'ventas' | 'compras';
+  lado: 'ventas' | 'compras' | 'cobros' | 'pagos';
   contraparte: string;
   codigo: string;
   cuenta: string;

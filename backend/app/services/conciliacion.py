@@ -144,9 +144,12 @@ def _matchear(db: Session, cuit: str, movimientos: list[models.MovimientoBancari
 
 
 def importar(db: Session, cuit: str, fuente: str, filas: list) -> dict:
-    """Persiste las acreditaciones nuevas de un extracto y las cruza con los comprobantes emitidos.
-    `filas` son objetos MovimientoIn (fecha ISO, monto, cuitOriginante?, nombreOriginante?, descripcion?).
-    Idempotente: las filas ya importadas (mismo hash) se omiten."""
+    """Persiste los movimientos nuevos de un extracto y cruza las acreditaciones con los comprobantes
+    emitidos. `filas` son objetos MovimientoIn (fecha ISO, monto, cuitOriginante?, nombreOriginante?,
+    descripcion?). Idempotente: las filas ya importadas (mismo hash) se omiten.
+
+    Los DÉBITOS también se guardan (`tipo='debito'`, monto positivo) pero no se matchean ni se
+    muestran en la conciliación: los usa la contabilidad para registrar los pagos."""
     fuente = fuente if fuente in FUENTES else "banco"
     lote = uuid.uuid4().hex[:16]
     importados = duplicados = descartados = 0
@@ -155,9 +158,10 @@ def importar(db: Session, cuit: str, fuente: str, filas: list) -> dict:
     for f in filas:
         monto = _a_float(getattr(f, "monto", None))
         fecha = _a_fecha(getattr(f, "fecha", None))
-        if monto is None or monto <= 0 or fecha is None:
-            descartados += 1  # débitos (gastos), filas en blanco o sin fecha válida
+        if monto is None or monto == 0 or fecha is None:
+            descartados += 1  # filas en blanco, sin fecha válida o en cero
             continue
+        tipo = "credito" if monto > 0 else "debito"
         desc = (getattr(f, "descripcion", None) or "").strip() or None
         cuit_orig = _digitos(getattr(f, "cuitOriginante", None)) or None
         nombre_orig = (getattr(f, "nombreOriginante", None) or "").strip() or None
@@ -174,7 +178,8 @@ def importar(db: Session, cuit: str, fuente: str, filas: list) -> dict:
         mov = models.MovimientoBancario(
             cuit=cuit,
             fecha=fecha,
-            monto=monto,
+            monto=abs(monto),  # el signo lo lleva `tipo`
+            tipo=tipo,
             fuente=fuente,
             cuit_originante=cuit_orig,
             nombre_originante=nombre_orig,
@@ -187,26 +192,33 @@ def importar(db: Session, cuit: str, fuente: str, filas: list) -> dict:
         importados += 1
 
     db.flush()  # asigna ids a los nuevos antes de matchear
-    matcheados = _matchear(db, cuit, nuevos, fuente)
+    # Sólo se matchean las acreditaciones: un débito es un pago, no el cobro de una factura emitida.
+    creditos = [m for m in nuevos if m.tipo == "credito"]
+    matcheados = _matchear(db, cuit, creditos, fuente)
     db.commit()
-    pendientes = sum(1 for m in nuevos if m.comprobante_matcheado_id is None)
+    pendientes = sum(1 for m in creditos if m.comprobante_matcheado_id is None)
     return {
         "lote": lote,
         "importados": importados,
         "duplicados_omitidos": duplicados,
-        "debitos_omitidos": descartados,
+        "descartados": descartados,
+        "debitos": sum(1 for m in nuevos if m.tipo == "debito"),
         "matcheados_auto": matcheados,
         "pendientes": pendientes,
-        "movimientos": nuevos,
+        "movimientos": creditos,
     }
 
 
 def listar(db: Session, cuit: str) -> list[models.MovimientoBancario]:
-    """Todos los movimientos del cliente, más reciente primero."""
+    """Las acreditaciones del cliente, más reciente primero. La conciliación cruza cobros contra
+    comprobantes emitidos, así que los débitos (pagos) no entran acá: los usa la contabilidad."""
     return list(
         db.scalars(
             select(models.MovimientoBancario)
-            .where(models.MovimientoBancario.cuit == cuit)
+            .where(
+                models.MovimientoBancario.cuit == cuit,
+                models.MovimientoBancario.tipo == "credito",
+            )
             .order_by(models.MovimientoBancario.fecha.desc(), models.MovimientoBancario.id.desc())
         ).all()
     )
@@ -220,6 +232,7 @@ def reconciliar_pendientes(db: Session, cuit: str) -> int:
             select(models.MovimientoBancario)
             .where(
                 models.MovimientoBancario.cuit == cuit,
+                models.MovimientoBancario.tipo == "credito",  # los pagos no se cruzan con emitidos
                 models.MovimientoBancario.comprobante_matcheado_id.is_(None),
                 models.MovimientoBancario.marcado_como.is_(None),
             )
