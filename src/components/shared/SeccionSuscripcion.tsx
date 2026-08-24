@@ -1,12 +1,14 @@
 /**
  * "Mi suscripción": el plan del estudio, hasta cuándo está al día, cuánto de la cartera usa y el
  * historial de pagos. Sólo lectura (los cambios de plan y los cobros los carga el equipo de Órbita
- * desde el panel).
+ * desde el panel). Vive como una pestaña de Configuración, al lado de Cuenta: es administración de
+ * la cuenta, no trabajo del día.
  *
  * OJO — todavía NO está abierto a los contadores: la pantalla la ven sólo los admins y las sesiones
  * impersonadas por un admin (así se puede revisar cómo la vería el contador antes de habilitarla).
- * El gate vive en RequireSuscripcion (front) y en usuario_puede_suscripcion (backend). Los usuarios
- * del estudio nunca la ven: la suscripción es del titular.
+ * El gate vive en Configuracion (`verSuscripcion`, con esAdminReal) y en usuario_puede_suscripcion
+ * (backend). Los usuarios del estudio nunca la ven: no entran a Configuración y la suscripción es
+ * del titular.
  */
 import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -368,7 +370,7 @@ function HistorialPagos({ pagos }: { pagos: PagoSuscripcion[] }) {
   );
 }
 
-export function Suscripcion() {
+export function SeccionSuscripcion() {
   const { data: sus, isLoading, error } = useQuery({
     queryKey: ['suscripcion'],
     queryFn: obtenerMiSuscripcion,
@@ -402,14 +404,7 @@ export function Suscripcion() {
     sus.dias_restantes !== null && sus.dias_restantes !== undefined && sus.dias_restantes <= 10;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl xl:text-4xl font-semibold tracking-tight">Mi suscripción</h1>
-        <p className="text-base text-muted-foreground mt-2">
-          Tu plan, el estado de la cuenta y los pagos registrados.
-        </p>
-      </div>
-
+    <div className="space-y-4 pt-4">
       {/* Recordatorio de que el apartado todavía no está abierto: sólo lo ve el equipo de Órbita
           (y, mientras dura una impersonación, la pantalla del contador tal como la vería él). */}
       <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm text-muted-foreground">

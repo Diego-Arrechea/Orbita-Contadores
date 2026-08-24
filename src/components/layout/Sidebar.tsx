@@ -9,7 +9,6 @@ import {
   UserPlus,
   Users,
   Settings,
-  CreditCard,
   Sparkles,
   Orbit,
   LogOut,
@@ -22,7 +21,6 @@ import { cn } from '@/lib/utils';
 import {
   cuentaActual,
   esAdmin,
-  esAdminReal,
   esEmpleado,
   impersonando,
   logoutCuenta,
@@ -52,19 +50,6 @@ const ivaItem = { to: '/iva', label: 'IVA', icon: Percent };
 // Apartado de Contabilidad: mismo rollout gateado, con su propia allowlist. Va detrás de IVA.
 const contabilidadItem = { to: '/contabilidad', label: 'Contabilidad', icon: BookOpen };
 
-// "Mi suscripción": todavía NO se les muestra a los contadores. Aparece para los admins y durante
-// una impersonación (así el admin ve la pantalla como la vería el contador). Va antes de
-// Configuración; el backend valida el mismo gate.
-const suscripcionItem = { to: '/suscripcion', label: 'Mi suscripción', icon: CreditCard };
-
-/** Inserta "Mi suscripción" antes de Configuración, sólo si la sesión lo tiene habilitado. */
-function conSuscripcion(items: typeof nav): typeof nav {
-  if (!esAdminReal()) return items;
-  const i = items.findIndex(x => x.to === '/configuracion');
-  const at = i >= 0 ? i : items.length;
-  return [...items.slice(0, at), suscripcionItem, ...items.slice(at)];
-}
-
 /** Inserta los apartados gateados (IVA, Contabilidad) que la cuenta tenga habilitados, justo
  *  después de Conciliación y en ese orden. */
 function conIva(items: typeof nav): typeof nav {
@@ -92,11 +77,9 @@ function itemsSegunCuenta() {
     );
   }
   return conIva(
-    conSuscripcion(
-      esAdmin()
-        ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
-        : nav
-    )
+    esAdmin()
+      ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
+      : nav
   );
 }
 
