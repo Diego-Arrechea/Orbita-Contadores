@@ -74,6 +74,7 @@ import {
 import { fechaLegible, LineaEvento, OrigenDialog } from '@/components/contabilidad/origen';
 import {
   bajarExcel,
+  encabezadoAuditoria,
   fechaCorta,
   VistaEstados,
   VistaMayor,
@@ -564,25 +565,31 @@ function VistaDiario({
 
   function exportar() {
     if (!diario) return;
+    const deDonde = { comprobante: 'Comprobante', banco: 'Extracto', manual: 'A mano' };
     const filas: (string | number)[][] = [
-      ['Libro diario'],
-      [cliente, diario.periodo],
-      [],
-      ['Fecha', 'Comprobante', 'Contraparte', 'Código', 'Cuenta', 'Debe', 'Haber'],
+      ...encabezadoAuditoria(
+        'Libro diario',
+        cliente,
+        cuit,
+        diario.periodo,
+        diario.cerrado ? 'Período cerrado' : 'Período abierto: los asientos todavía pueden cambiar'
+      ),
+      ['Nº', 'Fecha', 'Origen', 'Comprobante', 'Contraparte', 'Código', 'Cuenta', 'Debe', 'Haber'],
     ];
     for (const a of diario.asientos) {
       for (const l of a.lineas) {
         filas.push([
-          fechaCorta(a.fecha), a.comprobante, a.contraparte, l.codigo, l.cuenta, l.debe, l.haber,
+          a.numero, fechaCorta(a.fecha), deDonde[a.origen], a.comprobante, a.contraparte,
+          l.codigo, l.cuenta, l.debe, l.haber,
         ]);
       }
     }
-    filas.push(['', 'Totales', '', '', '', diario.totales.debe, diario.totales.haber]);
+    filas.push(['', '', '', 'Totales', '', '', '', diario.totales.debe, diario.totales.haber]);
     bajarExcel(
       `Libro diario ${diario.periodo} - ${cliente}.xlsx`,
       'Libro diario',
       filas,
-      [12, 28, 30, 12, 40, 16, 16]
+      [6, 12, 14, 28, 30, 12, 40, 16, 16]
     );
   }
 
@@ -679,14 +686,18 @@ function VistaDiario({
         )}
       </Card>
 
-      {diario.nuevosDesdeCierre > 0 && (
+      {diario.difiereDelCierre && (
         <Card className="flex items-start gap-2 border-warning/40 bg-warning/5 px-4 py-3 text-sm">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-foreground" />
           <span>
-            {diario.nuevosDesdeCierre === 1
-              ? 'Entró 1 movimiento con fecha de este período después de haberlo cerrado.'
-              : `Entraron ${diario.nuevosDesdeCierre} movimientos con fecha de este período después de haberlo cerrado.`}{' '}
-            Revisá si corresponde rectificar y volvé a cerrarlo para actualizar los saldos.
+            Este período cerrado ya no coincide con lo que se registró al cerrarlo.{' '}
+            {diario.nuevosDesdeCierre > 0 &&
+              (diario.nuevosDesdeCierre === 1
+                ? 'Entró 1 movimiento con fecha de este período. '
+                : `Entraron ${diario.nuevosDesdeCierre} movimientos con fecha de este período. `)}
+            {Math.abs(diario.totales.debe - diario.debeAlCierre) > 0.005 &&
+              `Al cerrar sumaba ${formatCurrency(diario.debeAlCierre)} y ahora suma ${formatCurrency(diario.totales.debe)}. `}
+            Revisá si corresponde rectificar y volvé a cerrarlo para actualizar la foto.
           </span>
         </Card>
       )}
@@ -801,6 +812,11 @@ function AsientoCard({
     <Card className="overflow-hidden">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b bg-muted/20 px-4 py-2.5">
         <span className="text-xs tabular-nums text-muted-foreground">#{asiento.numero}</span>
+        {asiento.nuevo && (
+          <Badge variant="outline" className="border-warning/50 bg-warning/10 text-xs text-warning-foreground">
+            posterior al cierre
+          </Badge>
+        )}
         <span className="text-sm font-medium">{asiento.comprobante}</span>
         <Badge variant="outline" className="text-xs">
           {etiquetaLado}

@@ -408,6 +408,16 @@ def _migrar_suscripciones(conn) -> None:
     conn.execute(text("UPDATE suscripciones SET plan = 'monitoreo' WHERE plan = 'piloto'"))
 
 
+def _migrar_cierres_contables(conn) -> None:
+    """Agrega `numeros_json` (numeración congelada del período) a `cierres_contables`. Portable."""
+    cols = _columnas(conn, "cierres_contables")
+    if not cols:
+        return
+    if "numeros_json" not in cols:
+        conn.execute(text("ALTER TABLE cierres_contables ADD COLUMN numeros_json TEXT"))
+        conn.execute(text("UPDATE cierres_contables SET numeros_json = '{}' WHERE numeros_json IS NULL"))
+
+
 def asegurar_columnas() -> None:
     """Migración ligera (sin Alembic): agrega columnas nuevas a tablas ya existentes.
     create_all() crea tablas faltantes pero NO altera las existentes."""
@@ -419,6 +429,7 @@ def asegurar_columnas() -> None:
         _migrar_comprobantes_emitidos(conn)
         _migrar_movimientos_bancarios(conn)
         _migrar_asientos_manuales(conn)
+        _migrar_cierres_contables(conn)
         _migrar_suscripciones(conn)
 
     # El resto son migraciones de tablas que sólo existen viejas en el SQLite de desarrollo.
