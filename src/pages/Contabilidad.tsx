@@ -66,10 +66,16 @@ import {
   type Diario,
   type TipoCuenta,
 } from '@/services/contabilidadService';
+import {
+  bajarExcel,
+  fechaCorta,
+  VistaMayor,
+  VistaSumas,
+} from '@/components/contabilidad/informes';
 import { mensajeDeError } from '@/services/authService';
 import { formatCurrency, formatCuit, cn } from '@/lib/utils';
 
-type VistaContable = 'diario' | 'plan' | 'reglas';
+type VistaContable = 'diario' | 'mayor' | 'sumas' | 'plan' | 'reglas';
 
 const CUENTA_VACIA: CuentaNueva = { codigo: '', nombre: '', tipo: 'activo', imputable: true };
 
@@ -336,13 +342,17 @@ export function Contabilidad() {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Tabs value={vista} onValueChange={v => setVista(v as VistaContable)}>
-            <TabsList>
-              <TabsTrigger value="diario">Libro diario</TabsTrigger>
-              <TabsTrigger value="plan">Plan de cuentas</TabsTrigger>
-              <TabsTrigger value="reglas">Imputaciones</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="max-w-full overflow-x-auto">
+            <Tabs value={vista} onValueChange={v => setVista(v as VistaContable)}>
+              <TabsList>
+                <TabsTrigger value="diario">Libro diario</TabsTrigger>
+                <TabsTrigger value="mayor">Mayor</TabsTrigger>
+                <TabsTrigger value="sumas">Sumas y saldos</TabsTrigger>
+                <TabsTrigger value="plan">Plan de cuentas</TabsTrigger>
+                <TabsTrigger value="reglas">Imputaciones</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
           {!!cuitActivo && (
             <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
               <Button
@@ -415,7 +425,23 @@ export function Contabilidad() {
           periodoElegido={!!periodoActivo}
           cuit={cuitActivo}
           cuentas={plan}
+          cliente={clienteActivo?.nombre ?? cuitActivo}
           onCambio={refrescar}
+        />
+      ) : vista === 'mayor' ? (
+        <VistaMayor
+          cuit={cuitActivo}
+          cuentas={plan}
+          periodo={periodoActivo}
+          periodos={periodos}
+          cliente={clienteActivo?.nombre ?? cuitActivo}
+        />
+      ) : vista === 'sumas' ? (
+        <VistaSumas
+          cuit={cuitActivo}
+          periodo={periodoActivo}
+          periodos={periodos}
+          cliente={clienteActivo?.nombre ?? cuitActivo}
         />
       ) : vista === 'plan' ? (
         <VistaPlan cuit={cuitActivo} plan={plan} onCambio={refrescar} />
@@ -472,6 +498,7 @@ function VistaDiario({
   periodoElegido,
   cuit,
   cuentas,
+  cliente,
   onCambio,
 }: {
   diario: Diario | undefined;
@@ -479,9 +506,34 @@ function VistaDiario({
   periodoElegido: boolean;
   cuit: string;
   cuentas: Cuenta[];
+  cliente: string;
   onCambio: () => void;
 }) {
   const [nuevoAbierto, setNuevoAbierto] = useState(false);
+
+  function exportar() {
+    if (!diario) return;
+    const filas: (string | number)[][] = [
+      ['Libro diario'],
+      [cliente, diario.periodo],
+      [],
+      ['Fecha', 'Comprobante', 'Contraparte', 'Código', 'Cuenta', 'Debe', 'Haber'],
+    ];
+    for (const a of diario.asientos) {
+      for (const l of a.lineas) {
+        filas.push([
+          fechaCorta(a.fecha), a.comprobante, a.contraparte, l.codigo, l.cuenta, l.debe, l.haber,
+        ]);
+      }
+    }
+    filas.push(['', 'Totales', '', '', '', diario.totales.debe, diario.totales.haber]);
+    bajarExcel(
+      `Libro diario ${diario.periodo} - ${cliente}.xlsx`,
+      'Libro diario',
+      filas,
+      [12, 28, 30, 12, 40, 16, 16]
+    );
+  }
 
   const botonAgregar = (
     <Button size="sm" onClick={() => setNuevoAbierto(true)}>
@@ -539,7 +591,13 @@ function VistaDiario({
           <Totalizador label="Total al debe" valor={formatCurrency(t.debe)} />
           <Totalizador label="Total al haber" valor={formatCurrency(t.haber)} />
         </div>
-        <div className="mt-4 flex justify-end border-t pt-4">{botonAgregar}</div>
+        <div className="mt-4 flex flex-wrap justify-end gap-2 border-t pt-4">
+          <Button variant="outline" size="sm" onClick={exportar}>
+            <Download className="mr-2 h-4 w-4" />
+            Exportar
+          </Button>
+          {botonAgregar}
+        </div>
       </Card>
 
       {t.revisar > 0 && (

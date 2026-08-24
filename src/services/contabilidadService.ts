@@ -197,3 +197,68 @@ export function crearAsientoManual(cuit: string, asiento: AsientoNuevo): Promise
 export function borrarAsientoManual(cuit: string, id: number): Promise<{ ok: boolean }> {
   return apiDelete<{ ok: boolean }>(`/contabilidad/clientes/${cuit}/asientos/${id}`);
 }
+
+export interface MayorMovimiento {
+  fecha: string;
+  detalle: string;
+  contraparte: string;
+  debe: number;
+  haber: number;
+  saldo: number;
+}
+
+export interface Mayor {
+  cuit: string;
+  codigo: string;
+  cuenta: string;
+  desde: string;
+  hasta: string;
+  saldoAnterior: number;
+  movimientos: MayorMovimiento[];
+  debe: number;
+  haber: number;
+  saldo: number;
+}
+
+export interface SumasSaldosFila {
+  codigo: string;
+  cuenta: string;
+  tipo: TipoCuenta;
+  saldoAnterior: number;
+  debe: number;
+  haber: number;
+  saldoDeudor: number;
+  saldoAcreedor: number;
+}
+
+export interface SumasSaldos {
+  cuit: string;
+  desde: string;
+  hasta: string;
+  filas: SumasSaldosFila[];
+  debe: number;
+  haber: number;
+  deudor: number;
+  acreedor: number;
+  sinPlan: boolean;
+}
+
+/** Mayor de una cuenta entre dos fechas (`hasta` inclusive), con el saldo arrastrado. */
+export function getMayor(
+  cuit: string,
+  cuenta: string,
+  desde: string,
+  hasta: string
+): Promise<Mayor> {
+  return apiGet<Mayor>(
+    `/contabilidad/clientes/${cuit}/mayor?cuenta=${encodeURIComponent(cuenta)}` +
+      `&desde=${desde}&hasta=${hasta}`
+  );
+}
+
+/** Balance de sumas y saldos del rango (`hasta` inclusive). */
+export function getSumasYSaldos(cuit: string, desde: string, hasta: string): Promise<SumasSaldos> {
+  return apiGet<SumasSaldos>(
+    `/contabilidad/clientes/${cuit}/sumas-y-saldos?desde=${desde}&hasta=${hasta}`
+  );
+}
