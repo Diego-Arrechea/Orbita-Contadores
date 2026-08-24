@@ -65,6 +65,9 @@ export interface Asiento {
   cuentaImputada: string | null;
   /** De dónde salió esa cuenta: fijada a mano, por una regla, o la sugerida. */
   imputacion: 'manual' | 'regla' | 'defecto';
+  /** Quién decidió esa cuenta y cuándo (vacío si la sugirió Órbita). */
+  imputadoPor: string;
+  imputadoEn: string;
   contraparteCuit: string;
 }
 
@@ -75,6 +78,8 @@ export interface Regla {
   contraparte: string;
   codigo: string;
   cuenta: string;
+  creadaPor: string;
+  creadaEn: string;
 }
 
 export interface LineaAsientoNueva {
@@ -205,6 +210,8 @@ export function borrarAsientoManual(cuit: string, id: number): Promise<{ ok: boo
 }
 
 export interface MayorMovimiento {
+  /** Id del asiento que lo generó: con él se abre su origen. */
+  asientoId: string;
   fecha: string;
   detalle: string;
   contraparte: string;
@@ -329,4 +336,61 @@ export function getEstados(cuit: string, desde: string, hasta: string): Promise<
   return apiGet<Estados>(
     `/contabilidad/clientes/${cuit}/estados?desde=${desde}&hasta=${hasta}`
   );
+}
+
+/** Una anotación de la bitácora: quién decidió qué y cuándo. */
+export interface Evento {
+  id: number;
+  tipo: string;
+  etiqueta: string;
+  referencia: string;
+  periodo: string;
+  detalle: string;
+  usuario: string;
+  fecha: string;
+}
+
+export interface DatoOrigen {
+  etiqueta: string;
+  valor: string;
+}
+
+export interface ImporteOrigen {
+  etiqueta: string;
+  importe: number;
+}
+
+export interface AlicuotaOrigen {
+  alicuota: string;
+  base: number;
+  iva: number;
+}
+
+/** De dónde sale un asiento: el comprobante, el movimiento del extracto o la carga manual. */
+export interface Origen {
+  id: string;
+  tipo: 'comprobante' | 'banco' | 'manual';
+  titulo: string;
+  subtitulo: string;
+  fecha: string;
+  contraparte: string;
+  contraparteCuit: string;
+  datos: DatoOrigen[];
+  importes: ImporteOrigen[];
+  alicuotas: AlicuotaOrigen[];
+  percepciones: ImporteOrigen[];
+  historial: Evento[];
+}
+
+/** El comprobante o movimiento que originó un asiento, con su historial de decisiones. */
+export function getOrigen(cuit: string, asientoId: string): Promise<Origen> {
+  return apiGet<Origen>(
+    `/contabilidad/clientes/${cuit}/asientos/${encodeURIComponent(asientoId)}/origen`
+  );
+}
+
+/** Las decisiones que se fueron tomando sobre la contabilidad del cliente. */
+export function getEventos(cuit: string, periodo = ''): Promise<Evento[]> {
+  const p = periodo ? `&periodo=${encodeURIComponent(periodo)}` : '';
+  return apiGet<Evento[]>(`/contabilidad/clientes/${cuit}/eventos?limite=60${p}`);
 }

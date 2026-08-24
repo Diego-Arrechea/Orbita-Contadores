@@ -276,14 +276,20 @@ def asiento_de_comprobante(
     comp_id = id_comprobante(comp)
     por_defecto = False
     origen_imputacion = "manual"
-    cta_resultado = nombres.get((imputaciones or {}).get(comp_id, 0))
+    quien = cuando = ""
+    imputada = (imputaciones or {}).get(comp_id)
+    cta_resultado = nombres.get(imputada.cuenta_id) if imputada is not None else None
+    if imputada is not None:
+        quien, cuando = imputada.creada_por or "", _fecha_hora(imputada.creada_en)
     if cta_resultado is None:
         origen_imputacion = "regla"
         regla = _regla_que_matchea(comp, lado, reglas)
         if regla is not None:
             cta_resultado = nombres.get(regla.cuenta_id)
+            quien, cuando = regla.creada_por or "", _fecha_hora(regla.creada_en)
     if cta_resultado is None:
         origen_imputacion = "defecto"
+        quien = cuando = ""
         cta_resultado = CTA_VENTAS if lado == "ventas" else CTA_COMPRAS
         # En ventas la cuenta por defecto casi siempre es la correcta; en compras no (puede ser
         # mercadería, un servicio, un honorario…), así que esos asientos se marcan para revisar.
@@ -334,6 +340,8 @@ def asiento_de_comprobante(
         "origen": "comprobante",
         "cuentaImputada": cta_resultado,
         "imputacion": origen_imputacion,
+        "imputadoPor": quien,
+        "imputadoEn": cuando,
         "contraparteCuit": _solo_digitos(comp.doc_nro),
     }
 
@@ -369,7 +377,7 @@ def _contexto(db: Session, cuit: str) -> tuple[list, dict, list, dict]:
     ).scalars())
     imp = models.ImputacionComprobante
     imputaciones = {
-        i.comprobante_id: i.cuenta_id
+        i.comprobante_id: i
         for i in db.execute(select(imp).where(imp.cuit == cuit)).scalars()
     }
     return cuentas, nombres, reglas, imputaciones
@@ -509,6 +517,38 @@ def comprobante_por_id(db: Session, cuit: str, comprobante_id: str) -> models.Co
     return fila
 
 
+def _cuenta_previa(
+    db: Session,
+    cuit: str,
+    imputada: models.ImputacionComprobante | None,
+    lado: str,
+    doc: str,
+    texto: str,
+    cbte_tipo: int | None,
+) -> str:
+    """Con qué cuenta venía registrado el movimiento antes de este cambio, NOMBRADA.
+
+    La bitácora tiene que decir de qué cuenta a cuál, no "de la sugerida": esa vaguedad es
+    justamente lo que después no se puede reconstruir."""
+    if imputada is not None:
+        return _nombre_cuenta(db, imputada.cuenta_id)
+    regla = models.ReglaImputacion
+    reglas = list(db.execute(
+        select(regla).where(regla.cuit == cuit).order_by(regla.prioridad, regla.id)
+    ).scalars())
+    previa = _elegir_regla(reglas, lado, doc, texto, cbte_tipo)
+    if previa is not None:
+        return f"{_nombre_cuenta(db, previa.cuenta_id)} (por regla)"
+    defecto = {
+        "ventas": CTA_VENTAS, "compras": CTA_COMPRAS,
+        "cobros": CTA_DEUDORES, "pagos": CTA_PROVEEDORES,
+    }.get(lado, CTA_COMPRAS)
+    cta = models.CuentaContable
+    fila = db.scalar(select(cta).where(cta.cuit == cuit, cta.codigo == defecto))
+    nombre = f"{fila.codigo} {fila.nombre}" if fila is not None else defecto
+    return f"{nombre} (sugerida)"
+
+
 def guardar_imputacion(
     db: Session, cuit: str, comprobante_id: str, cuenta_id: int, email: str, recordar: bool
 ) -> dict:
@@ -530,14 +570,23 @@ def guardar_imputacion(
         texto = (comp.contraparte_nombre or "").strip()
     _exigir_abierto(db, cuit, mov.fecha if es_banco else comp.fecha)
 
+    fecha = mov.fecha if es_banco else comp.fecha
     imp = models.ImputacionComprobante
     actual = db.scalar(select(imp).where(imp.cuit == cuit, imp.comprobante_id == comprobante_id))
+    anterior = _cuenta_previa(db, cuit, actual, lado, doc, texto, None if es_banco else comp.cbte_tipo)
     if actual is None:
         actual = models.ImputacionComprobante(
             cuit=cuit, comprobante_id=comprobante_id, creada_por=email
         )
         db.add(actual)
     actual.cuenta_id = cuenta_id
+    actual.creada_por = email
+    actual.creada_en = dt.datetime.now(dt.timezone.utc)
+    _registrar(
+        db, cuit, "imputacion",
+        f"{texto or comprobante_id}: de {anterior} a {_nombre_cuenta(db, cuenta_id)}",
+        email, referencia=comprobante_id, periodo=_periodo_de(fecha),
+    )
 
     guardo_regla = False
     if recordar:
@@ -566,19 +615,30 @@ def guardar_imputacion(
             )
         if existente is not None:
             existente.cuenta_id = cuenta_id
+            existente.creada_por = email
         else:
             db.add(nueva)
         guardo_regla = True
+        _registrar(
+            db, cuit, "regla",
+            f"{texto or doc}: se registra siempre en {_nombre_cuenta(db, cuenta_id)}",
+            email, referencia=comprobante_id, periodo=_periodo_de(fecha),
+        )
 
     db.commit()
     return {"ok": True, "regla": guardo_regla}
 
 
-def borrar_imputacion(db: Session, cuit: str, comprobante_id: str) -> dict:
+def borrar_imputacion(db: Session, cuit: str, comprobante_id: str, usuario: str = "") -> dict:
     """Saca la imputación manual: el comprobante vuelve a la regla o a la cuenta por defecto."""
     imp = models.ImputacionComprobante
     actual = db.scalar(select(imp).where(imp.cuit == cuit, imp.comprobante_id == comprobante_id))
     if actual is not None:
+        _registrar(
+            db, cuit, "imputacion_quitada",
+            f"{comprobante_id}: deja de estar fijado en {_nombre_cuenta(db, actual.cuenta_id)}",
+            usuario, referencia=comprobante_id,
+        )
         db.delete(actual)
         db.commit()
     return {"ok": True}
@@ -600,15 +660,23 @@ def reglas_de(db: Session, cuit: str) -> list[dict]:
             "contraparte": r.contraparte_cuit or r.contraparte_texto or "—",
             "codigo": cuenta.codigo if cuenta else "",
             "cuenta": cuenta.nombre if cuenta else "(cuenta borrada)",
+            "creadaPor": r.creada_por or "",
+            "creadaEn": _fecha_hora(r.creada_en),
         })
     return salida
 
 
-def borrar_regla(db: Session, cuit: str, regla_id: int) -> bool:
+def borrar_regla(db: Session, cuit: str, regla_id: int, usuario: str = "") -> bool:
     """Borra una regla del cliente. False si no existe o es de otro cliente."""
     regla = db.get(models.ReglaImputacion, regla_id)
     if regla is None or regla.cuit != cuit:
         return False
+    contraparte = regla.contraparte_cuit or regla.contraparte_texto or "sin contraparte"
+    _registrar(
+        db, cuit, "regla_borrada",
+        f"{contraparte}: deja de registrarse en {_nombre_cuenta(db, regla.cuenta_id)}",
+        usuario, referencia=str(regla_id),
+    )
     db.delete(regla)
     db.commit()
     return True
@@ -622,7 +690,10 @@ def asientos_manuales(
     asi = models.AsientoManual
     cabeceras = list(db.execute(
         select(asi)
-        .where(asi.cuit == cuit, asi.fecha >= desde, asi.fecha < hasta)
+        .where(
+            asi.cuit == cuit, asi.fecha >= desde, asi.fecha < hasta,
+            asi.anulado_en.is_(None),  # un asiento anulado deja de sumar (la fila queda)
+        )
         .order_by(asi.fecha, asi.id)
     ).scalars())
     if not cabeceras:
@@ -661,6 +732,8 @@ def asientos_manuales(
             "origen": "manual",
             "cuentaImputada": None,
             "imputacion": "defecto",
+            "imputadoPor": cab.creado_por or "",
+            "imputadoEn": _fecha_hora(cab.creado_en),
             "contraparteCuit": "",
         })
     return salida
@@ -681,23 +754,29 @@ def crear_asiento_manual(db: Session, cuit: str, datos, email: str) -> int:
             asiento_id=cabecera.id, cuenta_id=linea.cuentaId,
             debe=round(linea.debe, 2), haber=round(linea.haber, 2),
         ))
+    _registrar(
+        db, cuit, "asiento",
+        f"{datos.detalle.strip()} por {round(sum(x.debe for x in datos.lineas), 2):,.2f}",
+        email, referencia=f"manual-{cabecera.id}", periodo=_periodo_de(datos.fecha),
+    )
     db.commit()
     return cabecera.id
 
 
-def borrar_asiento_manual(db: Session, cuit: str, asiento_id: int) -> bool:
-    """Borra un asiento manual y sus renglones. False si no existe o es de otro cliente.
-
-    Los renglones se borran PRIMERO: en Postgres la FK no deja borrar el padre con hijos."""
+def borrar_asiento_manual(db: Session, cuit: str, asiento_id: int, usuario: str = "") -> bool:
+    """ANULA un asiento manual: deja de sumar en el diario y en los informes, pero la fila queda con
+    su historial. Borrarlo de verdad haría desaparecer la evidencia de que existió. Devuelve False
+    si no existe, es de otro cliente o ya estaba anulado."""
     cabecera = db.get(models.AsientoManual, asiento_id)
-    if cabecera is None or cabecera.cuit != cuit:
+    if cabecera is None or cabecera.cuit != cuit or cabecera.anulado_en is not None:
         return False
     _exigir_abierto(db, cuit, cabecera.fecha)
-    lin = models.LineaAsientoManual
-    for fila in db.execute(select(lin).where(lin.asiento_id == asiento_id)).scalars():
-        db.delete(fila)
-    db.flush()
-    db.delete(cabecera)
+    cabecera.anulado_en = dt.datetime.now(dt.timezone.utc)
+    cabecera.anulado_por = usuario
+    _registrar(
+        db, cuit, "asiento_anulado", cabecera.detalle or "Asiento a mano", usuario,
+        referencia=f"manual-{asiento_id}", periodo=_periodo_de(cabecera.fecha),
+    )
     db.commit()
     return True
 
@@ -727,6 +806,7 @@ def mayor(db: Session, cuit: str, codigo: str, desde: dt.date, hasta: dt.date) -
             debe_total = round(debe_total + linea["debe"], 2)
             haber_total = round(haber_total + linea["haber"], 2)
             movimientos.append({
+                "asientoId": asiento["id"],
                 "fecha": asiento["fecha"],
                 "detalle": asiento["detalle"],
                 "contraparte": asiento["contraparte"],
@@ -835,14 +915,20 @@ def asiento_de_movimiento(
 
     por_defecto = False
     origen_imputacion = "manual"
-    cta_contra = nombres.get(imputaciones.get(mov_id, 0))
+    quien = cuando = ""
+    imputada = imputaciones.get(mov_id)
+    cta_contra = nombres.get(imputada.cuenta_id) if imputada is not None else None
+    if imputada is not None:
+        quien, cuando = imputada.creada_por or "", _fecha_hora(imputada.creada_en)
     if cta_contra is None:
         origen_imputacion = "regla"
         regla = _elegir_regla(reglas, lado, doc, contraparte)
         if regla is not None:
             cta_contra = nombres.get(regla.cuenta_id)
+            quien, cuando = regla.creada_por or "", _fecha_hora(regla.creada_en)
     if cta_contra is None:
         origen_imputacion = "defecto"
+        quien = cuando = ""
         cta_contra = CTA_DEUDORES if es_cobro else CTA_PROVEEDORES
         por_defecto = not (es_cobro and mov.comprobante_matcheado_id)
 
@@ -875,6 +961,8 @@ def asiento_de_movimiento(
         "origen": "banco",
         "cuentaImputada": cta_contra,
         "imputacion": origen_imputacion,
+        "imputadoPor": quien,
+        "imputadoEn": cuando,
         "contraparteCuit": doc,
     }
 
@@ -959,6 +1047,11 @@ def cerrar_periodo(db: Session, cuit: str, periodo: str, email: str) -> dict:
     cierre.haber = datos["totales"]["haber"]
     cierre.cerrado_por = email
     cierre.cerrado_en = dt.datetime.now(dt.timezone.utc)
+    _registrar(
+        db, cuit, "cierre",
+        f"{label_periodo(periodo)}: {cierre.asientos} asientos por {float(cierre.debe):,.2f}",
+        email, referencia=periodo, periodo=periodo,
+    )
     db.commit()
     return {
         "periodo": periodo,
@@ -967,12 +1060,20 @@ def cerrar_periodo(db: Session, cuit: str, periodo: str, email: str) -> dict:
     }
 
 
-def reabrir_periodo(db: Session, cuit: str, periodo: str) -> bool:
-    """Reabre un período cerrado. False si no estaba cerrado."""
+def reabrir_periodo(db: Session, cuit: str, periodo: str, usuario: str = "") -> bool:
+    """Reabre un período cerrado. False si no estaba cerrado.
+
+    La fila del cierre se borra (el período deja de estar cerrado), pero el evento queda en la
+    bitácora: quién reabrió qué y cuándo es justamente lo que hay que poder mostrar después."""
     cie = models.CierreContable
     cierre = db.scalar(select(cie).where(cie.cuit == cuit, cie.periodo == periodo))
     if cierre is None:
         return False
+    _registrar(
+        db, cuit, "reapertura",
+        f"{label_periodo(periodo)}: lo había cerrado {cierre.cerrado_por or 'alguien del estudio'}",
+        usuario, referencia=periodo, periodo=periodo,
+    )
     db.delete(cierre)
     db.commit()
     return True
@@ -1067,3 +1168,249 @@ def estados(db: Session, cuit: str, desde: dt.date, hasta: dt.date) -> dict:
         "cierra": abs(totales["activo"] - (totales["pasivo"] + total_patrimonio)) < 0.01,
         "sinPlan": False,
     }
+
+
+# --- Trazabilidad: bitácora de decisiones ---------------------------------------------------------
+def _fecha_hora(valor: dt.datetime | None) -> str:
+    """Fecha y hora en ISO, o vacío. El front la formatea."""
+    return valor.isoformat() if valor else ""
+
+
+def _registrar(
+    db: Session,
+    cuit: str,
+    tipo: str,
+    detalle: str,
+    usuario: str,
+    referencia: str = "",
+    periodo: str = "",
+) -> None:
+    """Anota un evento en la bitácora. Sólo agrega: nunca se edita ni se borra lo ya anotado.
+
+    NO hace commit: se guarda junto con la operación que lo generó, así nunca queda un evento
+    registrando algo que después falló."""
+    db.add(models.EventoContable(
+        cuit=cuit, tipo=tipo, referencia=referencia[:60], periodo=periodo,
+        detalle=detalle[:300], usuario=usuario or "",
+    ))
+
+
+def _nombre_cuenta(db: Session, cuenta_id: int | None) -> str:
+    """'5.1.03 Servicios públicos' para redactar la bitácora."""
+    if not cuenta_id:
+        return "—"
+    cuenta = db.get(models.CuentaContable, cuenta_id)
+    return f"{cuenta.codigo} {cuenta.nombre}" if cuenta is not None else "(cuenta borrada)"
+
+
+_ETIQUETA_EVENTO = {
+    "imputacion": "Cambio de cuenta",
+    "imputacion_quitada": "Vuelta a la cuenta sugerida",
+    "regla": "Cuenta guardada para una contraparte",
+    "regla_borrada": "Baja de una cuenta guardada",
+    "asiento": "Asiento cargado a mano",
+    "asiento_anulado": "Asiento anulado",
+    "cierre": "Cierre de período",
+    "reapertura": "Reapertura de período",
+}
+
+
+def eventos_de(
+    db: Session, cuit: str, limite: int = 60, referencia: str = "", periodo: str = ""
+) -> list[dict]:
+    """Bitácora del cliente, lo más reciente primero. Se puede acotar a un asiento (`referencia`) o
+    a un período."""
+    ev = models.EventoContable
+    condiciones = [ev.cuit == cuit]
+    if referencia:
+        condiciones.append(ev.referencia == referencia)
+    if periodo:
+        condiciones.append(ev.periodo == periodo)
+    filas = db.execute(
+        select(ev).where(*condiciones).order_by(ev.creado_en.desc(), ev.id.desc()).limit(limite)
+    ).scalars()
+    return [
+        {
+            "id": e.id,
+            "tipo": e.tipo,
+            "etiqueta": _ETIQUETA_EVENTO.get(e.tipo, e.tipo),
+            "referencia": e.referencia or "",
+            "periodo": e.periodo or "",
+            "detalle": e.detalle or "",
+            "usuario": e.usuario or "",
+            "fecha": _fecha_hora(e.creado_en),
+        }
+        for e in filas
+    ]
+
+
+# --- Trazabilidad: de dónde sale cada asiento -----------------------------------------------------
+def _dato(etiqueta: str, valor: str) -> dict:
+    return {"etiqueta": etiqueta, "valor": valor}
+
+
+def _importe(etiqueta: str, valor) -> dict:
+    return {"etiqueta": etiqueta, "importe": round(float(valor or 0), 2)}
+
+
+def _origen_comprobante(db: Session, comp: models.ComprobanteEmitido) -> dict:
+    """Ficha del comprobante que originó el asiento: lo que dice el papel."""
+    etiqueta = (
+        f"{nombre_tipo(comp.cbte_tipo)} "
+        f"{str(comp.punto_venta).zfill(5)}-{str(comp.numero).zfill(8)}"
+    )
+    datos = [
+        _dato("Tipo", nombre_tipo(comp.cbte_tipo)),
+        _dato("Punto de venta", str(comp.punto_venta).zfill(5)),
+        _dato("Número", str(comp.numero).zfill(8)),
+        _dato("Fecha", comp.fecha.isoformat()),
+    ]
+    if comp.cae:
+        datos.append(_dato("CAE", comp.cae))
+    if comp.moneda and comp.moneda != "ARS":
+        datos.append(_dato("Moneda", f"{comp.moneda} · cotización {float(comp.cotizacion or 1):g}"))
+        datos.append(_dato("Importe en origen", f"{float(comp.imp_total_origen or 0):,.2f}"))
+    datos.append(_dato(
+        "Cómo se cargó",
+        "A mano por el contador" if comp.origen == "manual" else "Traído de los registros del cliente",
+    ))
+    if comp.sincronizado_en:
+        datos.append(_dato("Última actualización", _fecha_hora(comp.sincronizado_en)))
+
+    importes = [_importe("Total", comp.imp_total)]
+    if comp.imp_neto is not None:
+        importes += [
+            _importe("Neto gravado", comp.imp_neto),
+            _importe("IVA", comp.imp_iva),
+            _importe("No gravado", comp.imp_no_gravado),
+            _importe("Exento", comp.imp_exento),
+            _importe("Otros tributos", comp.imp_trib),
+        ]
+
+    alicuotas = []
+    if comp.alicuotas_json:
+        try:
+            for fila in json.loads(comp.alicuotas_json):
+                alicuotas.append({
+                    "alicuota": f"{float(fila.get('alicuota') or 0):g}%",
+                    "base": round(float(fila.get("base") or 0), 2),
+                    "iva": round(float(fila.get("iva") or 0), 2),
+                })
+        except (ValueError, TypeError, AttributeError):
+            pass
+
+    percepciones = []
+    if comp.percepciones_json:
+        nombres_percep = {
+            "iva": "Percepción de IVA", "iibb": "Percepción de Ingresos Brutos",
+            "muni": "Percepción municipal", "internos": "Impuestos internos",
+            "otros_nac": "Otros tributos nacionales", "otros": "Otros",
+            "no_categ": "Sin categorizar",
+        }
+        try:
+            for clave, valor in json.loads(comp.percepciones_json).items():
+                if round(float(valor or 0), 2):
+                    percepciones.append(_importe(nombres_percep.get(clave, clave), valor))
+        except (ValueError, TypeError, AttributeError):
+            pass
+
+    return {
+        "tipo": "comprobante",
+        "titulo": etiqueta,
+        "subtitulo": "Venta emitida" if comp.direccion == "emitido" else "Compra recibida",
+        "fecha": comp.fecha.isoformat(),
+        "contraparte": comp.contraparte_nombre or "—",
+        "contraparteCuit": _solo_digitos(comp.doc_nro),
+        "datos": datos,
+        "importes": importes,
+        "alicuotas": alicuotas,
+        "percepciones": percepciones,
+    }
+
+
+def _origen_movimiento(db: Session, mov: models.MovimientoBancario) -> dict:
+    """Ficha del movimiento del extracto que originó el asiento."""
+    es_cobro = mov.tipo != "debito"
+    fuentes = {"banco": "Extracto bancario", "mercadopago": "MercadoPago", "otro": "Otro origen"}
+    datos = [
+        _dato("Movimiento", "Cobro (entró plata)" if es_cobro else "Pago (salió plata)"),
+        _dato("Fecha", mov.fecha.isoformat()),
+        _dato("Origen del dato", fuentes.get(mov.fuente, mov.fuente)),
+    ]
+    if mov.descripcion:
+        datos.append(_dato("Descripción", mov.descripcion))
+    if mov.comprobante_matcheado_id:
+        datos.append(_dato(
+            "Conciliado con",
+            f"{mov.comprobante_matcheado_id} (coincidencia {mov.match_confianza or 'automática'})",
+        ))
+    elif es_cobro:
+        datos.append(_dato("Conciliado con", "Todavía sin comprobante asignado"))
+    if mov.marcado_como:
+        datos.append(_dato("Marcado por el contador", mov.marcado_como))
+    if mov.importado_en:
+        datos.append(_dato("Cargado el", _fecha_hora(mov.importado_en)))
+
+    return {
+        "tipo": "banco",
+        "titulo": ("Cobro" if es_cobro else "Pago") + f" · {mov.descripcion or mov.nombre_originante or ''}".rstrip(" ·"),
+        "subtitulo": "Movimiento del extracto",
+        "fecha": mov.fecha.isoformat(),
+        "contraparte": mov.nombre_originante or "—",
+        "contraparteCuit": _solo_digitos(mov.cuit_originante),
+        "datos": datos,
+        "importes": [_importe("Importe", mov.monto)],
+        "alicuotas": [],
+        "percepciones": [],
+    }
+
+
+def _origen_manual(db: Session, cab: models.AsientoManual) -> dict:
+    """Ficha de un asiento cargado a mano."""
+    lin = models.LineaAsientoManual
+    lineas = list(db.execute(
+        select(lin).where(lin.asiento_id == cab.id).order_by(lin.id)
+    ).scalars())
+    datos = [
+        _dato("Detalle", cab.detalle or "—"),
+        _dato("Fecha", cab.fecha.isoformat()),
+        _dato("Cargado por", cab.creado_por or "—"),
+        _dato("Cargado el", _fecha_hora(cab.creado_en)),
+    ]
+    if cab.anulado_en:
+        datos.append(_dato("Anulado por", cab.anulado_por or "—"))
+        datos.append(_dato("Anulado el", _fecha_hora(cab.anulado_en)))
+    return {
+        "tipo": "manual",
+        "titulo": cab.detalle or "Asiento a mano",
+        "subtitulo": "Asiento cargado por el contador",
+        "fecha": cab.fecha.isoformat(),
+        "contraparte": "—",
+        "contraparteCuit": "",
+        "datos": datos,
+        "importes": [_importe("Total", sum(float(x.debe or 0) for x in lineas))],
+        "alicuotas": [],
+        "percepciones": [],
+    }
+
+
+def origen_de(db: Session, cuit: str, asiento_id: str) -> dict:
+    """De dónde sale un asiento: el comprobante, el movimiento del extracto o la carga manual que lo
+    originó, con su historial de decisiones. ValueError si el id no es de este cliente."""
+    if asiento_id.startswith("banco-"):
+        base = _origen_movimiento(db, movimiento_por_id(db, cuit, asiento_id))
+    elif asiento_id.startswith("manual-"):
+        try:
+            manual_id = int(asiento_id.split("-", 1)[1])
+        except (IndexError, ValueError) as e:
+            raise ValueError("Asiento inválido.") from e
+        cab = db.get(models.AsientoManual, manual_id)
+        if cab is None or cab.cuit != cuit:
+            raise ValueError("No encontramos ese asiento.")
+        base = _origen_manual(db, cab)
+    else:
+        base = _origen_comprobante(db, comprobante_por_id(db, cuit, asiento_id))
+
+    base["id"] = asiento_id
+    base["historial"] = eventos_de(db, cuit, limite=20, referencia=asiento_id)
+    return base

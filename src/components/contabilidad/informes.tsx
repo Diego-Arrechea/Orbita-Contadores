@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { Download, Info, Loader2 } from 'lucide-react';
+import { OrigenDialog } from '@/components/contabilidad/origen';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -142,16 +143,21 @@ export function VistaMayor({
   periodo,
   periodos,
   cliente,
+  codigo,
+  onCodigo,
 }: {
   cuit: string;
   cuentas: Cuenta[];
   periodo: string;
   periodos: PeriodoContable[];
   cliente: string;
+  /** Cuenta elegida. La maneja la página para poder llegar desde otro informe. */
+  codigo: string;
+  onCodigo: (codigo: string) => void;
 }) {
   const imputables = useMemo(() => cuentas.filter(c => c.imputable), [cuentas]);
-  const [codigo, setCodigo] = useState('');
   const [modo, setModo] = useState<ModoRango>('periodo');
+  const [origenAbierto, setOrigenAbierto] = useState<string | null>(null);
   const elegida = codigo || imputables[0]?.codigo || '';
   const { desde, hasta } = rangoDe(modo, periodo, periodos);
 
@@ -200,7 +206,7 @@ export function VistaMayor({
         onExportar={exportar}
         puedeExportar={!!mayor && mayor.movimientos.length > 0}
       >
-        <Select value={elegida} onValueChange={setCodigo}>
+        <Select value={elegida} onValueChange={onCodigo}>
           <SelectTrigger className="h-9 w-full bg-card sm:w-80">
             <SelectValue placeholder="Elegí una cuenta" />
           </SelectTrigger>
@@ -256,7 +262,12 @@ export function VistaMayor({
                   </TableHeader>
                   <TableBody>
                     {mayor.movimientos.map((m, i) => (
-                      <TableRow key={`${m.fecha}-${i}`}>
+                      <TableRow
+                        key={`${m.fecha}-${i}`}
+                        className="cursor-pointer"
+                        onClick={() => setOrigenAbierto(m.asientoId)}
+                        title="Ver de dónde sale este movimiento"
+                      >
                         <TableCell className="tabular-nums text-muted-foreground">
                           {fechaCorta(m.fecha)}
                         </TableCell>
@@ -284,7 +295,11 @@ export function VistaMayor({
               {/* Celular */}
               <ul className="divide-y lg:hidden">
                 {mayor.movimientos.map((m, i) => (
-                  <li key={`${m.fecha}-${i}`} className="px-4 py-2.5 text-sm">
+                  <li
+                    key={`${m.fecha}-${i}`}
+                    className="px-4 py-2.5 text-sm"
+                    onClick={() => setOrigenAbierto(m.asientoId)}
+                  >
                     <div className="flex items-baseline gap-2">
                       <span className="tabular-nums text-muted-foreground">{fechaCorta(m.fecha)}</span>
                       <span className="min-w-0 flex-1 truncate">{m.detalle}</span>
@@ -302,6 +317,7 @@ export function VistaMayor({
           )}
         </Card>
       )}
+      <OrigenDialog cuit={cuit} asientoId={origenAbierto} onCerrar={() => setOrigenAbierto(null)} />
     </div>
   );
 }
@@ -312,11 +328,14 @@ export function VistaSumas({
   periodo,
   periodos,
   cliente,
+  onVerCuenta,
 }: {
   cuit: string;
   periodo: string;
   periodos: PeriodoContable[];
   cliente: string;
+  /** Abre el mayor de esa cuenta: el paso siguiente del camino de vuelta. */
+  onVerCuenta: (codigo: string) => void;
 }) {
   const [modo, setModo] = useState<ModoRango>('periodo');
   const { desde, hasta } = rangoDe(modo, periodo, periodos);
@@ -393,7 +412,12 @@ export function VistaSumas({
               </TableHeader>
               <TableBody>
                 {sumas.filas.map(f => (
-                  <TableRow key={f.codigo}>
+                  <TableRow
+                    key={f.codigo}
+                    className="cursor-pointer"
+                    onClick={() => onVerCuenta(f.codigo)}
+                    title="Ver el mayor de esta cuenta"
+                  >
                     <TableCell className="tabular-nums text-muted-foreground">{f.codigo}</TableCell>
                     <TableCell>{f.cuenta}</TableCell>
                     <TableCell className="text-right tabular-nums">
@@ -436,7 +460,11 @@ export function VistaSumas({
           {/* Celular */}
           <ul className="divide-y lg:hidden">
             {sumas.filas.map(f => (
-              <li key={f.codigo} className="px-4 py-2.5 text-sm">
+              <li
+                key={f.codigo}
+                className="px-4 py-2.5 text-sm"
+                onClick={() => onVerCuenta(f.codigo)}
+              >
                 <div className="flex items-baseline gap-2">
                   <span className="tabular-nums text-muted-foreground">{f.codigo}</span>
                   <span className="min-w-0 flex-1">{f.cuenta}</span>
@@ -475,11 +503,13 @@ function BloqueEstado({
   lineas,
   total,
   extra,
+  onVerCuenta,
 }: {
   titulo: string;
   lineas: LineaEstado[];
   total: number;
   extra?: { etiqueta: string; importe: number };
+  onVerCuenta?: (codigo: string) => void;
 }) {
   return (
     <Card className="overflow-hidden">
@@ -489,7 +519,12 @@ function BloqueEstado({
           <li className="px-4 py-3 text-sm text-muted-foreground">Sin saldos</li>
         )}
         {lineas.map(l => (
-          <li key={l.codigo} className="flex items-baseline gap-3 px-4 py-2 text-sm">
+          <li
+            key={l.codigo}
+            className={onVerCuenta ? 'flex items-baseline gap-3 px-4 py-2 text-sm cursor-pointer' : 'flex items-baseline gap-3 px-4 py-2 text-sm'}
+            onClick={() => onVerCuenta?.(l.codigo)}
+            title={onVerCuenta ? 'Ver el mayor de esta cuenta' : undefined}
+          >
             <span className="tabular-nums text-muted-foreground">{l.codigo}</span>
             <span className="min-w-0 flex-1">{l.cuenta}</span>
             <span className="tabular-nums">{formatCurrency(l.importe)}</span>
@@ -516,11 +551,14 @@ export function VistaEstados({
   periodo,
   periodos,
   cliente,
+  onVerCuenta,
 }: {
   cuit: string;
   periodo: string;
   periodos: PeriodoContable[];
   cliente: string;
+  /** Abre el mayor de esa cuenta. */
+  onVerCuenta: (codigo: string) => void;
 }) {
   const [modo, setModo] = useState<ModoRango>('anio');
   const { desde, hasta } = rangoDe(modo, periodo, periodos);
@@ -615,6 +653,7 @@ export function VistaEstados({
           <BloqueEstado
             titulo={`Estado de resultados · ${fechaCorta(estados.desde)} al ${fechaCorta(estados.hasta)}`}
             lineas={estados.resultados}
+            onVerCuenta={onVerCuenta}
             total={estados.resultado}
           />
 
@@ -622,17 +661,20 @@ export function VistaEstados({
             <BloqueEstado
               titulo={`Activo al ${fechaCorta(estados.hasta)}`}
               lineas={estados.activo}
+            onVerCuenta={onVerCuenta}
               total={estados.totalActivo}
             />
             <div className="space-y-4">
               <BloqueEstado
                 titulo="Pasivo"
                 lineas={estados.pasivo}
+            onVerCuenta={onVerCuenta}
                 total={estados.totalPasivo}
               />
               <BloqueEstado
                 titulo="Patrimonio neto"
                 lineas={estados.patrimonio}
+            onVerCuenta={onVerCuenta}
                 total={estados.totalPatrimonio}
                 extra={{ etiqueta: 'Resultado acumulado', importe: estados.resultadoAcumulado }}
               />

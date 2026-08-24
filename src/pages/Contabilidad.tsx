@@ -10,6 +10,7 @@ import {
   Loader2,
   Lock,
   Pencil,
+  Receipt,
   Plus,
   Sparkles,
   Trash2,
@@ -56,6 +57,7 @@ import {
   getDiario,
   getPeriodosContables,
   getPlanCuentas,
+  getEventos,
   getReglas,
   importarPlanCuentas,
   imputarComprobante,
@@ -69,6 +71,7 @@ import {
   type Diario,
   type TipoCuenta,
 } from '@/services/contabilidadService';
+import { fechaLegible, LineaEvento, OrigenDialog } from '@/components/contabilidad/origen';
 import {
   bajarExcel,
   fechaCorta,
@@ -182,6 +185,8 @@ export function Contabilidad() {
   const [cuit, setCuit] = useState<string>('');
   const [periodo, setPeriodo] = useState<string>('');
   const [vista, setVista] = useState<VistaContable>('diario');
+  // Cuenta que mira el Mayor. Vive acá porque se llega a ella desde los otros informes.
+  const [cuentaMayor, setCuentaMayor] = useState('');
   const [aviso, setAviso] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [trabajando, setTrabajando] = useState(false);
@@ -216,6 +221,12 @@ export function Contabilidad() {
     queryFn: () => getDiario(cuitActivo, periodoActivo),
     enabled: !!cuitActivo && !!periodoActivo && plan.length > 0,
   });
+
+  /** El camino de vuelta: de una línea de un informe al mayor de esa cuenta. */
+  function verCuenta(codigo: string) {
+    setCuentaMayor(codigo);
+    setVista('mayor');
+  }
 
   function refrescar() {
     qc.invalidateQueries({ queryKey: ['contabilidad', 'plan', cuitActivo] });
@@ -445,6 +456,8 @@ export function Contabilidad() {
           periodo={periodoActivo}
           periodos={periodos}
           cliente={clienteActivo?.nombre ?? cuitActivo}
+          codigo={cuentaMayor}
+          onCodigo={setCuentaMayor}
         />
       ) : vista === 'sumas' ? (
         <VistaSumas
@@ -452,6 +465,7 @@ export function Contabilidad() {
           periodo={periodoActivo}
           periodos={periodos}
           cliente={clienteActivo?.nombre ?? cuitActivo}
+          onVerCuenta={verCuenta}
         />
       ) : vista === 'estados' ? (
         <VistaEstados
@@ -459,6 +473,7 @@ export function Contabilidad() {
           periodo={periodoActivo}
           periodos={periodos}
           cliente={clienteActivo?.nombre ?? cuitActivo}
+          onVerCuenta={verCuenta}
         />
       ) : vista === 'plan' ? (
         <VistaPlan cuit={cuitActivo} plan={plan} onCambio={refrescar} />
@@ -527,6 +542,7 @@ function VistaDiario({
   onCambio: () => void;
 }) {
   const [nuevoAbierto, setNuevoAbierto] = useState(false);
+  const [origenAbierto, setOrigenAbierto] = useState<string | null>(null);
   const [cerrando, setCerrando] = useState(false);
   const [errorCierre, setErrorCierre] = useState<string | null>(null);
   const cerrado = diario?.cerrado ?? false;
@@ -694,6 +710,7 @@ function VistaDiario({
             cuentas={cuentas}
             bloqueado={cerrado}
             onCambio={onCambio}
+            onVerOrigen={() => setOrigenAbierto(a.id)}
           />
         ))}
       </div>
@@ -709,6 +726,7 @@ function VistaDiario({
         </span>
       </div>
       {dialogo}
+      <OrigenDialog cuit={cuit} asientoId={origenAbierto} onCerrar={() => setOrigenAbierto(null)} />
     </div>
   );
 }
@@ -730,6 +748,7 @@ function AsientoCard({
   cuentas,
   bloqueado,
   onCambio,
+  onVerOrigen,
 }: {
   asiento: Asiento;
   cuit: string;
@@ -737,6 +756,7 @@ function AsientoCard({
   /** El período está cerrado: se puede mirar, no tocar. */
   bloqueado: boolean;
   onCambio: () => void;
+  onVerOrigen: () => void;
 }) {
   const [editando, setEditando] = useState(false);
   const [cuentaId, setCuentaId] = useState('');
@@ -786,13 +806,25 @@ function AsientoCard({
           {etiquetaLado}
         </Badge>
         {!esManual && <span className="text-sm text-muted-foreground">{asiento.contraparte}</span>}
-        {asiento.imputacion === 'regla' && (
-          <span className="text-xs text-muted-foreground">cuenta guardada para esta contraparte</span>
+        {asiento.imputacion !== 'defecto' && (
+          <span className="text-xs text-muted-foreground">
+            {asiento.imputacion === 'regla' ? 'cuenta guardada' : 'cuenta fijada'}
+            {asiento.imputadoPor ? ` por ${asiento.imputadoPor}` : ''}
+            {asiento.imputadoEn ? ` · ${fechaLegible(asiento.imputadoEn)}` : ''}
+          </span>
         )}
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-muted-foreground tabular-nums">
             {asiento.fecha.split('-').reverse().join('/')}
           </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            title="Ver de dónde sale este asiento"
+            onClick={onVerOrigen}
+          >
+            <Receipt className="h-4 w-4" />
+          </Button>
           {puedeImputar && !editando && (
             <Button variant="ghost" size="sm" title="Cambiar la cuenta" onClick={abrirEdicion}>
               <Pencil className="h-4 w-4" />
@@ -1098,6 +1130,11 @@ function VistaReglas({ cuit }: { cuit: string }) {
     queryFn: () => getReglas(cuit),
     enabled: !!cuit,
   });
+  const { data: eventos = [] } = useQuery({
+    queryKey: ['contabilidad', 'eventos', cuit],
+    queryFn: () => getEventos(cuit),
+    enabled: !!cuit,
+  });
   const [error, setError] = useState<string | null>(null);
 
   async function borrar(id: number) {
@@ -1106,6 +1143,7 @@ function VistaReglas({ cuit }: { cuit: string }) {
       await borrarRegla(cuit, id);
       qc.invalidateQueries({ queryKey: ['contabilidad', 'reglas', cuit] });
       qc.invalidateQueries({ queryKey: ['contabilidad', 'diario', cuit] });
+      qc.invalidateQueries({ queryKey: ['contabilidad', 'eventos', cuit] });
     } catch (e) {
       setError(mensajeDeError(e));
     }
@@ -1118,16 +1156,37 @@ function VistaReglas({ cuit }: { cuit: string }) {
       </Card>
     );
   }
+  const bitacora = (
+    <Card className="overflow-hidden">
+      <div className="border-b px-4 py-3 font-medium">Actividad</div>
+      {eventos.length === 0 ? (
+        <p className="px-4 py-6 text-center text-sm text-muted-foreground">
+          Todavía no hay decisiones registradas para este cliente.
+        </p>
+      ) : (
+        <ul className="divide-y px-4">
+          {eventos.map(e => (
+            <LineaEvento key={e.id} evento={e} />
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+
   if (reglas.length === 0) {
     return (
-      <Card className="p-8 text-center text-sm text-muted-foreground">
-        Todavía no guardaste ninguna. Cuando cambies la cuenta de un comprobante, marcá “usar esta
-        cuenta para los próximos” y va a aparecer acá.
-      </Card>
+      <div className="space-y-4">
+        <Card className="p-8 text-center text-sm text-muted-foreground">
+          Todavía no guardaste ninguna cuenta por contraparte. Cuando cambies la cuenta de un
+          comprobante, marcá “usar esta cuenta para los próximos” y va a aparecer acá.
+        </Card>
+        {bitacora}
+      </div>
     );
   }
 
   return (
+    <div className="space-y-4">
     <Card className="overflow-hidden">
       <div className="border-b px-4 py-3 font-medium">
         {reglas.length} {reglas.length === 1 ? 'contraparte con cuenta fija' : 'contrapartes con cuenta fija'}
@@ -1143,6 +1202,11 @@ function VistaReglas({ cuit }: { cuit: string }) {
             <span className="text-muted-foreground">
               se registra en {r.codigo} · {r.cuenta}
             </span>
+            {r.creadaPor && (
+              <span className="text-xs text-muted-foreground">
+                guardada por {r.creadaPor} · {fechaLegible(r.creadaEn)}
+              </span>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -1155,7 +1219,9 @@ function VistaReglas({ cuit }: { cuit: string }) {
           </li>
         ))}
       </ul>
-    </Card>
+      </Card>
+      {bitacora}
+    </div>
   );
 }
 

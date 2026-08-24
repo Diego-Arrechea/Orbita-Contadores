@@ -546,6 +546,11 @@ class AsientoManual(Base):
     creado_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # Baja LÓGICA: un asiento anulado deja de sumar en el diario y en los informes, pero la fila
+    # queda (con su historial en `eventos_contables`). Borrar de verdad haría desaparecer la
+    # evidencia de que alguna vez estuvo.
+    anulado_en: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    anulado_por: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 
 class LineaAsientoManual(Base):
@@ -588,6 +593,31 @@ class CierreContable(Base):
     cerrado_por: Mapped[str] = mapped_column(String(120), default="")
     cerrado_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class EventoContable(Base):
+    """Bitácora de las decisiones contables de un cliente: quién hizo qué y cuándo.
+
+    Es de sólo agregar (nunca se edita ni se borra): es la respuesta a "¿por qué este número quedó
+    así?". Registra los cambios de imputación (con la cuenta anterior y la nueva), las reglas que se
+    guardan o se dan de baja, los asientos cargados y anulados, y los cierres y reaperturas de
+    período — que en el papel son el evento más importante de todos."""
+
+    __tablename__ = "eventos_contables"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cuit: Mapped[str] = mapped_column(String(11), ForeignKey("clientes_arca.cuit"), index=True)
+    # imputacion | imputacion_quitada | regla | regla_borrada | asiento | asiento_anulado |
+    # cierre | reapertura
+    tipo: Mapped[str] = mapped_column(String(24), index=True)
+    # A qué se refiere: id compuesto del asiento, id de la regla o el período (aaaa-mm).
+    referencia: Mapped[str] = mapped_column(String(60), default="")
+    periodo: Mapped[str] = mapped_column(String(7), default="", index=True)  # aaaa-mm del movimiento
+    detalle: Mapped[str] = mapped_column(String(300), default="")  # redactado para leer
+    usuario: Mapped[str] = mapped_column(String(120), default="")
+    creado_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
     )
 
 
@@ -795,3 +825,77 @@ class WorkerHeartbeat(Base):
     en_vuelo: Mapped[str] = mapped_column(Text, default="[]")  # JSON: cuits sincronizándose ahora
     concurrencia: Mapped[int] = mapped_column(Integer, default=0)
     intervalo_horas: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Suscripcion(Base):
+    """La suscripción de UNA cuenta de contador a Órbita (una fila por cuenta PLENA; los empleados
+    del estudio no tienen la suya: se cubren con la del titular).
+
+    Es el estado comercial de la cuenta: qué plan tiene, cuánto paga, cada cuánto y hasta cuándo
+    está paga. La cobranza hoy es MANUAL: el admin registra cada pago (`PagoSuscripcion`) y eso
+    corre `vence` hacia adelante. No hay pasarela de pago todavía (`referencia` queda para cuando
+    la haya).
+
+    OJO — hoy la suscripción NO corta el servicio: es informativa/administrativa. Vencer sólo cambia
+    el estado que se ve en el panel y en "Mi suscripción"; no bloquea el login ni la API. El corte
+    (y el aviso previo) se decide en una etapa posterior."""
+
+    __tablename__ = "suscripciones"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    usuario_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("usuarios.id"), unique=True, index=True
+    )
+    # Clave del plan del catálogo (ver services/suscripciones.PLANES). El catálogo define nombre,
+    # precio de lista y tope de clientes sugerido; lo de acá abajo puede pisarlo por cuenta.
+    plan: Mapped[str] = mapped_column(String(20), default="piloto", server_default="piloto")
+    # prueba | activa | vencida | cancelada | sin_cargo. `vencida` se DERIVA de la fecha (ver
+    # services/suscripciones.estado_efectivo): acá se guarda lo que decidió el admin.
+    estado: Mapped[str] = mapped_column(String(20), default="sin_cargo", server_default="sin_cargo")
+    ciclo: Mapped[str] = mapped_column(String(10), default="mensual")  # mensual | anual
+    # Precio REAL que paga esta cuenta, en pesos y por ciclo. NULL = usa el de lista del plan.
+    # Existe porque casi siempre hay un acuerdo particular (descuento de lanzamiento, etc.).
+    precio: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    # Tope de clientes de la cuenta. NULL = el del plan; 0 (o el del plan en NULL) = sin tope.
+    # Hoy es informativo: no impide dar de alta más clientes.
+    limite_clientes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    inicio: Mapped[str | None] = mapped_column(String(20), nullable=True)  # ISO aaaa-mm-dd
+    # Hasta cuándo está paga (ISO aaaa-mm-dd). NULL = sin vencimiento (planes sin cargo).
+    vence: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    cancelada_en: Mapped[str | None] = mapped_column(String(20), nullable=True)  # ISO
+    # Notas internas del admin (acuerdos, a quién se le factura, etc.). NO se muestran al contador.
+    notas: Mapped[str | None] = mapped_column(Text, nullable=True)
+    creada_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    actualizada_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class PagoSuscripcion(Base):
+    """Un pago registrado contra una suscripción (historial de cobranza).
+
+    Lo carga el admin a mano desde el panel. Al registrarlo, `periodo_hasta` empuja el `vence` de la
+    suscripción y la deja en estado 'activa'. El contador ve este historial en "Mi suscripción" (sin
+    las notas internas)."""
+
+    __tablename__ = "pagos_suscripcion"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    suscripcion_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("suscripciones.id"), index=True
+    )
+    fecha: Mapped[str] = mapped_column(String(20))  # ISO aaaa-mm-dd: cuándo se cobró
+    importe: Mapped[float] = mapped_column(Numeric(15, 2))
+    medio: Mapped[str] = mapped_column(String(20), default="transferencia")
+    # Período que cubre el pago (ISO). `periodo_hasta` es el que corre el vencimiento.
+    periodo_desde: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    periodo_hasta: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Referencia del cobro (nº de operación, comprobante emitido, id de la pasarela el día que haya).
+    referencia: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    notas: Mapped[str | None] = mapped_column(Text, nullable=True)
+    registrado_por: Mapped[str] = mapped_column(String(120), default="")  # email del admin
+    creado_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

@@ -388,6 +388,17 @@ def _migrar_movimientos_bancarios(conn) -> None:
         conn.execute(text("UPDATE movimientos_bancarios SET tipo = 'credito' WHERE tipo IS NULL"))
 
 
+def _migrar_asientos_manuales(conn) -> None:
+    """Agrega la baja lógica (`anulado_en`, `anulado_por`) a `asientos_manuales`. Portable."""
+    cols = _columnas(conn, "asientos_manuales")
+    if not cols:
+        return
+    if "anulado_en" not in cols:
+        conn.execute(text("ALTER TABLE asientos_manuales ADD COLUMN anulado_en TIMESTAMP"))
+    if "anulado_por" not in cols:
+        conn.execute(text("ALTER TABLE asientos_manuales ADD COLUMN anulado_por VARCHAR(120)"))
+
+
 def asegurar_columnas() -> None:
     """Migración ligera (sin Alembic): agrega columnas nuevas a tablas ya existentes.
     create_all() crea tablas faltantes pero NO altera las existentes."""
@@ -398,6 +409,7 @@ def asegurar_columnas() -> None:
         _migrar_clientes_arca(conn)
         _migrar_comprobantes_emitidos(conn)
         _migrar_movimientos_bancarios(conn)
+        _migrar_asientos_manuales(conn)
 
     # El resto son migraciones de tablas que sólo existen viejas en el SQLite de desarrollo.
     if not settings.database_url.startswith("sqlite"):

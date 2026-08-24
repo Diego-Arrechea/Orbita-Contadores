@@ -28,9 +28,11 @@ from ..schemas import (
     CuentaOut,
     DiarioOut,
     EstadosOut,
+    EventoOut,
     ImputacionIn,
     IvaPeriodoOut,
     MayorOut,
+    OrigenOut,
     PlanImportarIn,
     ReglaOut,
     SumasSaldosOut,
@@ -232,7 +234,7 @@ def quitar_imputacion(
 ):
     """Vuelve el comprobante a la cuenta que le corresponde por regla (o a la sugerida)."""
     _cliente_propio(db, cuit, usuario)
-    return contabilidad.borrar_imputacion(db, cuit, comprobante_id)
+    return contabilidad.borrar_imputacion(db, cuit, comprobante_id, usuario.email)
 
 
 @router.get("/clientes/{cuit}/reglas", response_model=list[ReglaOut])
@@ -256,7 +258,7 @@ def quitar_regla(
     """Borra una imputación automática: los comprobantes de esa contraparte vuelven a la cuenta
     sugerida (lo ya imputado a mano queda como está)."""
     _cliente_propio(db, cuit, usuario)
-    if not contabilidad.borrar_regla(db, cuit, regla_id):
+    if not contabilidad.borrar_regla(db, cuit, regla_id, usuario.email):
         raise HTTPException(status_code=404, detail="Regla no encontrada")
     return {"ok": True}
 
@@ -284,9 +286,9 @@ def borrar_asiento(
     db: Session = Depends(get_db),
     usuario: models.Usuario = Depends(usuario_contabilidad),
 ):
-    """Borra un asiento manual con sus renglones."""
+    """Anula un asiento manual: deja de sumar, pero queda registrado que existió y quién lo anuló."""
     _cliente_propio(db, cuit, usuario)
-    if not contabilidad.borrar_asiento_manual(db, cuit, asiento_id):
+    if not contabilidad.borrar_asiento_manual(db, cuit, asiento_id, usuario.email):
         raise HTTPException(status_code=404, detail="Asiento no encontrado")
     return {"ok": True}
 
@@ -374,7 +376,7 @@ def reabrir_periodo(
 ):
     """Reabre un período cerrado para poder volver a tocarlo."""
     _cliente_propio(db, cuit, usuario)
-    if not contabilidad.reabrir_periodo(db, cuit, periodo):
+    if not contabilidad.reabrir_periodo(db, cuit, periodo, usuario.email):
         raise HTTPException(status_code=404, detail="Ese período no está cerrado.")
     return {"ok": True}
 
@@ -392,3 +394,33 @@ def estados_contables(
     if hasta < desde:
         raise HTTPException(status_code=422, detail="La fecha de fin es anterior a la de inicio.")
     return EstadosOut(**contabilidad.estados(db, cuit, desde, hasta))
+
+
+@router.get("/clientes/{cuit}/asientos/{asiento_id}/origen", response_model=OrigenOut)
+def origen_del_asiento(
+    cuit: str,
+    asiento_id: str,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """De dónde sale este asiento: el comprobante con todos sus datos, el movimiento del extracto o
+    la carga manual, más el historial de decisiones que se tomaron sobre él."""
+    _cliente_propio(db, cuit, usuario)
+    try:
+        return OrigenOut(**contabilidad.origen_de(db, cuit, asiento_id))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@router.get("/clientes/{cuit}/eventos", response_model=list[EventoOut])
+def bitacora(
+    cuit: str,
+    limite: int = Query(60, ge=1, le=200),
+    periodo: str = Query("", pattern=r"^(\d{4}-\d{2})?$"),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """Las decisiones que se fueron tomando sobre la contabilidad de este cliente, de la más
+    reciente a la más vieja."""
+    _cliente_propio(db, cuit, usuario)
+    return [EventoOut(**e) for e in contabilidad.eventos_de(db, cuit, limite, periodo=periodo)]
