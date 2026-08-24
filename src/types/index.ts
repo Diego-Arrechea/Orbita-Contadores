@@ -33,12 +33,21 @@ export interface HistorialMes {
 
 /** Un período del histórico de facturación (mes 'aaaa-mm' o año 'aaaa'), con importes nominales y
  *  expresados en pesos del mes de referencia (ajustados por inflación). */
+/** Lo emitido desde un punto de venta en un período del histórico (nominal y en pesos de hoy). */
+export interface HistoricoPuntoVenta {
+  puntoVenta: number;
+  neto: number;
+  netoReal: number;
+}
+
 export interface HistoricoPeriodo {
   periodo: string;
   emitidasNetas: number;
   recibidas: number;
   emitidasNetasReal: number;
   recibidasReal: number;
+  /** Desglose de las emitidas por punto de venta; sólo los puntos con facturación en el período. */
+  porPuntoVenta?: HistoricoPuntoVenta[];
 }
 
 /** Respuesta del histórico de facturación para el gráfico de rango variable. */
@@ -49,6 +58,8 @@ export interface Historico {
   mesReferencia: string;
   /** Período más antiguo con datos (para rotular "desde …"). null si no hay comprobantes. */
   primerPeriodo: string | null;
+  /** Puntos de venta con facturación en el rango, ordenados. Con uno solo no hay desglose útil. */
+  puntosVenta: number[];
 }
 
 export interface MovimientoBancario {

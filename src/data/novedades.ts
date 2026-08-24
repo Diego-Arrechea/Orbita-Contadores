@@ -42,6 +42,30 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-08-20-puntos-de-venta-mes-a-mes',
+    fecha: '2026-08-20',
+    titulo: 'Puntos de venta, período a período',
+    resumen:
+      'Además del total, ahora ves cuánto facturó cada punto de venta en cada mes (y en cada año).',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En la solapa Facturación 12m, el bloque de puntos de venta suma la vista "Mes a mes": una grilla con los últimos 12 meses y el facturado neto de cada punto de venta en cada uno, con el total de cada mes y el de cada punto. Sirve para ver de dónde viene la facturación y detectar un local o sucursal que arrancó o dejó de facturar.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'En la solapa Histórico mensual, cuando el cliente factura desde más de un punto de venta aparece la vista "Puntos de venta": el gráfico muestra cada período dividido por punto —con su color—, y la tabla de abajo trae una columna por punto más el total. Funciona con todos los rangos, así que podés seguir la evolución de cada punto a 12 o 24 meses, a 5 años o desde el principio, y también en pesos de hoy.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Las vistas de siempre no cambian: pasás de una a otra con un clic. Como siempre, las notas de crédito restan.',
+      },
+    ],
+  },
+  {
     id: '2026-08-17-contacto-de-clientes-automatico',
     fecha: '2026-08-17',
     titulo: 'El mail de contacto de tus clientes ya viene cargado',

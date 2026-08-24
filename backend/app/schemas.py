@@ -189,6 +189,15 @@ class HistorialMesOut(BaseModel):
     ingresosNoFacturados: float = 0  # noqa: N815 — siempre 0 desde el backend; lo pisa el front si aplica
 
 
+class HistoricoPuntoVentaOut(BaseModel):
+    """Lo emitido desde un punto de venta en un período del histórico (nominal y en pesos de
+    referencia). Sólo aplica a las emitidas: en las recibidas el punto es del proveedor."""
+
+    puntoVenta: int  # noqa: N815
+    neto: float
+    netoReal: float  # noqa: N815 — en pesos de referencia (ajustado por inflación)
+
+
 class HistoricoPeriodoOut(BaseModel):
     """Un período (mes 'aaaa-mm' o año 'aaaa') de la facturación histórica, con los importes en su
     valor NOMINAL y también expresados en pesos del mes de referencia (deflactado por IPC)."""
@@ -198,6 +207,8 @@ class HistoricoPeriodoOut(BaseModel):
     recibidas: float      # nominal
     emitidasNetasReal: float  # noqa: N815 — en pesos de referencia (ajustado por inflación)
     recibidasReal: float      # noqa: N815 — en pesos de referencia
+    # Desglose de las emitidas por punto de venta. Sólo los puntos con facturación en el período.
+    porPuntoVenta: list[HistoricoPuntoVentaOut] = []  # noqa: N815
 
 
 class HistoricoOut(BaseModel):
@@ -209,6 +220,9 @@ class HistoricoOut(BaseModel):
     agrupacion: str  # 'mes' | 'anio'
     mes_referencia: str  # aaaa-mm
     primer_periodo: str | None = None
+    # Puntos de venta con facturación en el rango pedido, ordenados. Vacío/uno solo = no hay
+    # desglose que mostrar.
+    puntos_venta: list[int] = []
 
 
 class RemuneracionMesOut(BaseModel):

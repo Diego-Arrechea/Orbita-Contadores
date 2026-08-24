@@ -28,6 +28,7 @@ from ..schemas import (
     FacilidadOut,
     HistoricoOut,
     HistoricoPeriodoOut,
+    HistoricoPuntoVentaOut,
     HistorialMesOut,
     JobOut,
     LiquidacionAgroOut,
@@ -409,23 +410,29 @@ def historico_cliente(
         select(
             mes,
             comp.direccion,
+            comp.punto_venta,
             func.sum(case((es_nc, comp.imp_total), else_=0)).label("nc"),
             func.sum(case((es_nc, 0), else_=comp.imp_total)).label("resto"),
         )
         .where(comp.cuit == cuit)
-        .group_by(mes, comp.direccion)
+        .group_by(mes, comp.direccion, comp.punto_venta)
     )
     if rango < 900:
         q = q.where(comp.fecha >= _inicio_ventana_12m(rango))
     filas = db.execute(q).all()
 
     # Neto por mes: emitidas = resto − NC (mismo criterio que la lista/ficha); idem recibidas.
+    # Además el desglose de las emitidas por punto de venta (en las recibidas el punto es del
+    # proveedor, así que no dice nada del cliente).
     por_mes: dict[str, dict[str, float]] = {}
-    for mes_s, direccion, nc, resto in filas:
+    por_mes_pv: dict[str, dict[int, float]] = {}
+    for mes_s, direccion, punto_venta, nc, resto in filas:
         e = por_mes.setdefault(mes_s, {"emit": 0.0, "recib": 0.0})
         neto = float(resto or 0) - float(nc or 0)
         if direccion == "emitido":
             e["emit"] += neto
+            pv = por_mes_pv.setdefault(mes_s, {})
+            pv[int(punto_venta or 0)] = pv.get(int(punto_venta or 0), 0.0) + neto
         elif direccion == "recibido":
             e["recib"] += neto
 
@@ -434,6 +441,7 @@ def historico_cliente(
     # Deflactamos SIEMPRE por mes (aunque después agrupemos por año): cada mes tiene su propio
     # coeficiente, así el total anual en pesos de hoy queda bien ponderado.
     buckets: dict[str, dict[str, float]] = {}
+    buckets_pv: dict[str, dict[int, dict[str, float]]] = {}
     for mes_s in sorted(por_mes):
         coef = ipc.coeficiente(mes_s, ref)
         v = por_mes[mes_s]
@@ -445,6 +453,11 @@ def historico_cliente(
         b["recib"] += v["recib"]
         b["emitReal"] += v["emit"] * coef
         b["recibReal"] += v["recib"] * coef
+        bpv = buckets_pv.setdefault(clave, {})
+        for punto_venta, neto_pv in por_mes_pv.get(mes_s, {}).items():
+            p = bpv.setdefault(punto_venta, {"neto": 0.0, "netoReal": 0.0})
+            p["neto"] += neto_pv
+            p["netoReal"] += neto_pv * coef
 
     periodos = [
         HistoricoPeriodoOut(
@@ -453,6 +466,10 @@ def historico_cliente(
             recibidas=b["recib"],
             emitidasNetasReal=b["emitReal"],
             recibidasReal=b["recibReal"],
+            porPuntoVenta=[
+                HistoricoPuntoVentaOut(puntoVenta=pv, neto=x["neto"], netoReal=x["netoReal"])
+                for pv, x in sorted(buckets_pv.get(clave, {}).items())
+            ],
         )
         for clave, b in sorted(buckets.items())
     ]
@@ -461,6 +478,7 @@ def historico_cliente(
         agrupacion="anio" if por_anio else "mes",
         mes_referencia=ref,
         primer_periodo=(min(por_mes) if por_mes else None),
+        puntos_venta=sorted({pv for m in por_mes_pv.values() for pv in m}),
     )
 
 

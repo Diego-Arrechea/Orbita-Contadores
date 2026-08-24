@@ -34,10 +34,36 @@ interface Props {
 
 type Rango = 12 | 24 | 60 | 999;
 type Unidad = 'nominal' | 'hoy';
-type Fila = { periodo: string; emit: number; recib: number; ing: number };
+type Vista = 'ambos' | 'emitidas' | 'recibidas' | 'pv';
+/** Una fila del período. `pv` = emitidas netas discriminadas por punto de venta (vacío si no aplica). */
+type Fila = {
+  periodo: string;
+  emit: number;
+  recib: number;
+  ing: number;
+  pv: Record<number, number>;
+};
+
+/** Colores de las series por punto de venta. Arranca con los de la marca y sigue con tonos bien
+ *  separados; con más puntos que colores se repiten (igual quedan distinguibles por el orden). */
+const COLORES_PV = [
+  'hsl(var(--primary))',
+  'hsl(var(--success))',
+  'hsl(var(--warning))',
+  'hsl(268 55% 58%)',
+  'hsl(192 75% 42%)',
+  'hsl(var(--danger))',
+  'hsl(142 40% 38%)',
+  'hsl(44 78% 47%)',
+];
+
+/** Rótulo de la serie/columna de un punto de venta ("Punto 00003"). */
+function etiquetaPV(pv: number) {
+  return `Punto ${pv.toString().padStart(5, '0')}`;
+}
 
 export function HistoricoMensual({ cliente, real = true }: Props) {
-  const [vista, setVista] = useState<'ambos' | 'emitidas' | 'recibidas'>('ambos');
+  const [vista, setVista] = useState<Vista>('ambos');
   const [rango, setRango] = useState<Rango>(12);
   const [unidad, setUnidad] = useState<Unidad>('nominal');
 
@@ -63,6 +89,9 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
         emit: unidad === 'hoy' ? p.emitidasNetasReal : p.emitidasNetas,
         recib: unidad === 'hoy' ? p.recibidasReal : p.recibidas,
         ing: conIng ? ingPorMes.get(p.periodo) || 0 : 0,
+        pv: Object.fromEntries(
+          (p.porPuntoVenta ?? []).map(x => [x.puntoVenta, unidad === 'hoy' ? x.netoReal : x.neto]),
+        ) as Record<number, number>,
       }));
     }
     // Fallback embebido (mock, o mientras carga la primera vez): mensual, nominal, últimos `rango`.
@@ -73,16 +102,38 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
       emit: h.emitidasNetas,
       recib: h.recibidas,
       ing: h.ingresosNoFacturados || 0,
+      pv: {},
     }));
   }, [usaEndpoint, hist, esAnio, unidad, ingPorMes, cliente.historialMensual, rango]);
 
   const hayIngresos = filas.some(f => f.ing > 0);
-  const data = filas.map(f => ({
-    periodo: formatPeriodoCorto(f.periodo, esAnio),
-    Emitidas: f.emit,
-    'Ingresos no fact.': f.ing,
-    Recibidas: f.recib,
-  }));
+
+  // El desglose por punto de venta sólo se ofrece si el cliente factura desde más de uno (con uno
+  // solo sería idéntico a la vista de emitidas). Si deja de aplicar (otro rango, otro cliente),
+  // la vista cae a 'ambos' sola.
+  const pvs = usaEndpoint ? hist!.puntosVenta ?? [] : [];
+  const hayPV = pvs.length > 1;
+  const vistaEf: Vista = vista === 'pv' && !hayPV ? 'ambos' : vista;
+
+  const data = filas.map(f => {
+    const fila: Record<string, string | number> = {
+      periodo: formatPeriodoCorto(f.periodo, esAnio),
+      Emitidas: f.emit,
+      'Ingresos no fact.': f.ing,
+      Recibidas: f.recib,
+    };
+    // En la vista por punto de venta cada punto es una serie apilada (las emitidas del período).
+    if (vistaEf === 'pv') for (const pv of pvs) fila[etiquetaPV(pv)] = f.pv[pv] ?? 0;
+    return fila;
+  });
+
+  // Total del rango por punto de venta (pie de la tabla).
+  const totalPorPV: Record<number, number> = {};
+  for (const f of filas) {
+    for (const [pv, v] of Object.entries(f.pv)) {
+      totalPorPV[Number(pv)] = (totalPorPV[Number(pv)] ?? 0) + v;
+    }
+  }
 
   const refCorto = hist ? formatMesCorto(hist.mesReferencia) : '';
   const rangoTxt =
@@ -91,7 +142,7 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
     (rango === 60 || rango >= 900) && hist?.primerPeriodo
       ? ` · desde ${formatMesLargo(hist.primerPeriodo)}`
       : '';
-  const totalMostrado = filas.reduce((s, f) => s + (vista === 'recibidas' ? f.recib : f.emit), 0);
+  const totalMostrado = filas.reduce((s, f) => s + (vistaEf === 'recibidas' ? f.recib : f.emit), 0);
 
   return (
     <Card className="p-4 sm:p-6">
@@ -106,11 +157,14 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
             {desdeTxt}
           </div>
         </div>
-        <Tabs value={vista} onValueChange={(v) => setVista(v as typeof vista)}>
+        <Tabs value={vistaEf} onValueChange={(v) => setVista(v as Vista)}>
           <TabsList className="w-full lg:w-auto">
             <TabsTrigger value="ambos" className="flex-1 lg:flex-none">Ambos</TabsTrigger>
             <TabsTrigger value="emitidas" className="flex-1 lg:flex-none">Emitidas</TabsTrigger>
             <TabsTrigger value="recibidas" className="flex-1 lg:flex-none">Recibidas</TabsTrigger>
+            {hayPV && (
+              <TabsTrigger value="pv" className="flex-1 lg:flex-none">Puntos de venta</TabsTrigger>
+            )}
           </TabsList>
         </Tabs>
       </div>
@@ -163,7 +217,7 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
               formatter={(value: number) => formatMonto(value)}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
-            {(vista === 'ambos' || vista === 'emitidas') && (
+            {(vistaEf === 'ambos' || vistaEf === 'emitidas') && (
               <Bar
                 dataKey="Emitidas"
                 stackId="emit"
@@ -171,7 +225,7 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
                 radius={hayIngresos ? [0, 0, 0, 0] : [6, 6, 0, 0]}
               />
             )}
-            {(vista === 'ambos' || vista === 'emitidas') && hayIngresos && (
+            {(vistaEf === 'ambos' || vistaEf === 'emitidas') && hayIngresos && (
               <Bar
                 dataKey="Ingresos no fact."
                 stackId="emit"
@@ -179,7 +233,17 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
                 radius={[6, 6, 0, 0]}
               />
             )}
-            {(vista === 'ambos' || vista === 'recibidas') && (
+            {vistaEf === 'pv' &&
+              pvs.map((pv, i) => (
+                <Bar
+                  key={pv}
+                  dataKey={etiquetaPV(pv)}
+                  stackId="pv"
+                  fill={COLORES_PV[i % COLORES_PV.length]}
+                  radius={i === pvs.length - 1 ? [6, 6, 0, 0] : [0, 0, 0, 0]}
+                />
+              ))}
+            {(vistaEf === 'ambos' || vistaEf === 'recibidas') && (
               <Bar
                 dataKey="Recibidas"
                 fill="hsl(var(--muted-foreground))"
@@ -193,7 +257,7 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span>
-          {vista === 'recibidas' ? 'Compras' : 'Facturado'} acumulado: {formatMonto(totalMostrado)}
+          {vistaEf === 'recibidas' ? 'Compras' : 'Facturado'} acumulado: {formatMonto(totalMostrado)}
         </span>
         {real && (
           <span>
@@ -207,70 +271,142 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
 
       {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
       <div className="mt-6 hidden max-h-80 overflow-auto scrollbar-thin -mx-6 px-6 lg:block">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{esAnio ? 'Año' : 'Mes'}</TableHead>
-              <TableHead className="text-right">Emitidas netas</TableHead>
-              {hayIngresos && <TableHead className="text-right">Ingresos no fact.</TableHead>}
-              <TableHead className="text-right">Recibidas</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {[...filas].reverse().map(f => (
-              <TableRow key={f.periodo}>
-                <TableCell className="font-medium">{formatPeriodoLargo(f.periodo, esAnio)}</TableCell>
-                <TableCell className="text-right tabular-nums font-medium">
-                  {formatMonto(f.emit)}
-                </TableCell>
-                {hayIngresos && (
-                  <TableCell
-                    className={cn(
-                      'text-right tabular-nums',
-                      f.ing > 0 ? 'text-warning-foreground font-medium' : 'text-muted-foreground',
-                    )}
-                  >
-                    {f.ing > 0 ? formatMonto(f.ing) : '—'}
-                  </TableCell>
-                )}
-                <TableCell className="text-right tabular-nums">{formatMonto(f.recib)}</TableCell>
+        {vistaEf === 'pv' ? (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{esAnio ? 'Año' : 'Mes'}</TableHead>
+                {pvs.map(pv => (
+                  <TableHead key={pv} className="whitespace-nowrap text-right tabular-nums">
+                    {pv.toString().padStart(5, '0')}
+                  </TableHead>
+                ))}
+                <TableHead className="text-right">Total emitidas</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {[...filas].reverse().map(f => (
+                <TableRow key={f.periodo}>
+                  <TableCell className="whitespace-nowrap font-medium">
+                    {formatPeriodoLargo(f.periodo, esAnio)}
+                  </TableCell>
+                  {pvs.map(pv => (
+                    <TableCell key={pv} className="whitespace-nowrap text-right tabular-nums">
+                      {f.pv[pv] == null ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        formatMonto(f.pv[pv])
+                      )}
+                    </TableCell>
+                  ))}
+                  <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
+                    {formatMonto(f.emit)}
+                  </TableCell>
+                </TableRow>
+              ))}
+              <TableRow className="bg-muted/40 hover:bg-muted/40">
+                <TableCell className="whitespace-nowrap font-semibold">Total del período</TableCell>
+                {pvs.map(pv => (
+                  <TableCell
+                    key={pv}
+                    className="whitespace-nowrap text-right font-semibold tabular-nums"
+                  >
+                    {formatMonto(totalPorPV[pv] ?? 0)}
+                  </TableCell>
+                ))}
+                <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">
+                  {formatMonto(totalMostrado)}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{esAnio ? 'Año' : 'Mes'}</TableHead>
+                <TableHead className="text-right">Emitidas netas</TableHead>
+                {hayIngresos && <TableHead className="text-right">Ingresos no fact.</TableHead>}
+                <TableHead className="text-right">Recibidas</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[...filas].reverse().map(f => (
+                <TableRow key={f.periodo}>
+                  <TableCell className="font-medium">{formatPeriodoLargo(f.periodo, esAnio)}</TableCell>
+                  <TableCell className="text-right tabular-nums font-medium">
+                    {formatMonto(f.emit)}
+                  </TableCell>
+                  {hayIngresos && (
+                    <TableCell
+                      className={cn(
+                        'text-right tabular-nums',
+                        f.ing > 0 ? 'text-warning-foreground font-medium' : 'text-muted-foreground',
+                      )}
+                    >
+                      {f.ing > 0 ? formatMonto(f.ing) : '—'}
+                    </TableCell>
+                  )}
+                  <TableCell className="text-right tabular-nums">{formatMonto(f.recib)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
       </div>
 
+      {/* Mobile: en la vista por punto de venta, una tarjeta por período con el detalle de cada punto. */}
       <div className="mt-5 space-y-3 lg:hidden">
-        {[...filas].reverse().map(f => (
-          <div key={f.periodo} className="rounded-xl border border-border/60 p-3">
-            <div className="flex items-center justify-between">
-              <span className="font-medium">{formatPeriodoLargo(f.periodo, esAnio)}</span>
-              <span className="text-sm tabular-nums font-medium">
-                {formatMonto(f.emit)}{' '}
-                <span className="text-xs font-normal text-muted-foreground">emitidas</span>
-              </span>
-            </div>
-            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-              {hayIngresos && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Ing. no fact.</span>
-                  <span
-                    className={cn(
-                      'tabular-nums',
-                      f.ing > 0 ? 'text-warning-foreground font-medium' : 'text-muted-foreground',
-                    )}
-                  >
-                    {f.ing > 0 ? formatMonto(f.ing) : '—'}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Recibidas</span>
-                <span className="tabular-nums">{formatMonto(f.recib)}</span>
+        {vistaEf === 'pv' &&
+          [...filas].reverse().map(f => (
+            <div key={f.periodo} className="rounded-xl border border-border/60 p-3">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{formatPeriodoLargo(f.periodo, esAnio)}</span>
+                <span className="text-sm font-medium tabular-nums">{formatMonto(f.emit)}</span>
+              </div>
+              <div className="mt-2 space-y-1">
+                {pvs.map(pv => (
+                  <div key={pv} className="flex justify-between text-xs">
+                    <span className="tabular-nums text-muted-foreground">{etiquetaPV(pv)}</span>
+                    <span className="tabular-nums">
+                      {f.pv[pv] == null ? '—' : formatMonto(f.pv[pv])}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
-        ))}
+          ))}
+        {vistaEf !== 'pv' &&
+          [...filas].reverse().map(f => (
+            <div key={f.periodo} className="rounded-xl border border-border/60 p-3">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{formatPeriodoLargo(f.periodo, esAnio)}</span>
+                <span className="text-sm tabular-nums font-medium">
+                  {formatMonto(f.emit)}{' '}
+                  <span className="text-xs font-normal text-muted-foreground">emitidas</span>
+                </span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                {hayIngresos && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Ing. no fact.</span>
+                    <span
+                      className={cn(
+                        'tabular-nums',
+                        f.ing > 0 ? 'text-warning-foreground font-medium' : 'text-muted-foreground',
+                      )}
+                    >
+                      {f.ing > 0 ? formatMonto(f.ing) : '—'}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Recibidas</span>
+                  <span className="tabular-nums">{formatMonto(f.recib)}</span>
+                </div>
+              </div>
+            </div>
+          ))}
       </div>
     </Card>
   );
