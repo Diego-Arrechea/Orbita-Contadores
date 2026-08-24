@@ -12,7 +12,6 @@ import { Terminos, Privacidad } from '@/pages/Legal';
 import {
   cuentaActual,
   esAdmin,
-  esAdminReal,
   esEmpleado,
   puedeVerContabilidad,
   puedeVerIVA,
@@ -49,14 +48,6 @@ function RequireCuentaPlena({ children }: { children: ReactNode }) {
   return esEmpleado() ? <Navigate to="/" replace /> : <>{children}</>;
 }
 
-/** Apartado "Mi suscripción": todavía NO se les muestra a los contadores. Lo ven los admins y,
- *  mientras dure una impersonación, la sesión del admin que está "entrando como" un contador (para
- *  mirar la pantalla tal como la vería él). El backend valida el mismo gate. */
-function RequireSuscripcion({ children }: { children: ReactNode }) {
-  if (!cuentaActual()) return <Navigate to="/login" replace />;
-  return esAdminReal() ? <>{children}</> : <Navigate to="/" replace />;
-}
-
 /** Alta de clientes: para usuarios del estudio, sólo con el permiso que da el titular. */
 function RequireNuevoCliente({ children }: { children: ReactNode }) {
   if (!cuentaActual()) return <Navigate to="/login" replace />;
@@ -85,7 +76,6 @@ import { Conciliacion } from '@/pages/Conciliacion';
 import { IVA } from '@/pages/IVA';
 import { Contabilidad } from '@/pages/Contabilidad';
 import { Configuracion } from '@/pages/Configuracion';
-import { Suscripcion } from '@/pages/Suscripcion';
 import { Novedades } from '@/pages/Novedades';
 import { Admin } from '@/pages/Admin';
 import { GestionUsuarios } from '@/pages/GestionUsuarios';
@@ -174,13 +164,10 @@ export default function App() {
             </RequireCuentaPlena>
           }
         />
+        {/* La suscripción vive dentro de Configuración; el link viejo sigue llevando ahí. */}
         <Route
           path="/suscripcion"
-          element={
-            <RequireSuscripcion>
-              <Suscripcion />
-            </RequireSuscripcion>
-          }
+          element={<Navigate to="/configuracion?tab=suscripcion" replace />}
         />
         <Route
           path="/configuracion"
