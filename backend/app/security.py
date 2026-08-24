@@ -15,7 +15,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import models
-from .config import facturacion_habilitada_para, iva_habilitada_para, settings
+from .config import (
+    contabilidad_habilitada_para,
+    facturacion_habilitada_para,
+    iva_habilitada_para,
+    settings,
+)
 from .db import get_db
 
 ALGORITMO = "HS256"
@@ -149,6 +154,24 @@ def usuario_iva(usuario: models.Usuario = Depends(usuario_actual)) -> models.Usu
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tenés habilitado el apartado de IVA.",
+        )
+    return usuario
+
+
+def usuario_puede_contabilidad(usuario: models.Usuario) -> bool:
+    """¿Puede ver el apartado de Contabilidad? Habilitados por CONTABILIDAD_EMAILS + admins (rol).
+    Como el de IVA, NO lleva el bonus de impersonación: al 'entrar como' otra cuenta refleja el
+    acceso REAL de esa cuenta."""
+    return contabilidad_habilitada_para(usuario.email, usuario.rol)
+
+
+def usuario_contabilidad(usuario: models.Usuario = Depends(usuario_actual)) -> models.Usuario:
+    """Dependencia FastAPI: como `usuario_actual`, pero además exige que la cuenta tenga habilitado
+    el apartado de Contabilidad (403 si no)."""
+    if not usuario_puede_contabilidad(usuario):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenés habilitado el apartado de Contabilidad.",
         )
     return usuario
 

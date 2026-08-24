@@ -151,6 +151,12 @@ export function puedeVerIVA(): boolean {
   return usuarioActual()?.iva_habilitada === true;
 }
 
+/** ¿La cuenta logueada puede ver el apartado de Contabilidad? Rollout gateado por el backend
+ *  (allowlist CONTABILIDAD_EMAILS + admins), con su propia lista: no depende del gate de IVA. */
+export function puedeVerContabilidad(): boolean {
+  return usuarioActual()?.contabilidad_habilitada === true;
+}
+
 /** ¿El usuario REAL detrás de la sesión es admin? Sigue siendo true mientras "entra como" otro
  * contador (la sesión de admin queda respaldada en LS_IMP_*). Útil para diagnósticos que sólo debe
  * ver el superadmin aunque esté mirando la cartera de un contador impersonado. */

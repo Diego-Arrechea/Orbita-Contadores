@@ -20,6 +20,7 @@ export interface Usuario {
   aviso_alertas_pendiente?: number; // ingresos que faltan para dejar de mostrar el modal de alertas (0 = no)
   facturacion_habilitada?: boolean; // rollout gateado: el front muestra "Emitir comprobante" sólo si true
   iva_habilitada?: boolean; // rollout gateado: el front muestra el apartado de IVA sólo si true
+  contabilidad_habilitada?: boolean; // rollout gateado: apartado de Contabilidad (diario + plan de cuentas)
   /** true = cuenta de usuario del estudio (la creó el titular en Gestión de usuarios): navegación
    *  restringida (sin Novedades/Configuración/Gestión) y acciones acotadas por `permisos`. */
   es_empleado?: boolean;

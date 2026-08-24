@@ -5,6 +5,7 @@ import {
   Bell,
   Landmark,
   Percent,
+  BookOpen,
   UserPlus,
   Users,
   Settings,
@@ -23,6 +24,7 @@ import {
   esEmpleado,
   impersonando,
   logoutCuenta,
+  puedeVerContabilidad,
   puedeVerIVA,
   tienePermiso,
 } from '@/lib/cuenta';
@@ -45,12 +47,20 @@ const nav = [
 // Conciliación sólo para las cuentas habilitadas (puedeVerIVA). El backend valida igual.
 const ivaItem = { to: '/iva', label: 'IVA', icon: Percent };
 
-/** Inserta el ítem de IVA (si la cuenta lo tiene habilitado) justo después de Conciliación. */
+// Apartado de Contabilidad: mismo rollout gateado, con su propia allowlist. Va detrás de IVA.
+const contabilidadItem = { to: '/contabilidad', label: 'Contabilidad', icon: BookOpen };
+
+/** Inserta los apartados gateados (IVA, Contabilidad) que la cuenta tenga habilitados, justo
+ *  después de Conciliación y en ese orden. */
 function conIva(items: typeof nav): typeof nav {
-  if (!puedeVerIVA()) return items;
+  const extra = [
+    ...(puedeVerIVA() ? [ivaItem] : []),
+    ...(puedeVerContabilidad() ? [contabilidadItem] : []),
+  ];
+  if (extra.length === 0) return items;
   const i = items.findIndex(x => x.to === '/conciliacion');
   const at = i >= 0 ? i + 1 : items.length;
-  return [...items.slice(0, at), ivaItem, ...items.slice(at)];
+  return [...items.slice(0, at), ...extra, ...items.slice(at)];
 }
 
 /** Menú según la cuenta. Usuario del estudio (empleado): sin Gestión, Configuración ni Novedades, y

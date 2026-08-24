@@ -463,6 +463,55 @@ class IvaAjuste(Base):
     )
 
 
+class CuentaContable(Base):
+    """Una cuenta del plan de cuentas de un cliente (apartado de Contabilidad).
+
+    El plan es POR CLIENTE (cada empresa tiene el suyo): se siembra la plantilla estándar o se
+    importa el plan que el estudio ya venía usando, y después se edita. `codigo` es la clave con la
+    que el contador la reconoce y por la que se hace el upsert al importar. `tipo` define de qué
+    lado suma en los informes. `imputable` distingue los títulos/agrupadores (no reciben asientos)
+    de las cuentas que sí se imputan."""
+
+    __tablename__ = "plan_cuentas"
+    __table_args__ = (UniqueConstraint("cuit", "codigo", name="uq_cuenta_codigo"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cuit: Mapped[str] = mapped_column(String(11), ForeignKey("clientes_arca.cuit"), index=True)
+    codigo: Mapped[str] = mapped_column(String(20))
+    nombre: Mapped[str] = mapped_column(String(120))
+    # activo | pasivo | patrimonio | resultado_positivo | resultado_negativo
+    tipo: Mapped[str] = mapped_column(String(20), default="activo")
+    imputable: Mapped[bool] = mapped_column(Boolean, default=True)
+    creada_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class ReglaImputacion(Base):
+    """Regla del contador para imputar comprobantes a una cuenta de resultado.
+
+    Los asientos de ventas/compras se DERIVAN de los comprobantes (no se guardan): lo único que se
+    persiste es la decisión de a qué cuenta va cada uno. Una regla matchea por proveedor/cliente
+    (`contraparte_cuit`, o `contraparte_texto` como 'contiene') y opcionalmente por tipo de
+    comprobante; gana la de menor `prioridad`. Sin regla, el asiento cae en la cuenta por defecto
+    del lado y queda marcado para que el contador lo revise."""
+
+    __tablename__ = "reglas_imputacion"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cuit: Mapped[str] = mapped_column(String(11), ForeignKey("clientes_arca.cuit"), index=True)
+    lado: Mapped[str] = mapped_column(String(10), default="compras")  # ventas | compras
+    contraparte_cuit: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    contraparte_texto: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    cbte_tipo: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cuenta_id: Mapped[int] = mapped_column(Integer, ForeignKey("plan_cuentas.id"), index=True)
+    prioridad: Mapped[int] = mapped_column(Integer, default=100)
+    creada_por: Mapped[str] = mapped_column(String(120), default="")
+    creada_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class LiquidacionAgro(Base):
     """Liquidación Electrónica del sector primario (agro) de un cliente productor.
 
