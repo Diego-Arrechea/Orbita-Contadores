@@ -29,7 +29,7 @@ from ..schemas import (
     PlanOut,
     SuscripcionOut,
 )
-from ..security import admin_actual, titular_actual
+from ..security import admin_actual, titular_actual, usuario_actual
 from ..services import suscripciones as svc
 from .admin import _iso, _conteos_cartera, _registrar
 
@@ -103,8 +103,9 @@ def _fila_admin(
 
 
 @router.get("/planes", response_model=list[PlanOut])
-def catalogo_planes():
-    """Los planes disponibles, para la comparativa del apartado."""
+def catalogo_planes(_: models.Usuario = Depends(usuario_actual)):
+    """Los planes disponibles, para la comparativa del apartado. Pide sesión como el resto de la
+    API: la lista de precios no es pública."""
     return [
         PlanOut(
             clave=clave,
