@@ -23,6 +23,7 @@ import { formatCurrency, formatMonto, cn } from '@/lib/utils';
 import { VerDetalle } from '@/components/cliente/VerDetalle';
 import { detalleHistorico } from '@/lib/trazabilidad';
 import { useHistorico } from '@/lib/queries';
+import { formatPuntoVenta, indicePuntosVenta } from '@/lib/puntosVenta';
 import type { Cliente } from '@/types';
 
 interface Props {
@@ -56,11 +57,6 @@ const COLORES_PV = [
   'hsl(142 40% 38%)',
   'hsl(44 78% 47%)',
 ];
-
-/** Rótulo de la serie/columna de un punto de venta ("Punto 00003"). */
-function etiquetaPV(pv: number) {
-  return `Punto ${pv.toString().padStart(5, '0')}`;
-}
 
 export function HistoricoMensual({ cliente, real = true }: Props) {
   const [vista, setVista] = useState<Vista>('ambos');
@@ -115,6 +111,13 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
   const hayPV = pvs.length > 1;
   const vistaEf: Vista = vista === 'pv' && !hayPV ? 'ambos' : vista;
 
+  // Rótulo de la serie/columna de cada punto: el número siempre, y su nombre si lo tiene.
+  const pvIndex = indicePuntosVenta(cliente);
+  const rotuloPV = (pv: number) => {
+    const nombre = pvIndex.get(pv)?.nombre;
+    return nombre ? `${formatPuntoVenta(pv)} · ${nombre}` : `Punto ${formatPuntoVenta(pv)}`;
+  };
+
   const data = filas.map(f => {
     const fila: Record<string, string | number> = {
       periodo: formatPeriodoCorto(f.periodo, esAnio),
@@ -123,7 +126,7 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
       Recibidas: f.recib,
     };
     // En la vista por punto de venta cada punto es una serie apilada (las emitidas del período).
-    if (vistaEf === 'pv') for (const pv of pvs) fila[etiquetaPV(pv)] = f.pv[pv] ?? 0;
+    if (vistaEf === 'pv') for (const pv of pvs) fila[rotuloPV(pv)] = f.pv[pv] ?? 0;
     return fila;
   });
 
@@ -237,7 +240,7 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
               pvs.map((pv, i) => (
                 <Bar
                   key={pv}
-                  dataKey={etiquetaPV(pv)}
+                  dataKey={rotuloPV(pv)}
                   stackId="pv"
                   fill={COLORES_PV[i % COLORES_PV.length]}
                   radius={i === pvs.length - 1 ? [6, 6, 0, 0] : [0, 0, 0, 0]}
@@ -277,8 +280,13 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
               <TableRow>
                 <TableHead>{esAnio ? 'Año' : 'Mes'}</TableHead>
                 {pvs.map(pv => (
-                  <TableHead key={pv} className="whitespace-nowrap text-right tabular-nums">
-                    {pv.toString().padStart(5, '0')}
+                  <TableHead key={pv} className="whitespace-nowrap text-right">
+                    <div className="tabular-nums">{formatPuntoVenta(pv)}</div>
+                    {pvIndex.get(pv)?.nombre && (
+                      <div className="max-w-[9rem] truncate text-[11px] font-normal normal-case text-muted-foreground">
+                        {pvIndex.get(pv)!.nombre}
+                      </div>
+                    )}
                   </TableHead>
                 ))}
                 <TableHead className="text-right">Total emitidas</TableHead>
@@ -367,7 +375,7 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
               <div className="mt-2 space-y-1">
                 {pvs.map(pv => (
                   <div key={pv} className="flex justify-between text-xs">
-                    <span className="tabular-nums text-muted-foreground">{etiquetaPV(pv)}</span>
+                    <span className="tabular-nums text-muted-foreground">{rotuloPV(pv)}</span>
                     <span className="tabular-nums">
                       {f.pv[pv] == null ? '—' : formatMonto(f.pv[pv])}
                     </span>

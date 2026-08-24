@@ -41,6 +41,11 @@ interface ClienteBackend {
   debito_automatico?: boolean | null;
   meses_adeudados?: number | null;
   comunicaciones_sin_ver?: number | null;
+  // Puntos de venta con su nombre ya resuelto (el del contador gana sobre el registrado).
+  puntos_venta?: {
+    nro: number; nombre?: string | null; manual?: boolean | null;
+    sistema?: string | null; domicilio?: string | null; baja?: boolean | null;
+  }[] | null;
   facturacion_12m?: number | null;
   tope_categoria?: number | null;
   facturometro_actualizado?: string | null;
@@ -187,6 +192,14 @@ function construirCliente(
     debitoAutomatico: bk.debito_automatico ?? undefined,
     mesesAdeudados: bk.meses_adeudados ?? undefined,
     comunicacionesSinVer: bk.comunicaciones_sin_ver ?? 0,
+    puntosVenta: (bk.puntos_venta ?? []).map(p => ({
+      nro: p.nro,
+      nombre: p.nombre ?? undefined,
+      manual: !!p.manual,
+      sistema: p.sistema ?? undefined,
+      domicilio: p.domicilio ?? undefined,
+      baja: !!p.baja,
+    })),
     facturacion12mOficial: bk.facturacion_12m ?? undefined,
     topeCategoriaOficial: bk.tope_categoria ?? undefined,
     facturometroActualizado: bk.facturometro_actualizado ?? undefined,
@@ -295,7 +308,11 @@ export type CamposEdicion = Partial<
     | 'telefonoCliente'
     | 'vencAvisos'
   >
->;
+> & {
+  /** Nombre por punto de venta: {"2": "Local Centro"}. Mergea por número; cadena vacía borra el
+   *  nombre propio y vuelve a mostrarse el registrado. */
+  puntosVentaNombres?: Record<string, string>;
+};
 
 /** Guarda en la cuenta las ediciones manuales del contador sobre un cliente. Merge parcial: mandá
  *  sólo lo que cambió. El backend las re-aplica sobre el dato de ARCA al devolver el cliente. */

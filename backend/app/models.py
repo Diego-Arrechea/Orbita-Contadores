@@ -199,6 +199,17 @@ class ClienteARCA(Base):
     aportes_chequeado_en: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Puntos de venta del contribuyente (nro + nombre de fantasía + sistema de emisión + domicilio),
+    # JSON serializado: [{nro, sistema, sistema_desc, nombre_fantasia, domicilio, baja, bloqueado}].
+    # Sirve para mostrar cada punto de venta con su nombre y no sólo con el número. Se consulta UNA
+    # sola vez por cliente (dato casi estático). '[]' = consultado y sin puntos. El nombre que pone
+    # el contador a mano NO va acá: vive en edicion_json (puntosVentaNombres) y gana sobre este.
+    puntos_venta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Cuándo se intentó traer los puntos de venta por última vez. NULL = nunca. Con la lista ya
+    # guardada no se vuelve a consultar; si el intento falló, se reintenta pasados unos días.
+    pv_chequeado_en: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Facturómetro del portal Monotributo: ingresos brutos de los últimos 12 meses según ARCA
     # (facturacion_12m), tope oficial de la categoría actual (tope_categoria) y la fecha de corte que
     # informa ARCA (facturometro_actualizado, dd/mm/aaaa). Numerador y denominador OFICIALES del gauge

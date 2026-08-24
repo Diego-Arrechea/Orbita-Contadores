@@ -42,6 +42,29 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-08-24-puntos-de-venta-con-nombre',
+    fecha: '2026-08-24',
+    titulo: 'Los puntos de venta, con nombre',
+    resumen: 'Cada punto de venta se muestra con su nombre además del número, y podés cambiárselo.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Donde antes veías "00002" ahora ves también el nombre del punto de venta, el que el cliente tiene registrado. Aparece en la solapa Facturación 12m y en el Histórico mensual, incluida la referencia del gráfico, así reconocés de un vistazo qué local o actividad facturó cada peso.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Podés ponerle a cada punto de venta el nombre que te sirva a vos: en Facturación 12m, tocá el lápiz al lado del nombre y escribí, por ejemplo, "Local Centro" o "Sucursal Norte". Ese nombre queda guardado en tu cuenta y se usa en todas las vistas del cliente. Si lo borrás, vuelve el nombre registrado.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Cuando un punto de venta no tiene ningún nombre, te mostramos con qué sistema emite (Factura en Línea, imprenta, facturación electrónica…) para que puedas identificarlo igual.',
+      },
+    ],
+  },
+  {
     id: '2026-08-20-puntos-de-venta-mes-a-mes',
     fecha: '2026-08-20',
     titulo: 'Puntos de venta, período a período',
