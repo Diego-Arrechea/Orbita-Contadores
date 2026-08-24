@@ -250,6 +250,7 @@ interface HistoricoBackend {
   agrupacion: 'mes' | 'anio';
   mes_referencia: string;
   primer_periodo: string | null;
+  puntos_venta?: number[];
 }
 
 /** Facturación histórica de un cliente para el gráfico de rango variable. `rango` = meses hacia
@@ -263,6 +264,7 @@ export async function getHistorico(cuit: string, rango: number): Promise<Histori
     agrupacion: bk.agrupacion,
     mesReferencia: bk.mes_referencia,
     primerPeriodo: bk.primer_periodo,
+    puntosVenta: bk.puntos_venta ?? [],
   };
 }
 

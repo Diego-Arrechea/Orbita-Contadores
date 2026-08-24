@@ -1,7 +1,8 @@
-import { Fragment, useMemo } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Receipt, CalendarRange, Store } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
   TableBody,
@@ -63,6 +64,9 @@ function MontoComp({ c }: { c: Comprobante }) {
   );
 }
 
+/** Vista del bloque por punto de venta: total del período o desglose mes a mes. */
+type VistaPV = 'total' | 'mensual';
+
 /**
  * Detalle de la facturación de los últimos 12 meses: lista todos los comprobantes EMITIDOS que
  * componen el número, agrupados por mes, con la reconciliación bruto − notas de crédito = neto.
@@ -73,7 +77,10 @@ function MontoComp({ c }: { c: Comprobante }) {
  * situación del cliente.
  */
 export function FacturacionDetalle({ cliente }: Props) {
-  const { grupos, porPV, bruto, nc, neto, cant, cantNC, periodo, oficial, manual } = useMemo(() => {
+  const [vistaPV, setVistaPV] = useState<VistaPV>('total');
+  const {
+    grupos, porPV, pvs, matrizPV, bruto, nc, neto, cant, cantNC, periodo, oficial, manual,
+  } = useMemo(() => {
     // Ventana: primer día del mes de hace 11 meses (= 12 meses calendario contando el actual).
     const inicio = new Date(HOY.getFullYear(), HOY.getMonth() - 11, 1);
     const fin = new Date(HOY.getFullYear(), HOY.getMonth(), 1);
@@ -135,6 +142,29 @@ export function FacturacionDetalle({ cliente }: Props) {
     const porPV = [...pvMap.entries()]
       .map(([pv, v]) => ({ pv, cant: v.cant, neto: v.bruto - v.nc }))
       .sort((a, b) => a.pv - b.pv);
+    const pvs = porPV.map(p => p.pv);
+
+    // Desglose mes a mes por punto de venta. La ventana va completa (12 meses, el más reciente
+    // primero): un mes sin facturación en un punto también es información, así que se muestra.
+    const netoMesPV = new Map<string, Map<number, number>>();
+    for (const c of emitidos) {
+      const k = c.fechaEmision.slice(0, 7);
+      let fila = netoMesPV.get(k);
+      if (!fila) {
+        fila = new Map<number, number>();
+        netoMesPV.set(k, fila);
+      }
+      const signo = esNotaCredito(c) ? -1 : 1;
+      fila.set(c.puntoVenta, (fila.get(c.puntoVenta) ?? 0) + signo * c.monto);
+    }
+    const matrizPV = Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(HOY.getFullYear(), HOY.getMonth() - i, 1);
+      const mes = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const netos = netoMesPV.get(mes) ?? new Map<number, number>();
+      let total = 0;
+      for (const v of netos.values()) total += v;
+      return { mes, netos, total };
+    });
 
     const oficial =
       cliente.facturacion12mOficial != null && cliente.facturacion12mOficial > 0
@@ -144,6 +174,8 @@ export function FacturacionDetalle({ cliente }: Props) {
     return {
       grupos,
       porPV,
+      pvs,
+      matrizPV,
       bruto,
       nc,
       neto: bruto - nc,
@@ -222,16 +254,29 @@ export function FacturacionDetalle({ cliente }: Props) {
         )}
       </Card>
 
-      {/* Totales por punto de venta: sólo si el cliente factura desde más de uno (con uno solo el
-          desglose sería igual al neto general). Mismo neto = facturas − notas de crédito. */}
+      {/* Facturación por punto de venta: sólo si el cliente factura desde más de uno (con uno solo el
+          desglose sería igual al neto general). Mismo neto = facturas − notas de crédito. Dos vistas:
+          el total del período o el detalle mes a mes de cada punto. */}
       {porPV.length > 1 && (
         <Card className="overflow-hidden">
-          <div className="flex items-center gap-2 px-5 pt-5 text-xs uppercase tracking-wider text-muted-foreground">
-            <Store className="h-4 w-4" />
-            Totales por punto de venta
+          <div className="flex flex-col gap-3 px-5 pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+              <Store className="h-4 w-4" />
+              Facturación por punto de venta
+            </div>
+            <Tabs value={vistaPV} onValueChange={v => setVistaPV(v as VistaPV)}>
+              <TabsList className="w-full sm:w-auto">
+                <TabsTrigger value="total" className="flex-1 sm:flex-none">
+                  Total del período
+                </TabsTrigger>
+                <TabsTrigger value="mensual" className="flex-1 sm:flex-none">
+                  Mes a mes
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
           {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
-          <div className="hidden lg:block">
+          <div className={cn('hidden', vistaPV === 'total' && 'lg:block')}>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -257,27 +302,115 @@ export function FacturacionDetalle({ cliente }: Props) {
               </TableBody>
             </Table>
           </div>
-          <div className="space-y-2 p-4 lg:hidden">
-            {porPV.map(p => (
-              <div
-                key={p.pv}
-                className="flex items-center justify-between rounded-xl border border-border/60 p-3"
-              >
-                <div>
-                  <div className="text-sm font-medium tabular-nums">
-                    Punto {p.pv.toString().padStart(5, '0')}
+          {vistaPV === 'total' && (
+            <div className="space-y-2 p-4 lg:hidden">
+              {porPV.map(p => (
+                <div
+                  key={p.pv}
+                  className="flex items-center justify-between rounded-xl border border-border/60 p-3"
+                >
+                  <div>
+                    <div className="text-sm font-medium tabular-nums">
+                      Punto {p.pv.toString().padStart(5, '0')}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {p.cant} {p.cant === 1 ? 'comprobante' : 'comprobantes'}
+                    </div>
                   </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    {p.cant} {p.cant === 1 ? 'comprobante' : 'comprobantes'}
+                  <div className="text-sm font-semibold tabular-nums">{formatMonto(p.neto)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Mes a mes: matriz meses × puntos de venta (la tabla scrollea sola si hay muchos). */}
+          <div className={cn('hidden', vistaPV === 'mensual' && 'lg:block')}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Mes</TableHead>
+                  {pvs.map(pv => (
+                    <TableHead key={pv} className="whitespace-nowrap text-right tabular-nums">
+                      {pv.toString().padStart(5, '0')}
+                    </TableHead>
+                  ))}
+                  <TableHead className="text-right">Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {matrizPV.map(f => (
+                  <TableRow key={f.mes}>
+                    <TableCell className="whitespace-nowrap font-medium">{mesLargo(f.mes)}</TableCell>
+                    {pvs.map(pv => {
+                      const v = f.netos.get(pv);
+                      return (
+                        <TableCell key={pv} className="whitespace-nowrap text-right tabular-nums">
+                          {v == null ? (
+                            <span className="text-muted-foreground">—</span>
+                          ) : (
+                            formatMonto(v)
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                    <TableCell className="whitespace-nowrap text-right font-medium tabular-nums">
+                      {formatMonto(f.total)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableCell className="whitespace-nowrap font-semibold">Total 12 meses</TableCell>
+                  {porPV.map(p => (
+                    <TableCell
+                      key={p.pv}
+                      className="whitespace-nowrap text-right font-semibold tabular-nums"
+                    >
+                      {formatMonto(p.neto)}
+                    </TableCell>
+                  ))}
+                  <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">
+                    {formatMonto(neto)}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+          {vistaPV === 'mensual' && (
+            <div className="space-y-2 p-4 lg:hidden">
+              {matrizPV.map(f => (
+                <div key={f.mes} className="rounded-xl border border-border/60 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">{mesLargo(f.mes)}</span>
+                    <span className="text-sm font-semibold tabular-nums">
+                      {formatMonto(f.total)}
+                    </span>
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {pvs.map(pv => {
+                      const v = f.netos.get(pv);
+                      return (
+                        <div
+                          key={pv}
+                          className="flex items-center justify-between text-[11px] text-muted-foreground"
+                        >
+                          <span className="tabular-nums">
+                            Punto {pv.toString().padStart(5, '0')}
+                          </span>
+                          <span className="tabular-nums">{v == null ? '—' : formatMonto(v)}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-                <div className="text-sm font-semibold tabular-nums">{formatMonto(p.neto)}</div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
+
           <div className="flex items-center justify-between gap-3 border-t border-border/60 bg-muted/30 px-5 py-3.5">
             <span className="text-sm font-medium">
-              Total · {porPV.length} puntos de venta
+              {vistaPV === 'total'
+                ? `Total · ${porPV.length} puntos de venta`
+                : 'Facturado neto de los últimos 12 meses'}
             </span>
             <span className="text-sm font-semibold tabular-nums">{formatMonto(neto)}</span>
           </div>
