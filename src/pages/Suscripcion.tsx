@@ -111,7 +111,7 @@ function Marca({ incluido }: { incluido: boolean }) {
     </span>
   ) : (
     <span title="No incluido">
-      <X className="mx-auto h-4 w-4 text-muted-foreground/50" />
+      <X className="mx-auto h-4 w-4 text-danger" />
       <span className="sr-only">No incluido</span>
     </span>
   );
@@ -167,7 +167,7 @@ function ComparativaPlanes({
                     key={p.clave}
                     className={cn(
                       'px-3 pb-4 pt-1 text-center align-bottom',
-                      actual && 'rounded-t-xl bg-primary/5'
+                      actual && 'rounded-t-xl bg-primary/15'
                     )}
                   >
                     <span className="block font-semibold tracking-tight">{p.nombre}</span>
@@ -204,7 +204,7 @@ function ComparativaPlanes({
                         key={p.clave}
                         className={cn(
                           'px-3 py-2.5 text-center',
-                          p.clave === planActual && 'bg-primary/5'
+                          p.clave === planActual && 'bg-primary/15'
                         )}
                       >
                         <Marca incluido={p.funciones.includes(f.clave)} />
@@ -221,7 +221,7 @@ function ComparativaPlanes({
                   key={p.clave}
                   className={cn(
                     'px-3 py-2.5 text-center text-muted-foreground',
-                    p.clave === planActual && 'rounded-b-xl bg-primary/5'
+                    p.clave === planActual && 'rounded-b-xl bg-primary/15'
                   )}
                 >
                   {tope(p.limite_clientes)}
@@ -241,7 +241,7 @@ function ComparativaPlanes({
               key={p.clave}
               className={cn(
                 'rounded-xl border p-4',
-                actual ? 'border-primary bg-primary/5' : 'border-border'
+                actual ? 'border-primary bg-primary/15' : 'border-border'
               )}
             >
               <div className="flex items-center justify-between gap-2">
@@ -267,13 +267,13 @@ function ComparativaPlanes({
                       key={f.clave}
                       className={cn(
                         'flex items-start gap-2 text-sm leading-snug',
-                        !incluido && 'text-muted-foreground/70'
+                        !incluido && 'text-muted-foreground'
                       )}
                     >
                       {incluido ? (
                         <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
                       ) : (
-                        <X className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                        <X className="mt-0.5 h-3.5 w-3.5 shrink-0 text-danger" />
                       )}
                       <span>{f.nombre}</span>
                     </li>
