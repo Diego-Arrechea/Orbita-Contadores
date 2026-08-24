@@ -215,9 +215,10 @@ export function Contabilidad() {
   const sembrar = () =>
     conAviso(async () => {
       const { creadas } = await sembrarPlanCuentas(cuitActivo);
-      return creadas
-        ? `Listo: se agregaron ${creadas} cuenta${creadas === 1 ? '' : 's'} al plan.`
-        : 'El plan ya tenía todas las cuentas sugeridas.';
+      if (!creadas) return 'El plan ya tenía todas las cuentas sugeridas.';
+      return creadas === 1
+        ? 'Listo: se agregó 1 cuenta al plan.'
+        : `Listo: se agregaron ${creadas} cuentas al plan.`;
     });
 
   const importar = (file: File) =>
@@ -483,9 +484,9 @@ function VistaDiario({
         <Card className="flex items-start gap-2 border-warning/40 bg-warning/5 px-4 py-3 text-sm">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-foreground" />
           <span>
-            {t.revisar} asiento{t.revisar === 1 ? '' : 's'} quedó
-            {t.revisar === 1 ? '' : 'aron'} con una cuenta genérica de compras. Revisá a qué cuenta
-            corresponde cada uno antes de cerrar el período.
+            {t.revisar} {t.revisar === 1 ? 'asiento quedó' : 'asientos quedaron'} con una cuenta
+            genérica de compras. Revisá a qué cuenta corresponde
+            {t.revisar === 1 ? '' : ' cada uno'} antes de cerrar el período.
           </span>
         </Card>
       )}
