@@ -13,6 +13,7 @@ import {
   cuentaActual,
   esAdmin,
   esEmpleado,
+  puedeVerContabilidad,
   puedeVerIVA,
   tienePermiso,
   tokenActual,
@@ -59,6 +60,13 @@ function RequireIVA({ children }: { children: ReactNode }) {
   if (!cuentaActual()) return <Navigate to="/login" replace />;
   return puedeVerIVA() ? <>{children}</> : <Navigate to="/" replace />;
 }
+
+/** Apartado de Contabilidad: rollout gateado (allowlist CONTABILIDAD_EMAILS + admins). Sin
+ *  habilitación → al dashboard. El backend valida el mismo gate en cada endpoint. */
+function RequireContabilidad({ children }: { children: ReactNode }) {
+  if (!cuentaActual()) return <Navigate to="/login" replace />;
+  return puedeVerContabilidad() ? <>{children}</> : <Navigate to="/" replace />;
+}
 import { Dashboard } from '@/pages/Dashboard';
 import { Alertas } from '@/pages/Alertas';
 import { ClienteDetalle } from '@/pages/ClienteDetalle';
@@ -66,6 +74,7 @@ import { ReporteCliente } from '@/pages/ReporteCliente';
 import { NuevoCliente } from '@/pages/NuevoCliente';
 import { Conciliacion } from '@/pages/Conciliacion';
 import { IVA } from '@/pages/IVA';
+import { Contabilidad } from '@/pages/Contabilidad';
 import { Configuracion } from '@/pages/Configuracion';
 import { Novedades } from '@/pages/Novedades';
 import { Admin } from '@/pages/Admin';
@@ -120,6 +129,14 @@ export default function App() {
             <RequireIVA>
               <IVA />
             </RequireIVA>
+          }
+        />
+        <Route
+          path="/contabilidad"
+          element={
+            <RequireContabilidad>
+              <Contabilidad />
+            </RequireContabilidad>
           }
         />
         <Route

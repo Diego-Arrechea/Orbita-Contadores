@@ -725,6 +725,8 @@ class UsuarioOut(BaseModel):
     facturacion_habilitada: bool = False
     # Rollout gateado del apartado de IVA: el front muestra el menú/página de IVA sólo si True.
     iva_habilitada: bool = False
+    # Rollout gateado del apartado de Contabilidad (libro diario / plan de cuentas).
+    contabilidad_habilitada: bool = False
     # Equipo del estudio: True = cuenta de EMPLEADO (creada desde "Gestión de usuarios"); el front
     # le restringe la navegación (sin Novedades/Configuración/Gestión) y esconde las acciones sin
     # permiso. `permisos` trae los efectivos ({clave: bool}); None para cuentas plenas (pueden todo).
@@ -1001,6 +1003,101 @@ class IvaInconsistenciaOut(BaseModel):
     comprobante: str   # etiqueta legible (tipo + PV-número)
     contraparte: str
     detalle: str       # descripción de qué revisar
+
+
+# --- Contabilidad (plan de cuentas / libro diario). Apartado gateado (usuario_contabilidad). ---
+# De qué lado suma cada cuenta en los informes. Los agrupadores (imputable=False) son títulos: no
+# reciben asientos, sólo ordenan el plan.
+TIPOS_CUENTA = (
+    "activo", "pasivo", "patrimonio", "resultado_positivo", "resultado_negativo",
+)
+
+
+class CuentaOut(BaseModel):
+    """Una cuenta del plan de cuentas del cliente."""
+
+    id: int
+    codigo: str
+    nombre: str
+    tipo: str  # ver TIPOS_CUENTA
+    imputable: bool = True
+
+
+class CuentaIn(BaseModel):
+    """Alta/edición de una cuenta (también es la fila del import de Excel)."""
+
+    codigo: str = Field(min_length=1, max_length=20)
+    nombre: str = Field(min_length=1, max_length=120)
+    tipo: str = "activo"
+    imputable: bool = True
+
+    @field_validator("codigo", "nombre")
+    @classmethod
+    def _limpiar(cls, v: str) -> str:
+        return v.strip()
+
+    @field_validator("tipo")
+    @classmethod
+    def _tipo_valido(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        if v not in TIPOS_CUENTA:
+            raise ValueError(f"Tipo de cuenta inválido: {v}")
+        return v
+
+
+class PlanImportarIn(BaseModel):
+    """Import del plan de cuentas (el front parsea el Excel y manda las filas ya normalizadas).
+    El upsert es por `codigo`: las que existen se actualizan, las nuevas se crean, y nada se borra."""
+
+    cuentas: list[CuentaIn] = Field(min_length=1)
+
+
+class AsientoLineaOut(BaseModel):
+    """Un renglón del asiento. Cada línea va enteramente al debe o al haber (la otra queda en 0)."""
+
+    codigo: str
+    cuenta: str
+    debe: float = 0
+    haber: float = 0
+    # True = la cuenta la eligió Órbita por defecto (no hay regla del contador para esta contraparte):
+    # el renglón es correcto en el importe, pero la cuenta conviene revisarla.
+    porDefecto: bool = False  # noqa: N815
+
+
+class AsientoOut(BaseModel):
+    """Un asiento del libro diario, DERIVADO de un comprobante (no se persiste: se recalcula). El
+    `id` es el id compuesto del comprobante que lo origina, igual que en el resto de la app."""
+
+    id: str
+    fecha: str  # ISO aaaa-mm-dd
+    lado: str   # ventas | compras
+    comprobante: str  # 'Factura A 00003-00001234'
+    contraparte: str
+    detalle: str
+    lineas: list[AsientoLineaOut]
+    total: float
+    # True = alguna línea quedó con la cuenta por defecto (a revisar antes de cerrar el período).
+    revisar: bool = False
+
+
+class DiarioTotalesOut(BaseModel):
+    """Totales del período. debe y haber tienen que dar iguales (el asiento se arma balanceado)."""
+
+    asientos: int = 0
+    debe: float = 0
+    haber: float = 0
+    revisar: int = 0  # asientos imputados por defecto (sin regla del contador)
+
+
+class DiarioOut(BaseModel):
+    """Libro diario de un cliente para un período, armado con sus comprobantes."""
+
+    cuit: str
+    periodo: str  # aaaa-mm
+    asientos: list[AsientoOut]
+    totales: DiarioTotalesOut
+    # True = el cliente todavía no tiene plan de cuentas (el front ofrece sembrarlo o importarlo).
+    sinPlan: bool = False  # noqa: N815
 
 
 # --- Panel superadmin (sólo rol=admin; ver routers/admin.py) ---

@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     # admins siempre. Vacío = sólo admins. Coma-separado. Cuando se abra a todos, poné "*".
     iva_emails: str = ""
 
+    # Allowlist de emails habilitados para ver el apartado de Contabilidad (libro diario y plan de
+    # cuentas). Espeja iva_emails, pero es una lista APARTE: el piloto de contabilidad no tiene por
+    # qué ser el mismo que el de IVA. Vacío = sólo admins. Coma-separado. "*" habilita a todos.
+    contabilidad_emails: str = ""
+
     # Hora (0-23, horario de Argentina) del sync automático diario (scheduler in-process del API).
     sync_hour: int = 3
     # El scheduler diario del API queda APAGADO por defecto: el motor de sincronización continua
@@ -207,3 +212,16 @@ def iva_habilitada_para(email: str, rol: str | None) -> bool:
     """Como iva_habilitada, pero los ADMIN siempre pueden ver el IVA (para operar/testear en cualquier
     cuenta, incluso impersonando: el gate se evalúa con el email/rol de la sesión efectiva)."""
     return rol == "admin" or iva_habilitada(email)
+
+
+def contabilidad_habilitada(email: str) -> bool:
+    """¿El contador (por email) puede ver el apartado de Contabilidad? Allowlist CONTABILIDAD_EMAILS;
+    '*' habilita a todos (cuando se abra el rollout). Espeja iva_habilitada."""
+    crudos = [e.strip().lower() for e in settings.contabilidad_emails.split(",") if e.strip()]
+    return "*" in crudos or email.lower() in crudos
+
+
+def contabilidad_habilitada_para(email: str, rol: str | None) -> bool:
+    """Como contabilidad_habilitada, pero los ADMIN siempre pueden verla (para operar/testear en
+    cualquier cuenta; el gate se evalúa con el email/rol de la sesión efectiva)."""
+    return rol == "admin" or contabilidad_habilitada(email)
