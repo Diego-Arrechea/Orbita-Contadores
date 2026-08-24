@@ -31,40 +31,44 @@ from .. import models
 # OJO — el plan es INFORMATIVO: no habilita ni bloquea nada todavía. El acceso a IVA y Contabilidad
 # lo sigue decidiendo su allowlist (IVA_EMAILS / CONTABILIDAD_EMAILS) y el equipo del estudio está
 # disponible para todos. Atar el acceso al plan es el paso siguiente.
+# Lo que suma cada escalón. El catálogo las CONCATENA: cada plan lista todas sus funciones, las
+# propias y las que hereda, para que se lea solo sin remitir al plan anterior.
+_FUNCIONES_MONITOREO = [
+    "Panel de todos tus monotributistas, actualizado solo",
+    "Alertas de recategorización, tope de facturación y cuota impaga",
+    "Recordatorios de vencimientos a tus clientes",
+    "Conciliación bancaria y facturación electrónica",
+]
+_FUNCIONES_ESTUDIO = [
+    "Usuarios para tu equipo, cada uno con su acceso",
+    "Cartera repartida por responsable y permisos por persona",
+]
+_FUNCIONES_COMPLETO = [
+    "Libro IVA y declaraciones juradas",
+    "Contabilidad: diario, mayor, balances y cierre de período",
+]
+
 PLANES: dict[str, dict] = {
     "monitoreo": {
         "nombre": "Monitoreo",
         "precio": 25000.0,
         "limite_clientes": None,
         "descripcion": "La cartera de monotributistas al día, sin tener que entrar a buscar nada.",
-        "incluye": [
-            "Panel de todos tus monotributistas, actualizado solo",
-            "Alertas de recategorización, tope de facturación y cuota impaga",
-            "Recordatorios de vencimientos a tus clientes",
-            "Conciliación bancaria y facturación electrónica",
-        ],
+        "incluye": [*_FUNCIONES_MONITOREO],
     },
     "estudio": {
         "nombre": "Estudio",
         "precio": 60000.0,
         "limite_clientes": None,
-        "descripcion": "Todo lo anterior, más el equipo de tu estudio trabajando adentro.",
-        "incluye": [
-            "Todo lo del plan Monitoreo",
-            "Usuarios para tu equipo, cada uno con su acceso",
-            "Cartera repartida por responsable y permisos por persona",
-        ],
+        "descripcion": "La cartera al día, con todo tu equipo trabajando adentro.",
+        "incluye": [*_FUNCIONES_MONITOREO, *_FUNCIONES_ESTUDIO],
     },
     "completo": {
         "nombre": "Completo",
         "precio": 110000.0,
         "limite_clientes": None,
-        "descripcion": "El estudio completo: además del monotributo, IVA y contabilidad.",
-        "incluye": [
-            "Todo lo del plan Estudio",
-            "Libro IVA y declaraciones juradas",
-            "Contabilidad: diario, mayor, balances y cierre de período",
-        ],
+        "descripcion": "El estudio completo: monotributo, IVA y contabilidad en un solo lugar.",
+        "incluye": [*_FUNCIONES_MONITOREO, *_FUNCIONES_ESTUDIO, *_FUNCIONES_COMPLETO],
     },
 }
 
