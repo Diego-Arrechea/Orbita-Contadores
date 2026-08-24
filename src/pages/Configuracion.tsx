@@ -63,7 +63,7 @@ import {
   actualizarPerfil,
   borrarCuenta,
 } from '@/services/authService';
-import { actualizarUsuarioGuardado, esAdminReal, logoutCuenta, usuarioActual } from '@/lib/cuenta';
+import { actualizarUsuarioGuardado, logoutCuenta, usuarioActual } from '@/lib/cuenta';
 import { SeccionSuscripcion } from '@/components/shared/SeccionSuscripcion';
 import { enviarPruebaWhatsapp } from '@/services/notificacionesService';
 import { PrevisualizacionVencimientos } from '@/components/shared/PrevisualizacionVencimientos';
@@ -75,8 +75,7 @@ import type { ConfigAlertas, ConfigNotificaciones } from '@/types';
 // "Alertas" (criterio por tipo) NO depende de esto: el contador configura siempre.
 const WHATSAPP_DISPONIBLE: boolean = true;
 
-// Pestañas que acepta el deep-link ?tab=. 'suscripcion' sólo existe para quien la tiene
-// habilitada (hoy admins e impersonaciones); para el resto cae en la primera, ver `tabInicial`.
+// Pestañas que acepta el deep-link ?tab= (ej. el banner de vencimiento abre en Suscripción).
 const TABS_VALIDAS = [
   'ventanas',
   'umbrales',
@@ -93,14 +92,9 @@ export function Configuracion() {
   const [searchParams] = useSearchParams();
   // Deep-link opcional ?tab= (ej. el modal de alertas abre directo en la pestaña Alertas).
   const tabParam = searchParams.get('tab');
-  // La pestaña de suscripción todavía no está abierta a los contadores: si llega el deep-link sin
-  // habilitación, se ignora (si no, el contenedor quedaría vacío, sin pestaña que lo muestre).
-  const verSuscripcion = esAdminReal();
-  const tabPedida =
-    tabParam && TABS_VALIDAS.includes(tabParam) && (tabParam !== 'suscripcion' || verSuscripcion)
-      ? tabParam
-      : 'ventanas';
-  const [tab, setTab] = useState(tabPedida);
+  const [tab, setTab] = useState(
+    tabParam && TABS_VALIDAS.includes(tabParam) ? tabParam : 'ventanas'
+  );
   const { config, guardarConfig, inflacionMercado } = useConfig();
   const [conf, setConf] = useState(config);
   // El provider arranca en defaults y refina con lo guardado de la cuenta: cuando llega, refrescamos
@@ -363,16 +357,12 @@ export function Configuracion() {
           <TabsTrigger value="categorias" className="shrink-0"><Database className="h-3.5 w-3.5" />Categorías</TabsTrigger>
           <TabsTrigger value="causales" className="shrink-0"><Info className="h-3.5 w-3.5" />Causales</TabsTrigger>
           <TabsTrigger value="cuenta" className="shrink-0"><UserCog className="h-3.5 w-3.5" />Cuenta</TabsTrigger>
-          {verSuscripcion && (
-            <TabsTrigger value="suscripcion" className="shrink-0"><CreditCard className="h-3.5 w-3.5" />Suscripción</TabsTrigger>
-          )}
+          <TabsTrigger value="suscripcion" className="shrink-0"><CreditCard className="h-3.5 w-3.5" />Suscripción</TabsTrigger>
         </TabsList>
 
-        {verSuscripcion && (
-          <TabsContent value="suscripcion" className="mt-0">
-            <SeccionSuscripcion />
-          </TabsContent>
-        )}
+        <TabsContent value="suscripcion" className="mt-0">
+          <SeccionSuscripcion />
+        </TabsContent>
 
         <TabsContent value="ventanas">
           <Card className="p-4 sm:p-6">

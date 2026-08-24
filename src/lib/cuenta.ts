@@ -151,8 +151,8 @@ export function puedeVerIVA(): boolean {
   return usuarioActual()?.iva_habilitada === true;
 }
 
-/** ¿La cuenta logueada puede ver el apartado de Contabilidad? Rollout gateado por el backend
- *  (allowlist CONTABILIDAD_EMAILS + admins), con su propia lista: no depende del gate de IVA. */
+/** ¿La cuenta logueada puede ver el apartado de Contabilidad? Abierto a todos los contadores; el
+ *  backend lo resuelve por cuenta (CONTABILIDAD_EMAILS), por si hubiera que volver a acotarlo. */
 export function puedeVerContabilidad(): boolean {
   return usuarioActual()?.contabilidad_habilitada === true;
 }

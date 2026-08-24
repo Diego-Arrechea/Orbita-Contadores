@@ -4,11 +4,8 @@
  * desde el panel). Vive como una pestaña de Configuración, al lado de Cuenta: es administración de
  * la cuenta, no trabajo del día.
  *
- * OJO — todavía NO está abierto a los contadores: la pantalla la ven sólo los admins y las sesiones
- * impersonadas por un admin (así se puede revisar cómo la vería el contador antes de habilitarla).
- * El gate vive en Configuracion (`verSuscripcion`, con esAdminReal) y en usuario_puede_suscripcion
- * (backend). Los usuarios del estudio nunca la ven: no entran a Configuración y la suscripción es
- * del titular.
+ * La ven todas las cuentas plenas. Los usuarios del estudio no: no entran a Configuración, y la
+ * suscripción es del titular (el backend lo exige con `titular_actual`).
  */
 import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -19,7 +16,6 @@ import {
   CalendarClock,
   Check,
   CreditCard,
-  EyeOff,
   Loader2,
   MessageCircle,
   Users,
@@ -37,7 +33,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { impersonando } from '@/lib/cuenta';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
 import {
   ESTADO_SUSCRIPCION_META,
@@ -376,7 +371,6 @@ export function SeccionSuscripcion() {
     queryFn: obtenerMiSuscripcion,
   });
   const { data: catalogo } = useQuery({ queryKey: ['planes'], queryFn: obtenerCatalogo });
-  const quienImpersona = impersonando();
 
   if (isLoading) {
     return (
@@ -405,15 +399,6 @@ export function SeccionSuscripcion() {
 
   return (
     <div className="space-y-4 pt-4">
-      {/* Recordatorio de que el apartado todavía no está abierto: sólo lo ve el equipo de Órbita
-          (y, mientras dura una impersonación, la pantalla del contador tal como la vería él). */}
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm text-muted-foreground">
-        <EyeOff className="h-4 w-4 shrink-0" />
-        {quienImpersona
-          ? 'Vista interna: así vería el contador este apartado. Todavía no lo tiene disponible.'
-          : 'Apartado interno: los contadores todavía no ven esta pantalla.'}
-      </div>
-
       {/* Aviso cuando hay algo para hacer */}
       {(sus.estado === 'vencida' || (sus.estado === 'activa' && porVencer)) && (
         <Card

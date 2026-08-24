@@ -6,8 +6,8 @@
  * Aparece sólo cuando hay algo que hacer —el vencimiento está cerca o ya pasó— y lleva directo a la
  * pestaña. El resto del tiempo no ocupa lugar.
  *
- * Mismo gate que el apartado (`esAdminReal`): mientras la suscripción no esté abierta a los
- * contadores, el aviso tampoco. Al abrirla, este componente ya queda funcionando.
+ * Mismo alcance que la pestaña: las cuentas plenas. Los usuarios del estudio no lo ven — la
+ * suscripción es del titular, y el backend les responde 403.
  *
  * Vencer NO corta el servicio hoy, así que la copy avisa y ofrece regularizar; nunca amenaza con
  * cortar nada.
@@ -17,7 +17,7 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, CalendarClock, ChevronRight, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { esAdminReal } from '@/lib/cuenta';
+import { esEmpleado } from '@/lib/cuenta';
 import { formatDate } from '@/lib/utils';
 import { obtenerMiSuscripcion, type MiSuscripcion } from '@/services/suscripcionService';
 
@@ -76,7 +76,7 @@ function avisoDe(s: MiSuscripcion): Aviso | null {
 }
 
 export function BannerSuscripcion() {
-  const habilitado = esAdminReal();
+  const habilitado = !esEmpleado();
   const { data: sus } = useQuery({
     queryKey: ['suscripcion'],
     queryFn: obtenerMiSuscripcion,

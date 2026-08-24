@@ -43,15 +43,15 @@ const nav = [
   { to: '/novedades', label: 'Novedades', icon: Sparkles },
 ];
 
-// Apartado de IVA: rollout gateado (allowlist IVA_EMAILS + admins). Se inserta después de
-// Conciliación sólo para las cuentas habilitadas (puedeVerIVA). El backend valida igual.
+// Apartado de IVA: abierto a todos los contadores. El flag por cuenta (puedeVerIVA, que sale de
+// IVA_EMAILS en el backend) sigue existiendo por si hubiera que volver a acotarlo.
 const ivaItem = { to: '/iva', label: 'IVA', icon: Percent };
 
-// Apartado de Contabilidad: mismo rollout gateado, con su propia allowlist. Va detrás de IVA.
+// Apartado de Contabilidad: también abierto a todos, con su propio flag. Va detrás de IVA.
 const contabilidadItem = { to: '/contabilidad', label: 'Contabilidad', icon: BookOpen };
 
-/** Inserta los apartados gateados (IVA, Contabilidad) que la cuenta tenga habilitados, justo
- *  después de Conciliación y en ese orden. */
+/** Inserta IVA y Contabilidad (en ese orden) justo después de Conciliación, según lo habilitado
+ *  para la cuenta. */
 function conIva(items: typeof nav): typeof nav {
   const extra = [
     ...(puedeVerIVA() ? [ivaItem] : []),
@@ -65,7 +65,7 @@ function conIva(items: typeof nav): typeof nav {
 
 /** Menú según la cuenta. Usuario del estudio (empleado): sin Gestión, Configuración ni Novedades, y
  *  "Nuevo cliente" sólo si el titular le dio el permiso. Cuenta plena: todo (+ Superadmin si admin).
- *  El apartado de IVA aparece sólo si la cuenta lo tiene habilitado (piloto acotado). */
+ *  IVA y Contabilidad aparecen según el flag de la cuenta (hoy, todas). */
 function itemsSegunCuenta() {
   if (esEmpleado()) {
     return conIva(
