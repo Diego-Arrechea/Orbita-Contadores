@@ -1089,6 +1089,10 @@ class AsientoOut(BaseModel):
     # De dónde salió esa cuenta: 'manual' (la fijó para ESTE comprobante), 'regla' (la memorizó para
     # la contraparte) o 'defecto' (la sugirió Órbita). El front ofrece deshacer sólo si es manual.
     imputacion: str = "defecto"
+    # Quién decidió esa cuenta y cuándo (vacío si la sugirió Órbita). En los asientos manuales, quién
+    # los cargó.
+    imputadoPor: str = ""  # noqa: N815
+    imputadoEn: str = ""   # noqa: N815
     # CUIT de la contraparte: con él se arma la regla "imputar siempre así a este proveedor".
     contraparteCuit: str = ""  # noqa: N815
 
@@ -1114,6 +1118,60 @@ class DiarioOut(BaseModel):
     cerrado: bool = False
     # Movimientos que entraron después de cerrar el período (la sincronización no sabe de cierres).
     nuevosDesdeCierre: int = 0  # noqa: N815
+
+
+class EventoOut(BaseModel):
+    """Una anotación de la bitácora: quién decidió qué y cuándo."""
+
+    id: int
+    tipo: str      # imputacion | regla | asiento | cierre | reapertura | …
+    etiqueta: str  # el tipo, redactado para leer
+    referencia: str = ""
+    periodo: str = ""
+    detalle: str = ""
+    usuario: str = ""
+    fecha: str = ""  # ISO con hora
+
+
+class DatoOrigenOut(BaseModel):
+    """Un par etiqueta/valor de la ficha de origen (tipo, número, CAE, conciliación…)."""
+
+    etiqueta: str
+    valor: str
+
+
+class ImporteOrigenOut(BaseModel):
+    """Un importe de la ficha de origen (total, neto, IVA, una percepción…)."""
+
+    etiqueta: str
+    importe: float = 0
+
+
+class AlicuotaOrigenOut(BaseModel):
+    """Una alícuota del comprobante, tal como vino discriminada."""
+
+    alicuota: str
+    base: float = 0
+    iva: float = 0
+
+
+class OrigenOut(BaseModel):
+    """De dónde sale un asiento: el comprobante, el movimiento del extracto o la carga manual que lo
+    originó, con sus importes y su historial de decisiones. Es el camino de vuelta desde un número
+    del balance hasta el papel."""
+
+    id: str
+    tipo: str  # comprobante | banco | manual
+    titulo: str
+    subtitulo: str = ""
+    fecha: str
+    contraparte: str = ""
+    contraparteCuit: str = ""  # noqa: N815
+    datos: list[DatoOrigenOut] = []
+    importes: list[ImporteOrigenOut] = []
+    alicuotas: list[AlicuotaOrigenOut] = []
+    percepciones: list[ImporteOrigenOut] = []
+    historial: list[EventoOut] = []
 
 
 class CierreOut(BaseModel):
@@ -1165,6 +1223,8 @@ class EstadosOut(BaseModel):
 class MayorMovimientoOut(BaseModel):
     """Un movimiento de la cuenta en el mayor, con el saldo ya arrastrado."""
 
+    # Id del asiento que lo generó: con él se abre su origen (el comprobante o el movimiento).
+    asientoId: str = ""  # noqa: N815
     fecha: str  # ISO aaaa-mm-dd
     detalle: str
     contraparte: str
@@ -1234,6 +1294,8 @@ class ReglaOut(BaseModel):
     contraparte: str  # CUIT o texto con el que matchea
     codigo: str  # cuenta destino
     cuenta: str
+    creadaPor: str = ""  # noqa: N815
+    creadaEn: str = ""   # noqa: N815
 
 
 class LineaAsientoIn(BaseModel):
@@ -1457,3 +1519,130 @@ class CategoriaOficialOut(BaseModel):
     energiaMaxKwh: int
     alquilerMaxAnual: float
     topePrecioUnitario: float
+
+
+# --- Suscripciones (apartado "Mi suscripción" + gestión desde el panel admin) ------------------
+
+
+class PlanOut(BaseModel):
+    """Un plan del catálogo, para mostrarlo en la comparativa."""
+
+    clave: str
+    nombre: str
+    precio: float           # de lista, por mes, en pesos
+    limite_clientes: int | None = None  # None = sin tope
+    descripcion: str
+
+
+class PagoSuscripcionOut(BaseModel):
+    """Un pago registrado contra la suscripción (lo ve el contador y el admin)."""
+
+    id: int
+    fecha: str                          # ISO aaaa-mm-dd
+    importe: float
+    medio: str
+    periodo_desde: str | None = None
+    periodo_hasta: str | None = None
+    referencia: str | None = None
+    notas: str | None = None
+    registrado_por: str = ""            # email del admin que lo cargó
+
+
+class SuscripcionOut(BaseModel):
+    """El estado de la suscripción de una cuenta, tal como lo ve su contador."""
+
+    plan: str
+    plan_nombre: str
+    plan_descripcion: str
+    estado: str                          # prueba | activa | vencida | cancelada | sin_cargo
+    ciclo: str                           # mensual | anual
+    precio: float                        # lo que paga esta cuenta por ciclo
+    inicio: str | None = None            # ISO
+    vence: str | None = None             # ISO; None = sin vencimiento
+    dias_restantes: int | None = None    # negativo si ya venció
+    al_dia: bool = True
+    limite_clientes: int | None = None   # None = sin tope
+    clientes_en_uso: int = 0
+    pagos: list[PagoSuscripcionOut] = []
+
+
+class AdminSuscripcionOut(BaseModel):
+    """Una fila del listado de suscripciones del panel admin: la cuenta + su estado comercial."""
+
+    usuario_id: int
+    email: EmailStr
+    nombre: str
+    apellido: str
+    estudio: str
+    activo: bool
+    creado_en: str | None = None         # ISO: alta de la cuenta
+    ultimo_acceso: str | None = None     # ISO
+    plan: str
+    plan_nombre: str
+    estado: str                          # estado EFECTIVO (ya considera el vencimiento)
+    estado_guardado: str                 # el que fijó el admin (sin derivar por fecha)
+    ciclo: str
+    precio: float
+    precio_personalizado: bool = False   # True si tiene un precio distinto al de lista
+    inicio: str | None = None
+    vence: str | None = None
+    dias_restantes: int | None = None
+    limite_clientes: int | None = None
+    clientes: int = 0                    # clientes que consumen el cupo (propios + de su equipo)
+    ultimo_pago: str | None = None       # ISO de la fecha del último pago registrado
+    total_pagado: float = 0.0
+    notas: str | None = None             # notas internas (no las ve el contador)
+
+
+class AdminSuscripcionesResumen(BaseModel):
+    """Totales de la cartera de suscripciones (encabezado del tab)."""
+
+    cuentas: int
+    activas: int
+    en_prueba: int
+    vencidas: int
+    canceladas: int
+    sin_cargo: int
+    ingreso_mensual: float               # suma mensualizada de las suscripciones activas/en prueba
+    cobrado_30d: float                   # pagos registrados en los últimos 30 días
+    por_vencer_30d: int                  # activas que vencen dentro de 30 días
+
+
+class AdminSuscripcionesOut(BaseModel):
+    """Listado completo del tab de suscripciones."""
+
+    resumen: AdminSuscripcionesResumen
+    items: list[AdminSuscripcionOut]
+
+
+class AdminSuscripcionDetalleOut(BaseModel):
+    """Una suscripción con su historial de pagos (ficha del panel)."""
+
+    suscripcion: AdminSuscripcionOut
+    pagos: list[PagoSuscripcionOut] = []
+
+
+class AdminSuscripcionPatch(BaseModel):
+    """Cambios que un admin puede aplicar a una suscripción (PATCH parcial)."""
+
+    plan: str | None = None
+    estado: str | None = None            # prueba | activa | vencida | cancelada | sin_cargo
+    ciclo: str | None = None             # mensual | anual
+    precio: float | None = None          # None deja el de lista; mandá el valor para pisarlo
+    limite_clientes: int | None = None
+    inicio: str | None = None            # ISO
+    vence: str | None = None             # ISO
+    notas: str | None = None
+
+
+class PagoSuscripcionIn(BaseModel):
+    """Alta de un pago desde el panel. Sin fechas de período, se calculan solas (un ciclo desde
+    donde terminaba lo ya pago)."""
+
+    fecha: str | None = None             # ISO; default hoy
+    importe: float = Field(gt=0)
+    medio: str = "transferencia"
+    periodo_desde: str | None = None
+    periodo_hasta: str | None = None
+    referencia: str | None = None
+    notas: str | None = None
