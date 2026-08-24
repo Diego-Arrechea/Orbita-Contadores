@@ -512,6 +512,57 @@ class ReglaImputacion(Base):
     )
 
 
+class ImputacionComprobante(Base):
+    """La cuenta que el contador eligió A MANO para UN comprobante puntual.
+
+    Gana sobre las reglas y sobre la cuenta por defecto. Se guarda por el id COMPUESTO del
+    comprobante (cuit-direccion-pv-tipo-numero), el mismo que usa el resto de la app, porque el
+    asiento no se persiste: se recalcula cada vez y sólo sobrevive la decisión."""
+
+    __tablename__ = "imputaciones"
+    __table_args__ = (UniqueConstraint("cuit", "comprobante_id", name="uq_imputacion"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cuit: Mapped[str] = mapped_column(String(11), ForeignKey("clientes_arca.cuit"), index=True)
+    comprobante_id: Mapped[str] = mapped_column(String(60))
+    cuenta_id: Mapped[int] = mapped_column(Integer, ForeignKey("plan_cuentas.id"), index=True)
+    creada_por: Mapped[str] = mapped_column(String(120), default="")
+    creada_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class AsientoManual(Base):
+    """Asiento que el contador carga a mano: lo que NO sale de un comprobante (cobros y pagos,
+    amortizaciones, sueldos, ajustes de cierre). Convive en el diario con los asientos derivados."""
+
+    __tablename__ = "asientos_manuales"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cuit: Mapped[str] = mapped_column(String(11), ForeignKey("clientes_arca.cuit"), index=True)
+    fecha: Mapped[dt.date] = mapped_column(index=True)
+    detalle: Mapped[str] = mapped_column(String(200), default="")
+    creado_por: Mapped[str] = mapped_column(String(120), default="")
+    creado_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class LineaAsientoManual(Base):
+    """Un renglón de un asiento manual. La suma del debe tiene que igualar a la del haber: eso se
+    valida al crearlo (el asiento no se guarda si no cierra)."""
+
+    __tablename__ = "asiento_manual_lineas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    asiento_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("asientos_manuales.id"), index=True
+    )
+    cuenta_id: Mapped[int] = mapped_column(Integer, ForeignKey("plan_cuentas.id"), index=True)
+    debe: Mapped[float] = mapped_column(Numeric(15, 2), default=0)
+    haber: Mapped[float] = mapped_column(Numeric(15, 2), default=0)
+
+
 class LiquidacionAgro(Base):
     """Liquidación Electrónica del sector primario (agro) de un cliente productor.
 
