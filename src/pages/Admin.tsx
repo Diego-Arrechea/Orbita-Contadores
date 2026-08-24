@@ -37,12 +37,14 @@ import {
   ArrowUpDown,
   MessageCircle,
   ShieldAlert,
+  CreditCard,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { PanelSuscripciones } from '@/components/admin/PanelSuscripciones';
 import {
   Dialog,
   DialogContent,
@@ -178,6 +180,9 @@ export function Admin() {
           <TabsTrigger value="clientes" className="shrink-0">
             <Building2 className="h-4 w-4" /> Clientes
           </TabsTrigger>
+          <TabsTrigger value="suscripciones" className="shrink-0">
+            <CreditCard className="h-4 w-4" /> Suscripciones
+          </TabsTrigger>
           <TabsTrigger value="motor" className="shrink-0">
             <Cpu className="h-4 w-4" /> Motor
           </TabsTrigger>
@@ -194,6 +199,9 @@ export function Admin() {
         </TabsContent>
         <TabsContent value="clientes">
           <TabClientes />
+        </TabsContent>
+        <TabsContent value="suscripciones">
+          <PanelSuscripciones />
         </TabsContent>
         <TabsContent value="motor">
           <TabMotor />

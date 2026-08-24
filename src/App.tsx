@@ -76,6 +76,7 @@ import { Conciliacion } from '@/pages/Conciliacion';
 import { IVA } from '@/pages/IVA';
 import { Contabilidad } from '@/pages/Contabilidad';
 import { Configuracion } from '@/pages/Configuracion';
+import { Suscripcion } from '@/pages/Suscripcion';
 import { Novedades } from '@/pages/Novedades';
 import { Admin } from '@/pages/Admin';
 import { GestionUsuarios } from '@/pages/GestionUsuarios';
@@ -161,6 +162,14 @@ export default function App() {
           element={
             <RequireCuentaPlena>
               <Novedades />
+            </RequireCuentaPlena>
+          }
+        />
+        <Route
+          path="/suscripcion"
+          element={
+            <RequireCuentaPlena>
+              <Suscripcion />
             </RequireCuentaPlena>
           }
         />
