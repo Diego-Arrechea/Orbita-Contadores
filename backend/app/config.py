@@ -44,14 +44,14 @@ class Settings(BaseSettings):
     facturacion_emails: str = ""
 
     # Allowlist de emails habilitados para ver el apartado de IVA (Libro IVA / posición / regímenes).
-    # Mismo mecanismo que facturacion_emails: piloto acotado (hoy sólo el contador que testea) + los
-    # admins siempre. Vacío = sólo admins. Coma-separado. Cuando se abra a todos, poné "*".
-    iva_emails: str = ""
+    # Mismo mecanismo que facturacion_emails, pero el rollout YA ESTÁ ABIERTO: el default "*" habilita
+    # a todos. Vacío = sólo admins y coma-separado = lista puntual, por si hay que volver a acotarlo.
+    iva_emails: str = "*"
 
     # Allowlist de emails habilitados para ver el apartado de Contabilidad (libro diario y plan de
-    # cuentas). Espeja iva_emails, pero es una lista APARTE: el piloto de contabilidad no tiene por
-    # qué ser el mismo que el de IVA. Vacío = sólo admins. Coma-separado. "*" habilita a todos.
-    contabilidad_emails: str = ""
+    # cuentas). Espeja iva_emails, pero es una lista APARTE. Vacío = sólo admins; coma-separado para
+    # una lista puntual; "*" (el default desde que se abrió el rollout) habilita a todos.
+    contabilidad_emails: str = "*"
 
     # Hora (0-23, horario de Argentina) del sync automático diario (scheduler in-process del API).
     sync_hour: int = 3

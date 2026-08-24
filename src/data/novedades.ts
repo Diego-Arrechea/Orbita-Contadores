@@ -42,6 +42,30 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-08-24-iva-contabilidad-suscripcion',
+    fecha: '2026-08-24',
+    titulo: 'IVA y Contabilidad, para todos',
+    resumen:
+      'Se habilitan los apartados de IVA y de Contabilidad en todas las cuentas, y sumamos tu suscripción en Configuración.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'IVA: en el menú vas a encontrar el apartado de IVA, con el libro de compras y ventas de cada cliente armado a partir de sus comprobantes, la posición del período y la exportación para presentar. Antes lo estaban probando algunos estudios; ahora está en todas las cuentas.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Contabilidad: el libro diario se arma solo con los comprobantes y los movimientos del extracto, y podés imputar cada uno a la cuenta que quieras, cargar asientos a mano, ver el mayor, las sumas y saldos, y cerrar el período para obtener los estados contables. Cada número te muestra de dónde sale y quién decidió que fuera así.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Mi suscripción: en Configuración sumamos una solapa con tu plan, hasta cuándo está al día tu cuenta, qué incluye cada plan y los pagos registrados. Si el vencimiento se acerca, te avisamos en el panel principal.',
+      },
+    ],
+  },
+  {
     id: '2026-08-24-puntos-de-venta-con-nombre',
     fecha: '2026-08-24',
     titulo: 'Los puntos de venta, con nombre',
