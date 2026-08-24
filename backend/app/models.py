@@ -659,17 +659,23 @@ class AlertaEnviada(Base):
 
 
 class MovimientoBancario(Base):
-    """Una acreditación importada de un extracto bancario o export de billetera (MercadoPago, etc.)
-    y cruzada contra los comprobantes EMITIDOS reales del cliente. El cruce automático lo calcula
-    el matcher (services/conciliacion.py); acá se persiste el resultado + la decisión del contador
-    sobre lo que no matcheó. Sólo se guardan ACREDITACIONES (monto > 0): los débitos se descartan."""
+    """Un movimiento importado de un extracto bancario o export de billetera (MercadoPago, etc.).
+
+    Las ACREDITACIONES (`tipo='credito'`) se cruzan contra los comprobantes EMITIDOS reales del
+    cliente: el cruce lo calcula el matcher (services/conciliacion.py) y acá se persiste el resultado
+    + la decisión del contador sobre lo que no matcheó. Los DÉBITOS (`tipo='debito'`) no se matchean
+    —son pagos, no cobros— y no aparecen en la conciliación; se guardan porque la contabilidad los
+    necesita para registrar los pagos. `monto` es siempre POSITIVO: el signo lo lleva `tipo`."""
 
     __tablename__ = "movimientos_bancarios"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     cuit: Mapped[str] = mapped_column(String(11), ForeignKey("clientes_arca.cuit"), index=True)
     fecha: Mapped[dt.date] = mapped_column()
-    monto: Mapped[float] = mapped_column(Numeric(15, 2))
+    monto: Mapped[float] = mapped_column(Numeric(15, 2))  # SIEMPRE positivo (ver `tipo`)
+    # credito = entró plata (cobro) · debito = salió (pago). Las filas previas a esta columna son
+    # todas acreditaciones, por eso el default.
+    tipo: Mapped[str] = mapped_column(String(10), default="credito", server_default="credito")
     fuente: Mapped[str] = mapped_column(String(12), default="banco")  # banco | mercadopago | otro
     cuit_originante: Mapped[str | None] = mapped_column(String(20), nullable=True)
     nombre_originante: Mapped[str | None] = mapped_column(String(200), nullable=True)

@@ -40,14 +40,16 @@ def importar_movimientos(
     db: Session = Depends(get_db),
     usuario: models.Usuario = Depends(requiere_permiso("conciliacion")),
 ):
-    """Importa las acreditaciones de un extracto (filas ya parseadas por el front) y las cruza con
-    los comprobantes emitidos reales del cliente. Idempotente: re-subir el mismo archivo no duplica."""
+    """Importa los movimientos de un extracto (filas ya parseadas por el front) y cruza las
+    acreditaciones con los comprobantes emitidos reales del cliente. Idempotente: re-subir el mismo
+    archivo no duplica. Los débitos se guardan para la contabilidad pero no entran en la conciliación."""
     _cliente_propio(db, cuit, usuario)
     res = conciliacion.importar(db, cuit, datos.fuente, datos.filas)
     return ImportarResumenOut(
         importados=res["importados"],
         duplicadosOmitidos=res["duplicados_omitidos"],
-        debitosOmitidos=res["debitos_omitidos"],
+        descartados=res["descartados"],
+        debitos=res["debitos"],
         matcheadosAuto=res["matcheados_auto"],
         pendientes=res["pendientes"],
         movimientos=[_mov_out(m) for m in res["movimientos"]],

@@ -779,7 +779,10 @@ class MovimientoOut(BaseModel):
 class ImportarResumenOut(BaseModel):
     importados: int
     duplicadosOmitidos: int  # noqa: N815
-    debitosOmitidos: int  # noqa: N815
+    # Filas que no se pudieron leer (sin fecha, en cero o en blanco).
+    descartados: int = 0
+    # Débitos guardados: no entran en la conciliación (que cruza cobros), los usa la contabilidad.
+    debitos: int = 0
     matcheadosAuto: int  # noqa: N815
     pendientes: int
     movimientos: list[MovimientoOut]

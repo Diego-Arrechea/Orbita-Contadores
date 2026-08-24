@@ -69,6 +69,7 @@ PLAN_ESTANDAR: tuple[tuple[str, str, str, bool], ...] = (
 
 # Cuentas que USA el asiento automático. Si el contador importa su propio plan y no las trae, se
 # crean igual al importar (sin ellas no habría dónde imputar). Tampoco se pueden borrar.
+CTA_BANCO = "1.1.02"
 CTA_DEUDORES = "1.1.03"
 CTA_IVA_CF = "1.1.04"
 CTA_PERCEP_IVA_SUF = "1.1.06"
@@ -83,7 +84,7 @@ CTA_VENTAS = "4.1.01"
 CTA_COMPRAS = "5.1.01"
 
 CUENTAS_SISTEMA: tuple[str, ...] = (
-    CTA_DEUDORES, CTA_IVA_CF, CTA_PERCEP_IVA_SUF, CTA_PERCEP_IIBB_SUF, CTA_OTROS_CRED_FISC,
+    CTA_BANCO, CTA_DEUDORES, CTA_IVA_CF, CTA_PERCEP_IVA_SUF, CTA_PERCEP_IIBB_SUF, CTA_OTROS_CRED_FISC,
     CTA_PROVEEDORES, CTA_IVA_DF, CTA_PERCEP_IVA_PRACT, CTA_PERCEP_IIBB_PRACT, CTA_OTROS_IMP_PAGAR,
     CTA_VENTAS, CTA_COMPRAS,
 )
@@ -184,24 +185,35 @@ def _solo_digitos(valor: str | None) -> str:
     return "".join(ch for ch in (valor or "") if ch.isdigit())
 
 
-def _regla_que_matchea(
-    comp: models.ComprobanteEmitido, lado: str, reglas: list[models.ReglaImputacion]
+def _elegir_regla(
+    reglas: list[models.ReglaImputacion],
+    lado: str,
+    doc: str,
+    nombre: str,
+    cbte_tipo: int | None = None,
 ) -> models.ReglaImputacion | None:
-    """Primera regla del contador que aplica al comprobante (ya vienen ordenadas por prioridad).
-    Matchea por CUIT de la contraparte, o por texto contenido en su nombre, y opcionalmente por
-    tipo de comprobante."""
-    doc = _solo_digitos(comp.doc_nro)
-    nombre = (comp.contraparte_nombre or "").lower()
+    """Primera regla del contador que aplica (ya vienen ordenadas por prioridad). Matchea por CUIT de
+    la contraparte, o por texto contenido en su nombre, y opcionalmente por tipo de comprobante."""
+    nombre = (nombre or "").lower()
     for regla in reglas:
         if regla.lado != lado:
             continue
-        if regla.cbte_tipo is not None and regla.cbte_tipo != comp.cbte_tipo:
+        if regla.cbte_tipo is not None and regla.cbte_tipo != cbte_tipo:
             continue
         if doc and regla.contraparte_cuit and _solo_digitos(regla.contraparte_cuit) == doc:
             return regla
         if regla.contraparte_texto and regla.contraparte_texto.strip().lower() in nombre:
             return regla
     return None
+
+
+def _regla_que_matchea(
+    comp: models.ComprobanteEmitido, lado: str, reglas: list[models.ReglaImputacion]
+) -> models.ReglaImputacion | None:
+    """La regla que aplica a un comprobante."""
+    return _elegir_regla(
+        reglas, lado, _solo_digitos(comp.doc_nro), comp.contraparte_nombre or "", comp.cbte_tipo
+    )
 
 
 def _percepciones(comp: models.ComprobanteEmitido) -> dict[str, float]:
@@ -383,6 +395,14 @@ def asientos_entre(
     ).scalars()
 
     asientos = [asiento_de_comprobante(c, nombres, reglas, imputaciones) for c in comprobantes]
+
+    mov = models.MovimientoBancario
+    cond_mov = [mov.cuit == cuit, mov.fecha < hasta]
+    if desde is not None:
+        cond_mov.append(mov.fecha >= desde)
+    movimientos = db.execute(select(mov).where(*cond_mov).order_by(mov.fecha, mov.id)).scalars()
+    asientos += [asiento_de_movimiento(m, nombres, reglas, imputaciones) for m in movimientos]
+
     asientos += asientos_manuales(db, cuit, desde or dt.date(1900, 1, 1), hasta, nombres)
     asientos.sort(key=lambda a: a["fecha"])
     return asientos
@@ -476,7 +496,17 @@ def guardar_imputacion(
 
     Devuelve {ok, regla}: `regla` dice si quedó guardada la preferencia para la contraparte."""
     _cuenta_imputable(db, cuit, cuenta_id)
-    comp = comprobante_por_id(db, cuit, comprobante_id)
+    es_banco = comprobante_id.startswith("banco-")
+    if es_banco:
+        mov = movimiento_por_id(db, cuit, comprobante_id)
+        lado = "cobros" if mov.tipo != "debito" else "pagos"
+        doc = _solo_digitos(mov.cuit_originante)
+        texto = (mov.nombre_originante or mov.descripcion or "").strip()
+    else:
+        comp = comprobante_por_id(db, cuit, comprobante_id)
+        lado = "ventas" if comp.direccion == "emitido" else "compras"
+        doc = _solo_digitos(comp.doc_nro)
+        texto = (comp.contraparte_nombre or "").strip()
 
     imp = models.ImputacionComprobante
     actual = db.scalar(select(imp).where(imp.cuit == cuit, imp.comprobante_id == comprobante_id))
@@ -489,8 +519,6 @@ def guardar_imputacion(
 
     guardo_regla = False
     if recordar:
-        lado = "ventas" if comp.direccion == "emitido" else "compras"
-        doc = _solo_digitos(comp.doc_nro)
         regla = models.ReglaImputacion
         if len(doc) == 11:  # con CUIT la regla es exacta; si no, se matchea por el nombre
             existente = db.scalar(
@@ -503,9 +531,8 @@ def guardar_imputacion(
                 prioridad=10, creada_por=email,
             )
         else:
-            texto = (comp.contraparte_nombre or "").strip()
             if not texto:
-                raise ValueError("Este comprobante no tiene datos de la contraparte para recordar.")
+                raise ValueError("Esto no tiene datos de la contraparte para recordar.")
             existente = db.scalar(
                 select(regla).where(
                     regla.cuit == cuit, regla.lado == lado, regla.contraparte_texto == texto
@@ -754,3 +781,88 @@ def sumas_y_saldos(db: Session, cuit: str, desde: dt.date, hasta: dt.date) -> di
         "acreedor": acreedor_total,
         "sinPlan": False,
     }
+
+
+# --- Cobros y pagos (movimientos del extracto) ---------------------------------------------------
+def id_movimiento(mov: models.MovimientoBancario) -> str:
+    """Id del asiento que sale de un movimiento del extracto (se distingue de los comprobantes)."""
+    return f"banco-{mov.id}"
+
+
+def asiento_de_movimiento(
+    mov: models.MovimientoBancario,
+    nombres: dict,
+    reglas: list[models.ReglaImputacion],
+    imputaciones: dict[str, int],
+) -> dict:
+    """Arma el asiento de un movimiento del extracto. Un cobro entra al banco contra Deudores por
+    ventas (cancela lo que el cliente debía); un pago sale del banco contra Proveedores.
+
+    La cuenta de la contrapartida sigue la misma cadena que en los comprobantes: la que el contador
+    fijó para ESE movimiento, la que memorizó para esa contraparte, o la de por defecto. Un cobro que
+    quedó conciliado con un comprobante NO pide revisión (ya sabemos qué cancela); un pago sí, porque
+    puede ser un proveedor, un impuesto, un sueldo o una transferencia entre cuentas propias."""
+    es_cobro = mov.tipo != "debito"
+    lado = "cobros" if es_cobro else "pagos"
+    total = round(float(mov.monto or 0), 2)
+    mov_id = id_movimiento(mov)
+    contraparte = (mov.nombre_originante or mov.descripcion or "").strip() or "—"
+    doc = _solo_digitos(mov.cuit_originante)
+
+    por_defecto = False
+    origen_imputacion = "manual"
+    cta_contra = nombres.get(imputaciones.get(mov_id, 0))
+    if cta_contra is None:
+        origen_imputacion = "regla"
+        regla = _elegir_regla(reglas, lado, doc, contraparte)
+        if regla is not None:
+            cta_contra = nombres.get(regla.cuenta_id)
+    if cta_contra is None:
+        origen_imputacion = "defecto"
+        cta_contra = CTA_DEUDORES if es_cobro else CTA_PROVEEDORES
+        por_defecto = not (es_cobro and mov.comprobante_matcheado_id)
+
+    def linea(codigo: str, debe: float, haber: float, defecto: bool = False) -> dict:
+        return {
+            "codigo": codigo,
+            "cuenta": nombres.get(codigo, codigo),
+            "debe": debe,
+            "haber": haber,
+            "porDefecto": defecto,
+        }
+
+    if es_cobro:
+        lineas = [linea(CTA_BANCO, total, 0.0), linea(cta_contra, 0.0, total, por_defecto)]
+    else:
+        lineas = [linea(cta_contra, total, 0.0, por_defecto), linea(CTA_BANCO, 0.0, total)]
+
+    etiqueta = "Cobro" if es_cobro else "Pago"
+    detalle = (mov.descripcion or "").strip() or contraparte
+    return {
+        "id": mov_id,
+        "fecha": mov.fecha.isoformat(),
+        "lado": lado,
+        "comprobante": f"{etiqueta} · {detalle}"[:120],
+        "contraparte": contraparte,
+        "detalle": f"{etiqueta} · {detalle}"[:120],
+        "lineas": lineas,
+        "total": total,
+        "revisar": por_defecto,
+        "origen": "banco",
+        "cuentaImputada": cta_contra,
+        "imputacion": origen_imputacion,
+        "contraparteCuit": doc,
+    }
+
+
+def movimiento_por_id(db: Session, cuit: str, asiento_id: str) -> models.MovimientoBancario:
+    """Busca el movimiento del extracto por el id de su asiento ('banco-<n>'). ValueError si no es
+    de este cliente."""
+    try:
+        mov_id = int(asiento_id.split("-", 1)[1])
+    except (IndexError, ValueError) as e:
+        raise ValueError("Movimiento inválido.") from e
+    mov = db.get(models.MovimientoBancario, mov_id)
+    if mov is None or mov.cuit != cuit:
+        raise ValueError("No encontramos ese movimiento.")
+    return mov

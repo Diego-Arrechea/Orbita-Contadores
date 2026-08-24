@@ -573,7 +573,7 @@ function VistaDiario({
       <>
         <Card className="p-8 text-center">
           <p className="text-sm text-muted-foreground">
-            No hay comprobantes en este período. Podés registrar un asiento a mano igual.
+            No hay movimientos en este período. Podés registrar un asiento a mano igual.
           </p>
           <div className="mt-4 flex justify-center">{botonAgregar}</div>
         </Card>
@@ -605,8 +605,7 @@ function VistaDiario({
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-foreground" />
           <span>
             {t.revisar} {t.revisar === 1 ? 'asiento quedó' : 'asientos quedaron'} con una cuenta
-            genérica de compras. Cambiala en cada uno y, si querés, dejala guardada para ese
-            proveedor.
+            genérica. Cambiala en cada uno y, si querés, dejala guardada para esa contraparte.
           </span>
         </Card>
       )}
@@ -622,8 +621,9 @@ function VistaDiario({
         <span>
           Cada comprobante del período genera su asiento: las ventas contra Deudores por ventas y las
           compras contra Proveedores, con el IVA y las percepciones en sus cuentas. Las notas de
-          crédito se registran invertidas. Los cobros, pagos y ajustes se cargan a mano con “Agregar
-          asiento”.
+          crédito se registran invertidas. Los cobros y pagos salen de los extractos que cargues en
+          Conciliación. Lo que no aparece por ningún lado —amortizaciones, ajustes— se carga con
+          “Agregar asiento”.
         </span>
       </div>
       {dialogo}
@@ -661,7 +661,15 @@ function AsientoCard({
 
   const imputables = useMemo(() => cuentas.filter(c => c.imputable), [cuentas]);
   const esManual = asiento.origen === 'manual';
+  const esBanco = asiento.origen === 'banco';
   const puedeImputar = !esManual && !!asiento.cuentaImputada;
+  const etiquetaLado = {
+    ventas: 'Venta',
+    compras: 'Compra',
+    cobros: 'Cobro',
+    pagos: 'Pago',
+    manual: 'A mano',
+  }[asiento.lado];
 
   async function correr(accion: () => Promise<unknown>) {
     setTrabajando(true);
@@ -689,7 +697,7 @@ function AsientoCard({
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b bg-muted/20 px-4 py-2.5">
         <span className="text-sm font-medium">{asiento.comprobante}</span>
         <Badge variant="outline" className="text-xs">
-          {esManual ? 'A mano' : asiento.lado === 'ventas' ? 'Venta' : 'Compra'}
+          {etiquetaLado}
         </Badge>
         {!esManual && <span className="text-sm text-muted-foreground">{asiento.contraparte}</span>}
         {asiento.imputacion === 'regla' && (
@@ -789,7 +797,8 @@ function AsientoCard({
               checked={recordar}
               onChange={e => setRecordar(e.target.checked)}
             />
-            Usar esta cuenta para los próximos comprobantes de {asiento.contraparte}
+            Usar esta cuenta para {esBanco ? 'los próximos movimientos' : 'los próximos comprobantes'} de{' '}
+            {asiento.contraparte}
           </label>
           {asiento.imputacion === 'manual' && (
             <button
@@ -1042,7 +1051,7 @@ function VistaReglas({ cuit }: { cuit: string }) {
         {reglas.map(r => (
           <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
             <Badge variant="outline" className="text-xs">
-              {r.lado === 'ventas' ? 'Venta' : 'Compra'}
+              {{ ventas: 'Venta', compras: 'Compra', cobros: 'Cobro', pagos: 'Pago' }[r.lado]}
             </Badge>
             <span className="font-medium">{r.contraparte}</span>
             <span className="text-muted-foreground">
