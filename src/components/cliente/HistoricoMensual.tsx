@@ -23,7 +23,7 @@ import { formatCurrency, formatMonto, cn } from '@/lib/utils';
 import { VerDetalle } from '@/components/cliente/VerDetalle';
 import { detalleHistorico } from '@/lib/trazabilidad';
 import { useHistorico } from '@/lib/queries';
-import { formatPuntoVenta, indicePuntosVenta } from '@/lib/puntosVenta';
+import { formatPuntoVenta, indicePuntosVenta, sistemaCorto } from '@/lib/puntosVenta';
 import type { Cliente } from '@/types';
 
 interface Props {
@@ -57,6 +57,68 @@ const COLORES_PV = [
   'hsl(142 40% 38%)',
   'hsl(44 78% 47%)',
 ];
+
+/** Una serie del tooltip (lo que recharts pasa por cada barra apilada del período). */
+interface SerieTooltip {
+  dataKey?: string | number;
+  value?: number;
+  color?: string;
+}
+
+/**
+ * Tooltip de la vista por punto de venta. Además del monto dice QUÉ es cada punto (número, nombre y
+ * sistema con el que emite): dos puntos del mismo negocio suelen llamarse igual y sin el sistema no
+ * hay forma de distinguirlos. Deja afuera los puntos que no facturaron en el período.
+ */
+function TooltipPuntosVenta({
+  activo,
+  series,
+  periodo,
+  rotulo,
+  sistema,
+}: {
+  activo?: boolean;
+  series?: SerieTooltip[];
+  periodo?: string;
+  rotulo: (pv: number) => string;
+  sistema: (pv: number) => string | undefined;
+}) {
+  const conMonto = (series ?? []).filter(s => (s.value ?? 0) !== 0);
+  if (!activo || conMonto.length === 0) return null;
+  const total = conMonto.reduce((acc, s) => acc + (s.value ?? 0), 0);
+  return (
+    <div className="rounded-lg border border-border bg-card p-2.5 text-xs shadow-md">
+      <div className="mb-1.5 font-medium">{periodo}</div>
+      <div className="space-y-1">
+        {conMonto.map(s => {
+          const pv = Number(s.dataKey);
+          const sis = sistema(pv);
+          return (
+            <div key={String(s.dataKey)} className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-1.5">
+                <span
+                  className="mt-1 h-2 w-2 shrink-0 rounded-full"
+                  style={{ background: s.color }}
+                />
+                <div>
+                  <div>{rotulo(pv)}</div>
+                  {sis && <div className="text-[11px] text-muted-foreground">{sis}</div>}
+                </div>
+              </div>
+              <span className="tabular-nums font-medium">{formatMonto(s.value ?? 0)}</span>
+            </div>
+          );
+        })}
+      </div>
+      {conMonto.length > 1 && (
+        <div className="mt-1.5 flex justify-between gap-4 border-t border-border/60 pt-1.5">
+          <span className="text-muted-foreground">Total</span>
+          <span className="tabular-nums font-medium">{formatMonto(total)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function HistoricoMensual({ cliente, real = true }: Props) {
   const [vista, setVista] = useState<Vista>('ambos');
@@ -111,12 +173,15 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
   const hayPV = pvs.length > 1;
   const vistaEf: Vista = vista === 'pv' && !hayPV ? 'ambos' : vista;
 
-  // Rótulo de la serie/columna de cada punto: el número siempre, y su nombre si lo tiene.
+  // Rótulo de la serie/columna de cada punto: el número siempre, y su nombre si lo tiene. El
+  // sistema con el que emite va aparte (leyenda, tooltip y tabla): es lo que distingue dos puntos
+  // que se llaman igual.
   const pvIndex = indicePuntosVenta(cliente);
   const rotuloPV = (pv: number) => {
     const nombre = pvIndex.get(pv)?.nombre;
     return nombre ? `${formatPuntoVenta(pv)} · ${nombre}` : `Punto ${formatPuntoVenta(pv)}`;
   };
+  const sistemaPV = (pv: number) => sistemaCorto(pvIndex.get(pv)?.sistema);
 
   const data = filas.map(f => {
     const fila: Record<string, string | number> = {
@@ -126,7 +191,7 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
       Recibidas: f.recib,
     };
     // En la vista por punto de venta cada punto es una serie apilada (las emitidas del período).
-    if (vistaEf === 'pv') for (const pv of pvs) fila[rotuloPV(pv)] = f.pv[pv] ?? 0;
+    if (vistaEf === 'pv') for (const pv of pvs) fila[String(pv)] = f.pv[pv] ?? 0;
     return fila;
   });
 
@@ -218,8 +283,37 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
                 fontSize: 12,
               }}
               formatter={(value: number) => formatMonto(value)}
+              // En la vista por punto de venta el tooltip es propio: suma el sistema de cada punto
+              // (para distinguir los que se llaman igual) y esconde los que no facturaron.
+              content={
+                vistaEf === 'pv'
+                  ? (props) => (
+                      <TooltipPuntosVenta
+                        activo={props.active}
+                        series={props.payload as SerieTooltip[] | undefined}
+                        periodo={props.label as string | undefined}
+                        rotulo={rotuloPV}
+                        sistema={sistemaPV}
+                      />
+                    )
+                  : undefined
+              }
             />
-            <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
+            <Legend
+              wrapperStyle={{ fontSize: 12 }}
+              iconType="circle"
+              // Cada punto de venta aclara con qué sistema emite: es lo único que diferencia dos
+              // puntos con el mismo nombre.
+              formatter={(value, entry) => {
+                const sis = vistaEf === 'pv' ? sistemaPV(Number(entry?.dataKey)) : undefined;
+                return (
+                  <span>
+                    {value}
+                    {sis && <span className="text-muted-foreground"> · {sis}</span>}
+                  </span>
+                );
+              }}
+            />
             {(vistaEf === 'ambos' || vistaEf === 'emitidas') && (
               <Bar
                 dataKey="Emitidas"
@@ -240,7 +334,8 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
               pvs.map((pv, i) => (
                 <Bar
                   key={pv}
-                  dataKey={rotuloPV(pv)}
+                  dataKey={String(pv)}
+                  name={rotuloPV(pv)}
                   stackId="pv"
                   fill={COLORES_PV[i % COLORES_PV.length]}
                   radius={i === pvs.length - 1 ? [6, 6, 0, 0] : [0, 0, 0, 0]}
@@ -283,8 +378,13 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
                   <TableHead key={pv} className="whitespace-nowrap text-right">
                     <div className="tabular-nums">{formatPuntoVenta(pv)}</div>
                     {pvIndex.get(pv)?.nombre && (
-                      <div className="max-w-[9rem] truncate text-[11px] font-normal normal-case text-muted-foreground">
+                      <div className="max-w-[9rem] truncate text-[11px] font-normal normal-case text-foreground">
                         {pvIndex.get(pv)!.nombre}
+                      </div>
+                    )}
+                    {sistemaPV(pv) && (
+                      <div className="max-w-[9rem] truncate text-[11px] font-normal normal-case text-muted-foreground">
+                        {sistemaPV(pv)}
                       </div>
                     )}
                   </TableHead>
@@ -374,8 +474,11 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
               </div>
               <div className="mt-2 space-y-1">
                 {pvs.map(pv => (
-                  <div key={pv} className="flex justify-between text-xs">
-                    <span className="tabular-nums text-muted-foreground">{rotuloPV(pv)}</span>
+                  <div key={pv} className="flex justify-between gap-3 text-xs">
+                    <span className="tabular-nums text-muted-foreground">
+                      {rotuloPV(pv)}
+                      {sistemaPV(pv) && <span className="opacity-70"> · {sistemaPV(pv)}</span>}
+                    </span>
                     <span className="tabular-nums">
                       {f.pv[pv] == null ? '—' : formatMonto(f.pv[pv])}
                     </span>

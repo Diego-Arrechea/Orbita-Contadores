@@ -23,3 +23,35 @@ export function etiquetaPuntoVenta(nro: number, pv?: PuntoVentaCliente) {
   const numero = formatPuntoVenta(nro);
   return pv?.nombre ? `${numero} · ${pv.nombre}` : numero;
 }
+
+/**
+ * Versión corta del sistema con el que emite un punto de venta, para distinguir dos puntos que se
+ * llaman igual (pasa seguido: el mismo negocio con un punto por sistema o por régimen).
+ *
+ * "Factuweb (Imprenta) - Responsable Inscripto" → "Imprenta · RI"
+ * "Factura Electronica - Monotributo - Web Services" → "Web Services · Monotributo"
+ */
+export function sistemaCorto(sistema?: string): string | undefined {
+  if (!sistema) return undefined;
+  const s = sistema.toLowerCase();
+  const familia = s.includes('caea')
+    ? 'Contingencia (CAEA)'
+    : s.includes('remito')
+      ? 'Remito electrónico'
+      : s.includes('imprenta') || s.includes('factuweb')
+        ? 'Imprenta'
+        : s.includes('web service') || s.includes('rece')
+          ? 'Web Services'
+          : s.includes('controlador')
+            ? 'Controlador fiscal'
+            : s.includes('linea') || s.includes('línea')
+              ? 'Factura en Línea'
+              : sistema;
+  if (familia === sistema) return sistema; // sistema que no conocemos: lo dejamos como viene
+  const regimen = s.includes('monotributo')
+    ? 'Monotributo'
+    : s.includes('responsable inscripto') || s.includes('ri iva')
+      ? 'RI'
+      : undefined;
+  return regimen ? `${familia} · ${regimen}` : familia;
+}

@@ -60,7 +60,12 @@ export const NOVEDADES: Novedad[] = [
       {
         tipo: 'mejora',
         texto:
-          'Cuando un punto de venta no tiene ningún nombre, te mostramos con qué sistema emite (Factura en Línea, imprenta, facturación electrónica…) para que puedas identificarlo igual.',
+          'Junto a cada punto de venta también te mostramos con qué sistema emite y de qué régimen es (Factura en Línea · Monotributo, Imprenta · RI, Web Services, contingencia…). Es lo que te permite distinguir dos puntos que se llaman igual, y aparece tanto en las tablas como en la referencia y el detalle del gráfico del Histórico mensual.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'En el gráfico del Histórico, al pasar por encima de un mes ahora ves sólo los puntos de venta que facturaron —con su total—, en vez de la lista completa con ceros.',
       },
     ],
   },

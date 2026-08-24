@@ -16,7 +16,12 @@ import {
 } from '@/components/ui/table';
 import { formatMonto, formatDate, formatCuit, cn } from '@/lib/utils';
 import { HOY } from '@/lib/monotributo';
-import { etiquetaPuntoVenta, formatPuntoVenta, indicePuntosVenta } from '@/lib/puntosVenta';
+import {
+  etiquetaPuntoVenta,
+  formatPuntoVenta,
+  indicePuntosVenta,
+  sistemaCorto,
+} from '@/lib/puntosVenta';
 import { editarCliente } from '@/services/clientesService';
 import { mensajeDeError } from '@/services/authService';
 import { qkCliente, qkClientes } from '@/lib/queries';
@@ -148,21 +153,28 @@ function NombrePuntoVenta({
     );
   }
 
+  const sistema = sistemaCorto(pv?.sistema);
   return (
-    <div className="group/pv mt-0.5 flex items-center gap-1">
-      <span className={cn('text-[11px]', pv?.nombre ? 'text-foreground' : 'text-muted-foreground')}>
-        {pv?.nombre ?? pv?.sistema ?? 'Sin nombre'}
-      </span>
-      {esReal && (
-        <button
-          type="button"
-          onClick={() => setEditando(true)}
-          title={pv?.nombre ? 'Cambiar el nombre' : 'Ponerle un nombre'}
-          className="text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus:opacity-100 group-hover/pv:opacity-100"
+    <div className="group/pv mt-0.5">
+      <div className="flex items-center gap-1">
+        <span
+          className={cn('text-[11px]', pv?.nombre ? 'text-foreground' : 'text-muted-foreground')}
         >
-          <Pencil className="h-3 w-3" />
-        </button>
-      )}
+          {pv?.nombre ?? 'Sin nombre'}
+        </span>
+        {esReal && (
+          <button
+            type="button"
+            onClick={() => setEditando(true)}
+            title={pv?.nombre ? 'Cambiar el nombre' : 'Ponerle un nombre'}
+            className="text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus:opacity-100 group-hover/pv:opacity-100"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+      {/* Con qué sistema emite ese punto: es lo que distingue dos puntos con el mismo nombre. */}
+      {sistema && <div className="text-[11px] text-muted-foreground">{sistema}</div>}
     </div>
   );
 }
@@ -437,8 +449,13 @@ export function FacturacionDetalle({ cliente }: Props) {
                     <TableHead key={pv} className="whitespace-nowrap text-right">
                       <div className="tabular-nums">{formatPuntoVenta(pv)}</div>
                       {pvIndex.get(pv)?.nombre && (
-                        <div className="max-w-[9rem] truncate text-[11px] font-normal normal-case text-muted-foreground">
+                        <div className="max-w-[9rem] truncate text-[11px] font-normal normal-case text-foreground">
                           {pvIndex.get(pv)!.nombre}
+                        </div>
+                      )}
+                      {sistemaCorto(pvIndex.get(pv)?.sistema) && (
+                        <div className="max-w-[9rem] truncate text-[11px] font-normal normal-case text-muted-foreground">
+                          {sistemaCorto(pvIndex.get(pv)?.sistema)}
                         </div>
                       )}
                     </TableHead>
@@ -504,6 +521,12 @@ export function FacturacionDetalle({ cliente }: Props) {
                         >
                           <span className="tabular-nums">
                             {etiquetaPuntoVenta(pv, pvIndex.get(pv))}
+                            {sistemaCorto(pvIndex.get(pv)?.sistema) && (
+                              <span className="opacity-70">
+                                {' '}
+                                · {sistemaCorto(pvIndex.get(pv)?.sistema)}
+                              </span>
+                            )}
                           </span>
                           <span className="tabular-nums">{v == null ? '—' : formatMonto(v)}</span>
                         </div>
