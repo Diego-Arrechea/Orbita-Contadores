@@ -7,9 +7,12 @@ El plan de cuentas es POR CLIENTE (se siembra la plantilla estándar o se import
 usa) y el libro diario se DERIVA de los comprobantes que la app ya tiene: no se persiste, se recalcula.
 Lo que sí se guarda son las decisiones del contador — la cuenta que le fija a un comprobante, las
 reglas que memoriza por contraparte y los asientos que carga a mano. Los informes (mayor / sumas y
-saldos) van en la rebanada siguiente. Ver services/contabilidad.py.
+saldos) salen del mismo cálculo, sobre el rango de fechas que elija el contador. Ver
+services/contabilidad.py.
 """
 from __future__ import annotations
+
+import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -24,8 +27,10 @@ from ..schemas import (
     DiarioOut,
     ImputacionIn,
     IvaPeriodoOut,
+    MayorOut,
     PlanImportarIn,
     ReglaOut,
+    SumasSaldosOut,
 )
 from ..security import usuario_contabilidad
 from ..services import contabilidad
@@ -281,3 +286,39 @@ def borrar_asiento(
     if not contabilidad.borrar_asiento_manual(db, cuit, asiento_id):
         raise HTTPException(status_code=404, detail="Asiento no encontrado")
     return {"ok": True}
+
+
+@router.get("/clientes/{cuit}/mayor", response_model=MayorOut)
+def libro_mayor(
+    cuit: str,
+    cuenta: str = Query(..., min_length=1, max_length=20, description="código de la cuenta"),
+    desde: dt.date = Query(..., description="aaaa-mm-dd"),
+    hasta: dt.date = Query(..., description="aaaa-mm-dd, inclusive"),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """Mayor de una cuenta entre dos fechas: arranca del saldo anterior y arrastra el saldo
+    movimiento por movimiento."""
+    _cliente_propio(db, cuit, usuario)
+    if hasta < desde:
+        raise HTTPException(status_code=422, detail="La fecha de fin es anterior a la de inicio.")
+    try:
+        return MayorOut(**contabilidad.mayor(db, cuit, cuenta, desde, hasta))
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@router.get("/clientes/{cuit}/sumas-y-saldos", response_model=SumasSaldosOut)
+def sumas_y_saldos(
+    cuit: str,
+    desde: dt.date = Query(..., description="aaaa-mm-dd"),
+    hasta: dt.date = Query(..., description="aaaa-mm-dd, inclusive"),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_contabilidad),
+):
+    """Balance de sumas y saldos del rango: una fila por cuenta con movimientos (o con saldo que
+    viene de antes) y los totales de cada columna."""
+    _cliente_propio(db, cuit, usuario)
+    if hasta < desde:
+        raise HTTPException(status_code=422, detail="La fecha de fin es anterior a la de inicio.")
+    return SumasSaldosOut(**contabilidad.sumas_y_saldos(db, cuit, desde, hasta))

@@ -342,19 +342,12 @@ def periodos_con_comprobantes(db: Session, cuit: str) -> list[dict]:
     ]
 
 
-def diario(db: Session, cuit: str, periodo: str) -> dict:
-    """Libro diario del período: un asiento por comprobante, ordenado por fecha. Si el cliente
-    todavía no tiene plan de cuentas devuelve vacío con `sinPlan`, para que el front ofrezca
-    sembrarlo o importarlo (sin plan no hay dónde imputar)."""
-    cuentas = cuentas_de(db, cuit)
-    if not cuentas:
-        return {
-            "cuit": cuit, "periodo": periodo, "asientos": [],
-            "totales": {"asientos": 0, "debe": 0, "haber": 0, "revisar": 0}, "sinPlan": True,
-        }
+def _contexto(db: Session, cuit: str) -> tuple[list, dict, list, dict]:
+    """Todo lo que hace falta para imputar: plan, nombres, reglas e imputaciones puntuales.
 
-    # Un solo mapa con dos claves: por CÓDIGO devuelve el nombre (lo que usa el asiento automático) y
-    # por ID de cuenta devuelve el código (lo que fija una regla del contador).
+    `nombres` lleva dos claves a propósito: por CÓDIGO devuelve el nombre (lo que usa el asiento
+    automático) y por ID de cuenta devuelve el código (lo que fija una regla del contador)."""
+    cuentas = cuentas_de(db, cuit)
     nombres: dict = {c.codigo: c.nombre for c in cuentas}
     nombres.update({c.id: c.codigo for c in cuentas})
 
@@ -367,18 +360,61 @@ def diario(db: Session, cuit: str, periodo: str) -> dict:
         i.comprobante_id: i.cuenta_id
         for i in db.execute(select(imp).where(imp.cuit == cuit)).scalars()
     }
+    return cuentas, nombres, reglas, imputaciones
 
+
+def asientos_entre(
+    db: Session,
+    cuit: str,
+    desde: dt.date | None,
+    hasta: dt.date,
+    nombres: dict,
+    reglas: list,
+    imputaciones: dict,
+) -> list[dict]:
+    """Asientos (los derivados de comprobantes y los manuales) con fecha en [desde, hasta).
+    `desde=None` arranca en el primer movimiento del cliente: sirve para el saldo anterior."""
     comp = models.ComprobanteEmitido
-    desde, hasta = rango_mes(periodo)
-    comprobantes = list(db.execute(
-        select(comp)
-        .where(comp.cuit == cuit, comp.fecha >= desde, comp.fecha < hasta)
-        .order_by(comp.fecha, comp.id)
-    ).scalars())
+    condiciones = [comp.cuit == cuit, comp.fecha < hasta]
+    if desde is not None:
+        condiciones.append(comp.fecha >= desde)
+    comprobantes = db.execute(
+        select(comp).where(*condiciones).order_by(comp.fecha, comp.id)
+    ).scalars()
 
     asientos = [asiento_de_comprobante(c, nombres, reglas, imputaciones) for c in comprobantes]
-    asientos += asientos_manuales(db, cuit, desde, hasta, nombres)
+    asientos += asientos_manuales(db, cuit, desde or dt.date(1900, 1, 1), hasta, nombres)
     asientos.sort(key=lambda a: a["fecha"])
+    return asientos
+
+
+def _saldos_hasta(
+    db: Session, cuit: str, hasta: dt.date, nombres: dict, reglas: list, imputaciones: dict
+) -> dict[str, float]:
+    """Saldo (debe − haber) de cada cuenta con todo lo anterior a `hasta`. Es el 'saldo anterior'
+    con el que arrancan el mayor y las sumas y saldos."""
+    saldos: dict[str, float] = {}
+    for asiento in asientos_entre(db, cuit, None, hasta, nombres, reglas, imputaciones):
+        for linea in asiento["lineas"]:
+            saldos[linea["codigo"]] = round(
+                saldos.get(linea["codigo"], 0) + linea["debe"] - linea["haber"], 2
+            )
+    return saldos
+
+
+def diario(db: Session, cuit: str, periodo: str) -> dict:
+    """Libro diario del período: un asiento por comprobante, ordenado por fecha. Si el cliente
+    todavía no tiene plan de cuentas devuelve vacío con `sinPlan`, para que el front ofrezca
+    sembrarlo o importarlo (sin plan no hay dónde imputar)."""
+    cuentas, nombres, reglas, imputaciones = _contexto(db, cuit)
+    if not cuentas:
+        return {
+            "cuit": cuit, "periodo": periodo, "asientos": [],
+            "totales": {"asientos": 0, "debe": 0, "haber": 0, "revisar": 0}, "sinPlan": True,
+        }
+
+    desde, hasta = rango_mes(periodo)
+    asientos = asientos_entre(db, cuit, desde, hasta, nombres, reglas, imputaciones)
     debe = round(sum(linea["debe"] for a in asientos for linea in a["lineas"]), 2)
     haber = round(sum(linea["haber"] for a in asientos for linea in a["lineas"]), 2)
     return {
@@ -613,3 +649,108 @@ def borrar_asiento_manual(db: Session, cuit: str, asiento_id: int) -> bool:
     db.delete(cabecera)
     db.commit()
     return True
+
+
+# --- Informes: mayor y sumas y saldos ------------------------------------------------------------
+def mayor(db: Session, cuit: str, codigo: str, desde: dt.date, hasta: dt.date) -> dict:
+    """Movimientos de UNA cuenta entre dos fechas (`hasta` inclusive), con el saldo arrastrado.
+
+    Arranca del saldo anterior (todo lo registrado antes de `desde`) y va acumulando renglón por
+    renglón, que es como el contador lee un mayor."""
+    cuentas, nombres, reglas, imputaciones = _contexto(db, cuit)
+    cuenta = next((c for c in cuentas if c.codigo == codigo), None)
+    if cuenta is None:
+        raise ValueError("Esa cuenta no está en el plan de este cliente.")
+
+    fin = hasta + dt.timedelta(days=1)  # `hasta` lo elige el contador: es inclusive
+    saldo = _saldos_hasta(db, cuit, desde, nombres, reglas, imputaciones).get(codigo, 0.0)
+    saldo_anterior = saldo
+
+    movimientos = []
+    debe_total = haber_total = 0.0
+    for asiento in asientos_entre(db, cuit, desde, fin, nombres, reglas, imputaciones):
+        for linea in asiento["lineas"]:
+            if linea["codigo"] != codigo:
+                continue
+            saldo = round(saldo + linea["debe"] - linea["haber"], 2)
+            debe_total = round(debe_total + linea["debe"], 2)
+            haber_total = round(haber_total + linea["haber"], 2)
+            movimientos.append({
+                "fecha": asiento["fecha"],
+                "detalle": asiento["detalle"],
+                "contraparte": asiento["contraparte"],
+                "debe": linea["debe"],
+                "haber": linea["haber"],
+                "saldo": saldo,
+            })
+
+    return {
+        "cuit": cuit,
+        "codigo": codigo,
+        "cuenta": cuenta.nombre,
+        "desde": desde.isoformat(),
+        "hasta": hasta.isoformat(),
+        "saldoAnterior": saldo_anterior,
+        "movimientos": movimientos,
+        "debe": debe_total,
+        "haber": haber_total,
+        "saldo": saldo,
+    }
+
+
+def sumas_y_saldos(db: Session, cuit: str, desde: dt.date, hasta: dt.date) -> dict:
+    """Sumas del debe y del haber de cada cuenta entre dos fechas (`hasta` inclusive) y su saldo.
+
+    El saldo sale del saldo anterior más los movimientos del rango, y se muestra en la columna que
+    corresponde: deudor si da positivo, acreedor si da negativo. Los totales de las cuatro columnas
+    tienen que cerrar."""
+    cuentas, nombres, reglas, imputaciones = _contexto(db, cuit)
+    if not cuentas:
+        return {
+            "cuit": cuit, "desde": desde.isoformat(), "hasta": hasta.isoformat(), "filas": [],
+            "debe": 0, "haber": 0, "deudor": 0, "acreedor": 0, "sinPlan": True,
+        }
+
+    fin = hasta + dt.timedelta(days=1)
+    anteriores = _saldos_hasta(db, cuit, desde, nombres, reglas, imputaciones)
+    movimientos: dict[str, dict[str, float]] = {}
+    for asiento in asientos_entre(db, cuit, desde, fin, nombres, reglas, imputaciones):
+        for linea in asiento["lineas"]:
+            slot = movimientos.setdefault(linea["codigo"], {"debe": 0.0, "haber": 0.0})
+            slot["debe"] = round(slot["debe"] + linea["debe"], 2)
+            slot["haber"] = round(slot["haber"] + linea["haber"], 2)
+
+    por_codigo = {c.codigo: c for c in cuentas}
+    filas = []
+    debe_total = haber_total = deudor_total = acreedor_total = 0.0
+    for codigo in sorted(set(movimientos) | {c for c, s in anteriores.items() if s}):
+        cuenta = por_codigo.get(codigo)
+        mov = movimientos.get(codigo, {"debe": 0.0, "haber": 0.0})
+        anterior = round(anteriores.get(codigo, 0.0), 2)
+        saldo = round(anterior + mov["debe"] - mov["haber"], 2)
+        filas.append({
+            "codigo": codigo,
+            "cuenta": cuenta.nombre if cuenta else "(cuenta borrada)",
+            "tipo": cuenta.tipo if cuenta else "activo",
+            "saldoAnterior": anterior,
+            "debe": mov["debe"],
+            "haber": mov["haber"],
+            "saldoDeudor": saldo if saldo > 0 else 0.0,
+            "saldoAcreedor": -saldo if saldo < 0 else 0.0,
+        })
+        debe_total = round(debe_total + mov["debe"], 2)
+        haber_total = round(haber_total + mov["haber"], 2)
+        deudor_total = round(deudor_total + (saldo if saldo > 0 else 0), 2)
+        acreedor_total = round(acreedor_total + (-saldo if saldo < 0 else 0), 2)
+
+    return {
+        "cuit": cuit,
+        "desde": desde.isoformat(),
+        "hasta": hasta.isoformat(),
+        "filas": filas,
+        "debe": debe_total,
+        "haber": haber_total,
+        "deudor": deudor_total,
+        "acreedor": acreedor_total,
+        "sinPlan": False,
+    }

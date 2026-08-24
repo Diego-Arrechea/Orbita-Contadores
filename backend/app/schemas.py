@@ -1109,6 +1109,61 @@ class DiarioOut(BaseModel):
     sinPlan: bool = False  # noqa: N815
 
 
+class MayorMovimientoOut(BaseModel):
+    """Un movimiento de la cuenta en el mayor, con el saldo ya arrastrado."""
+
+    fecha: str  # ISO aaaa-mm-dd
+    detalle: str
+    contraparte: str
+    debe: float = 0
+    haber: float = 0
+    saldo: float = 0
+
+
+class MayorOut(BaseModel):
+    """Mayor de una cuenta entre dos fechas: saldo anterior + movimientos = saldo final."""
+
+    cuit: str
+    codigo: str
+    cuenta: str
+    desde: str
+    hasta: str
+    saldoAnterior: float = 0  # noqa: N815
+    movimientos: list[MayorMovimientoOut] = []
+    debe: float = 0
+    haber: float = 0
+    saldo: float = 0
+
+
+class SumasSaldosFilaOut(BaseModel):
+    """Una cuenta en el balance de sumas y saldos. El saldo va en la columna que corresponde:
+    deudor si el debe supera al haber, acreedor si es al revés."""
+
+    codigo: str
+    cuenta: str
+    tipo: str
+    saldoAnterior: float = 0  # noqa: N815
+    debe: float = 0
+    haber: float = 0
+    saldoDeudor: float = 0    # noqa: N815
+    saldoAcreedor: float = 0  # noqa: N815
+
+
+class SumasSaldosOut(BaseModel):
+    """Balance de sumas y saldos del rango: una fila por cuenta con movimientos (o con saldo que
+    viene de antes) y los totales de cada columna, que tienen que cerrar."""
+
+    cuit: str
+    desde: str
+    hasta: str
+    filas: list[SumasSaldosFilaOut] = []
+    debe: float = 0
+    haber: float = 0
+    deudor: float = 0
+    acreedor: float = 0
+    sinPlan: bool = False  # noqa: N815
+
+
 class ImputacionIn(BaseModel):
     """Cambio de cuenta de un comprobante. Con `recordar`, además deja la regla para que los
     próximos comprobantes de esa misma contraparte se imputen solos igual."""
