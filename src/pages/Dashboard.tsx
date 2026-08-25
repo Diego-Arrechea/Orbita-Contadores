@@ -50,7 +50,7 @@ import { useClientesReales } from '@/lib/queries';
 import { RecordatoriosContactosBanner } from '@/components/shared/RecordatoriosContactosBanner';
 import { BannerSuscripcion } from '@/components/shared/BannerSuscripcion';
 import { useCargas } from '@/context/CargasContext';
-import { cuentaActual, tienePermiso } from '@/lib/cuenta';
+import { cuentaActual, puedeUsar, tienePermiso } from '@/lib/cuenta';
 import { formatCuit, formatPercent, formatDate } from '@/lib/utils';
 import type { EstadoAlerta, TipoActividad } from '@/types';
 
@@ -282,7 +282,7 @@ export function Dashboard() {
           a buscar al contador acá. Sólo aparece si hay algo que hacer. */}
       <BannerSuscripcion />
 
-      {tienePermiso('editar_cliente') && (
+      {puedeUsar('vencimientos') && tienePermiso('editar_cliente') && (
         <RecordatoriosContactosBanner clientes={reales} onImported={() => void refetch()} />
       )}
 

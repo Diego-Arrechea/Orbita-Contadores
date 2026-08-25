@@ -23,6 +23,30 @@ const LS_USUARIO = 'orbita_usuario';
 // que el modal se re-evalúe por usuario: si no, al cambiar de cuenta en la misma pestaña el flag de la
 // cuenta anterior tapaba el modal de la nueva. Lo consume src/components/shared/AvisoAlertas.tsx.
 export const SS_AVISO_ALERTAS = 'orbita_aviso_alertas_sesion';
+// Motivo por el que se cortó la sesión (cuenta deshabilitada, acceso suspendido). Lo escribe
+// apiClient cuando el backend marca la sesión como terminada y lo levanta el login para explicarle
+// a la persona por qué la sacaron, en vez de dejarla adivinando. Se borra al mostrarlo.
+const SS_MOTIVO_SALIDA = 'orbita_motivo_salida';
+
+/** Guarda el motivo por el que se cerró la sesión, para mostrarlo en el login. */
+export function guardarMotivoSalida(motivo: string): void {
+  try {
+    sessionStorage.setItem(SS_MOTIVO_SALIDA, motivo);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Devuelve (y consume) el motivo del último cierre forzado de sesión, si lo hubo. */
+export function tomarMotivoSalida(): string | null {
+  try {
+    const motivo = sessionStorage.getItem(SS_MOTIVO_SALIDA);
+    if (motivo) sessionStorage.removeItem(SS_MOTIVO_SALIDA);
+    return motivo;
+  } catch {
+    return null;
+  }
+}
 // Mientras un admin está "entrando como" otro contador, guardamos acá su sesión original (la de
 // admin) para poder volver. Si existen, es señal de que hay una impersonación en curso.
 const LS_IMP_TOKEN = 'orbita_admin_token';
@@ -62,13 +86,40 @@ export function iniciarSesion(auth: AuthResp): Cuenta {
 }
 
 /** Actualiza el usuario guardado (sin tocar el token). Lo usa el refresh de sesión al cargar la app
- * (getMe) para traer datos frescos —p.ej. los días de prueba restantes— sin obligar a re-loguear. */
+ * y al volver a la pestaña (getMe) para traer datos frescos —p.ej. un cambio de plan— sin obligar a
+ * re-loguear. Avisa a la UI para que el menú se re-arme en el acto (ver useSesion). */
 export function actualizarUsuarioGuardado(u: Usuario): void {
   try {
-    localStorage.setItem(LS_USUARIO, JSON.stringify(u));
+    const anterior = localStorage.getItem(LS_USUARIO);
+    const nuevo = JSON.stringify(u);
+    localStorage.setItem(LS_USUARIO, nuevo);
+    if (anterior !== nuevo) avisarCambioDeSesion();
   } catch {
     /* ignore */
   }
+}
+
+// --- Aviso de cambios en la sesión -------------------------------------------------------------
+// La UI lee el usuario de localStorage de forma síncrona, así que un cambio traído por getMe (por
+// ejemplo, que le cambiaron el plan al estudio) no re-renderiza nada por sí solo. `versionSesion`
+// se incrementa en cada cambio y los componentes se suscriben con useSesion() (useSyncExternalStore).
+let version = 0;
+const suscriptores = new Set<() => void>();
+
+function avisarCambioDeSesion(): void {
+  version += 1;
+  suscriptores.forEach(cb => cb());
+}
+
+/** Se suscribe a los cambios de la sesión. Devuelve la función para desuscribirse. */
+export function suscribirSesion(cb: () => void): () => void {
+  suscriptores.add(cb);
+  return () => suscriptores.delete(cb);
+}
+
+/** Contador que cambia cada vez que cambian los datos de la sesión (para useSyncExternalStore). */
+export function versionSesion(): number {
+  return version;
 }
 
 /** El usuario logueado completo (todos sus datos), o null si no hay sesión. */
@@ -139,20 +190,45 @@ export function tienePermiso(clave: PermisoEquipo): boolean {
   return u.permisos?.[clave] !== false;
 }
 
-/** ¿La cuenta logueada puede emitir comprobantes? Combina el gate general de facturación (rollout
- *  del backend) con el permiso por usuario del estudio (si el titular se lo apagó, no factura). */
+/** Funciones del producto que el plan del estudio puede habilitar o no (espejo de FUNCIONES en
+ *  backend/app/services/suscripciones.py). */
+export type FuncionPlan =
+  | 'panel'
+  | 'alertas'
+  | 'vencimientos'
+  | 'estado_cuenta'
+  | 'facturacion'
+  | 'conciliacion'
+  | 'usuarios'
+  | 'permisos'
+  | 'iva'
+  | 'contabilidad';
+
+/** ¿El plan del estudio incluye esta función? Es lo que decide qué ve el contador en el menú y qué
+ *  secciones puede abrir. Lo resuelve el backend (plan + estado de la suscripción + excepciones de
+ *  la cuenta) y viaja en el usuario de la sesión; acá sólo se lee.
+ *
+ *  Sesiones abiertas desde antes de esta feature no tienen `funciones` guardadas: hasta el próximo
+ *  getMe se asume que sí (no le apagamos nada a nadie por un dato que todavía no llegó). */
+export function puedeUsar(clave: FuncionPlan): boolean {
+  const funciones = usuarioActual()?.funciones;
+  if (!funciones) return true;
+  return funciones[clave] !== false;
+}
+
+/** ¿La cuenta logueada puede emitir comprobantes? Plan del estudio + rollout de facturación del
+ *  backend + permiso por usuario del estudio (si el titular se lo apagó, no factura). */
 export function puedeFacturar(): boolean {
   return usuarioActual()?.facturacion_habilitada === true && tienePermiso('facturar');
 }
 
-/** ¿La cuenta logueada puede ver el apartado de IVA? Rollout gateado por el backend (allowlist
- *  IVA_EMAILS + admins). Sólo esconde/muestra el menú y la página: los endpoints validan igual. */
+/** ¿La cuenta logueada puede ver el apartado de IVA? Sale del plan del estudio combinado con el
+ *  rollout del backend. Sólo esconde/muestra el menú y la página: los endpoints validan igual. */
 export function puedeVerIVA(): boolean {
   return usuarioActual()?.iva_habilitada === true;
 }
 
-/** ¿La cuenta logueada puede ver el apartado de Contabilidad? Abierto a todos los contadores; el
- *  backend lo resuelve por cuenta (CONTABILIDAD_EMAILS), por si hubiera que volver a acotarlo. */
+/** ¿La cuenta logueada puede ver el apartado de Contabilidad? Mismo criterio que IVA. */
 export function puedeVerContabilidad(): boolean {
   return usuarioActual()?.contabilidad_habilitada === true;
 }

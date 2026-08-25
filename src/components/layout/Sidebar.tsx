@@ -24,63 +24,54 @@ import {
   esEmpleado,
   impersonando,
   logoutCuenta,
+  puedeUsar,
   puedeVerContabilidad,
   puedeVerIVA,
   tienePermiso,
 } from '@/lib/cuenta';
+import { useSesion } from '@/lib/useSesion';
 import { useNovedadesVistas } from '@/lib/novedadesVistas';
 import { registrarLogout } from '@/services/authService';
 import { resetChatSoporte } from '@/components/shared/SoporteChat';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 
+// El menú completo. Los ítems que dependen del plan del estudio llevan su clave de función: si el
+// plan no la incluye, la sección no aparece (y la ruta tampoco se puede abrir a mano — ver App.tsx).
 const nav = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/alertas', label: 'Alertas', icon: Bell },
-  { to: '/conciliacion', label: 'Conciliación', icon: Landmark },
+  { to: '/conciliacion', label: 'Conciliación', icon: Landmark, funcion: 'conciliacion' as const },
   { to: '/clientes/nuevo', label: 'Nuevo cliente', icon: UserPlus },
-  { to: '/usuarios', label: 'Gestión de usuarios', icon: Users },
+  { to: '/iva', label: 'IVA', icon: Percent },
+  { to: '/contabilidad', label: 'Contabilidad', icon: BookOpen },
+  { to: '/usuarios', label: 'Gestión de usuarios', icon: Users, funcion: 'usuarios' as const },
   { to: '/configuracion', label: 'Configuración', icon: Settings },
   { to: '/novedades', label: 'Novedades', icon: Sparkles },
 ];
 
-// Apartado de IVA: abierto a todos los contadores. El flag por cuenta (puedeVerIVA, que sale de
-// IVA_EMAILS en el backend) sigue existiendo por si hubiera que volver a acotarlo.
-const ivaItem = { to: '/iva', label: 'IVA', icon: Percent };
-
-// Apartado de Contabilidad: también abierto a todos, con su propio flag. Va detrás de IVA.
-const contabilidadItem = { to: '/contabilidad', label: 'Contabilidad', icon: BookOpen };
-
-/** Inserta IVA y Contabilidad (en ese orden) justo después de Conciliación, según lo habilitado
- *  para la cuenta. */
-function conIva(items: typeof nav): typeof nav {
-  const extra = [
-    ...(puedeVerIVA() ? [ivaItem] : []),
-    ...(puedeVerContabilidad() ? [contabilidadItem] : []),
-  ];
-  if (extra.length === 0) return items;
-  const i = items.findIndex(x => x.to === '/conciliacion');
-  const at = i >= 0 ? i + 1 : items.length;
-  return [...items.slice(0, at), ...extra, ...items.slice(at)];
+/** ¿Este ítem del menú está disponible para la cuenta? IVA y Contabilidad tienen su propio helper
+ *  (combinan el plan con el rollout del backend); el resto se resuelve por la clave de función. */
+function disponible(item: (typeof nav)[number]): boolean {
+  if (item.to === '/iva') return puedeVerIVA();
+  if (item.to === '/contabilidad') return puedeVerContabilidad();
+  return item.funcion ? puedeUsar(item.funcion) : true;
 }
 
 /** Menú según la cuenta. Usuario del estudio (empleado): sin Gestión, Configuración ni Novedades, y
  *  "Nuevo cliente" sólo si el titular le dio el permiso. Cuenta plena: todo (+ Superadmin si admin).
- *  IVA y Contabilidad aparecen según el flag de la cuenta (hoy, todas). */
+ *  En los dos casos, sólo las secciones que incluye el plan del estudio. */
 function itemsSegunCuenta() {
+  const items = nav.filter(disponible);
   if (esEmpleado()) {
-    return conIva(
-      nav.filter(item => {
-        if (['/usuarios', '/configuracion', '/novedades'].includes(item.to)) return false;
-        if (item.to === '/clientes/nuevo') return tienePermiso('nuevo_cliente');
-        return true;
-      })
-    );
+    return items.filter(item => {
+      if (['/usuarios', '/configuracion', '/novedades'].includes(item.to)) return false;
+      if (item.to === '/clientes/nuevo') return tienePermiso('nuevo_cliente');
+      return true;
+    });
   }
-  return conIva(
-    esAdmin()
-      ? [...nav, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
-      : nav
-  );
+  return esAdmin()
+    ? [...items, { to: '/admin', label: 'Superadmin', icon: ShieldCheck, end: false }]
+    : items;
 }
 
 const LS_COLAPSADA = 'orbita_sidebar_colapsada';
@@ -118,6 +109,8 @@ function ContenidoSidebar({
   const location = useLocation();
   const cuenta = cuentaActual();
   const { noVistas } = useNovedadesVistas();
+  // Re-arma el menú en el acto si cambian los datos de la sesión (p. ej. otro plan del estudio).
+  useSesion();
 
   // Menú según la cuenta (las rutas además están protegidas con guards + en el backend).
   const items = itemsSegunCuenta();

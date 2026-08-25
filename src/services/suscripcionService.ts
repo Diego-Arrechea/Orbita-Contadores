@@ -4,6 +4,9 @@
  *
  * La suscripción es de la CUENTA PLENA (el titular): los usuarios del estudio quedan cubiertos por
  * la del titular y no ven el apartado.
+ *
+ * El plan MANDA: lo que incluye es lo que la cuenta puede usar. Cambiarlo acá le habilita o le apaga
+ * las secciones al contador (y `funciones_override` permite excepciones sueltas por cuenta).
  */
 import { apiDelete, apiGet, apiPatch, apiPost } from './apiClient';
 
@@ -25,6 +28,7 @@ export interface FuncionPlan {
   clave: string;
   nombre: string;
   grupo: string; // encabezado bajo el que se agrupa
+  nucleo?: boolean; // viene con cualquier plan y no se puede apagar
 }
 
 /** Planes + universo de funciones: con esto se arma la matriz plan × función. */
@@ -59,7 +63,20 @@ export interface MiSuscripcion {
   al_dia: boolean;
   limite_clientes?: number | null;
   clientes_en_uso: number;
+  /** Lo que la cuenta tiene habilitado hoy ({clave: bool}): plan + estado + excepciones. */
+  funciones: Record<string, boolean>;
   pagos: PagoSuscripcion[];
+}
+
+/** Lo mínimo para avisar que la suscripción está por vencer (o venció). Sin precios ni pagos: el
+ *  apartado "Mi suscripción" sigue siendo interno, pero el aviso le llega igual al contador. */
+export interface AvisoSuscripcion {
+  hay_aviso: boolean;
+  estado: EstadoSuscripcion;
+  vence?: string | null;
+  dias_restantes?: number | null;
+  /** Nombres de las secciones que se pierden al vencer (o que ya se perdieron). */
+  se_pierde: string[];
 }
 
 /** Una fila del listado de suscripciones del panel admin. */
@@ -84,9 +101,16 @@ export interface AdminSuscripcion {
   dias_restantes?: number | null;
   limite_clientes?: number | null;
   clientes: number;
+  /** Usuarios del equipo que cuelgan de esta cuenta (los que pierden el acceso si el plan deja de
+   *  incluir "usuarios"). */
+  empleados: number;
   ultimo_pago?: string | null;
   total_pagado: number;
   notas?: string | null;
+  /** Acceso efectivo de la cuenta ({clave: bool}: plan + estado + excepciones). */
+  funciones: Record<string, boolean>;
+  /** Sólo las excepciones guardadas para esta cuenta: es lo que se edita. */
+  funciones_override: Record<string, boolean>;
 }
 
 export interface AdminSuscripcionesResumen {
@@ -120,6 +144,9 @@ export interface CambiosSuscripcion {
   inicio?: string | null;
   vence?: string | null;
   notas?: string | null;
+  /** Excepciones por cuenta ({clave: true/false}), que pisan al plan en los dos sentidos. `{}` las
+   *  borra (vuelve a seguir el plan); no mandar el campo las deja como están. */
+  funciones?: Record<string, boolean>;
 }
 
 export interface NuevoPago {
@@ -136,6 +163,12 @@ export interface NuevoPago {
 
 export function obtenerMiSuscripcion(): Promise<MiSuscripcion> {
   return apiGet<MiSuscripcion>('/suscripcion');
+}
+
+/** El aviso de vencimiento. Lo puede pedir cualquier cuenta plena (no está detrás del gate del
+ *  apartado): vencer apaga secciones, así que el contador tiene que enterarse igual. */
+export function obtenerAvisoSuscripcion(): Promise<AvisoSuscripcion> {
+  return apiGet<AvisoSuscripcion>('/suscripcion/aviso');
 }
 
 export function obtenerCatalogo(): Promise<CatalogoPlanes> {

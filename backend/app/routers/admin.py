@@ -35,11 +35,14 @@ from ..security import (
     es_empleado,
     generar_password_temporal,
     hashear_password,
+    funciones_usuario,
     ids_cartera,
     permisos_efectivos,
+    usuario_puede_contabilidad,
     usuario_puede_facturar,
     usuario_puede_iva,
 )
+from ..services import suscripciones as suscripciones_svc
 from .clientes import _correr_sync, construir_cliente_out, datos_cartera
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(admin_actual)])
@@ -49,8 +52,9 @@ def _iso(d: dt.datetime | None) -> str | None:
     return d.isoformat() if d else None
 
 
-def _usuario_out(u: models.Usuario) -> UsuarioOut:
+def _usuario_out(db: Session, u: models.Usuario) -> UsuarioOut:
     empleado = es_empleado(u)
+    sus = suscripciones_svc.suscripcion_vigente(db, u)
     return UsuarioOut(
         id=u.id,
         nombre=u.nombre,
@@ -63,10 +67,16 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         matricula=u.matricula,
         rol=u.rol,
         email_confirmado=bool(u.email_confirmado),
-        facturacion_habilitada=usuario_puede_facturar(u),
+        facturacion_habilitada=usuario_puede_facturar(db, u),
         # Al impersonar, el apartado de IVA refleja el acceso REAL de la cuenta impersonada (allowlist
         # IVA_EMAILS o rol admin), no el del admin: así sólo aparece en las cuentas que lo tienen (Durso).
-        iva_habilitada=usuario_puede_iva(u),
+        iva_habilitada=usuario_puede_iva(db, u),
+        contabilidad_habilitada=usuario_puede_contabilidad(db, u),
+        # Al impersonar, el menú del front se arma con el plan de la cuenta impersonada: es lo que
+        # necesita el admin para ver el efecto real de un cambio de plan.
+        funciones=funciones_usuario(db, u),
+        plan=sus.plan if sus else suscripciones_svc.PLAN_DEFAULT,
+        plan_nombre=suscripciones_svc.plan_de(sus)["nombre"] if sus else "",
         # Al impersonar a un empleado, el front necesita saberlo para restringirle la navegación
         # igual que en una sesión real del empleado.
         es_empleado=empleado,
@@ -680,7 +690,9 @@ def impersonar(
     # Es un admin entrando "como" otro: el token lleva el claim 'adm' y marcamos la instancia para
     # que el flag de facturación salga habilitado (el admin puede probar facturando en cualquier cliente).
     target._imp_admin = True  # type: ignore[attr-defined]
-    return ImpersonarOut(token=crear_token(target.id, imp_admin=True), usuario=_usuario_out(target))
+    return ImpersonarOut(
+        token=crear_token(target.id, imp_admin=True), usuario=_usuario_out(db, target)
+    )
 
 
 @router.get("/auditoria", response_model=list[AdminAuditoriaOut])

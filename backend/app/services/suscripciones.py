@@ -5,18 +5,26 @@ cubren con la suscripción del titular) tiene UNA `Suscripcion`. El catálogo `P
 tres escalones (monitoreo → estudio → completo) con su precio de lista; la suscripción puede pisar
 el precio y el tope de clientes (casi siempre hay un acuerdo particular).
 
+El PLAN decide qué funciones puede usar la cuenta: `funciones_de()` resuelve el acceso efectivo
+(plan + estado + excepciones por cuenta) y de ahí toman tanto el enforcement del backend
+(`security.requiere_funcion`) como lo que el front muestra. Cambiar el plan de una cuenta le
+habilita o le apaga las secciones correspondientes sin ningún paso extra.
+
 La cobranza es MANUAL: el admin registra los pagos y cada pago corre el vencimiento hacia adelante.
-El vencimiento NO corta el servicio: hoy sólo cambia el estado que se muestra. El corte automático
-—y el aviso previo— se decide más adelante.
+Una cuenta que queda vencida (pasados los días de gracia) o cancelada NO pierde el acceso a la app:
+cae a FUNCIONES_DEGRADADO — sigue viendo su cartera, sus alertas y sus vencimientos, y pierde lo
+que implica producir o dar acceso a más gente.
 """
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import models
+from . import email as email_svc
 
 # --- Catálogo de planes ----------------------------------------------------------------------
 # Tres escalones, cada uno suma funciones al anterior:
@@ -28,20 +36,21 @@ from .. import models
 # `limite_clientes = None` = sin tope (el diferencial entre planes son las funciones, no la cantidad
 # de clientes; el tope se ajusta por cuenta si hace falta).
 #
-# OJO — el plan es INFORMATIVO: no habilita ni bloquea nada todavía. El acceso a IVA y Contabilidad
-# lo sigue decidiendo su allowlist (IVA_EMAILS / CONTABILIDAD_EMAILS) y el equipo del estudio está
-# disponible para todos. Atar el acceso al plan es el paso siguiente.
+# El plan MANDA: lo que incluye es lo que la cuenta puede usar. `funciones_de()` resuelve el acceso
+# efectivo (plan + estado + excepciones por cuenta) y `security.requiere_funcion()` lo enforca en
+# cada endpoint; el front esconde lo que no corresponde con el mismo dato (UsuarioOut.funciones).
 # Universo de funciones del producto, en el orden en que se muestran. Cada plan referencia las que
 # incluye (por `clave`), así el front puede armar la comparativa: una fila por función, un tilde o
 # una cruz por plan. `grupo` es el encabezado bajo el que se agrupan en esa tabla.
+# `nucleo` = viene con cualquier plan y NO se puede apagar (es el producto base: sin esto no hay app).
 FUNCIONES: tuple[dict, ...] = (
-    {"clave": "panel", "grupo": "Monotributo al día",
+    {"clave": "panel", "nucleo": True, "grupo": "Monotributo al día",
      "nombre": "Panel de tus monotributistas, actualizado solo"},
-    {"clave": "alertas", "grupo": "Monotributo al día",
+    {"clave": "alertas", "nucleo": True, "grupo": "Monotributo al día",
      "nombre": "Alertas de recategorización, tope de facturación y cuota impaga"},
     {"clave": "vencimientos", "grupo": "Monotributo al día",
      "nombre": "Recordatorios de vencimientos a tus clientes"},
-    {"clave": "estado_cuenta", "grupo": "Monotributo al día",
+    {"clave": "estado_cuenta", "nucleo": True, "grupo": "Monotributo al día",
      "nombre": "Estado de cuenta y deuda de cada cliente"},
     {"clave": "facturacion", "grupo": "Monotributo al día",
      "nombre": "Facturación electrónica desde la app"},
@@ -86,6 +95,24 @@ PLANES: dict[str, dict] = {
 }
 
 PLAN_DEFAULT = "monitoreo"
+
+# Todas las claves del catálogo, en orden de presentación.
+CLAVES_FUNCIONES: tuple[str, ...] = tuple(f["clave"] for f in FUNCIONES)
+
+# El producto base: viene con cualquier plan y no se puede apagar (ni por plan, ni por excepción,
+# ni por falta de pago). Si esto se apagara no quedaría app que usar.
+FUNCIONES_NUCLEO: frozenset[str] = frozenset(f["clave"] for f in FUNCIONES if f.get("nucleo"))
+
+# A qué queda reducida una cuenta que no está en regla (ver ESTADOS_SIN_SERVICIO): conserva el
+# monitoreo de la cartera —para que no pierda de vista a sus clientes ni los vencimientos— pero
+# pierde lo que implica producir o dar acceso a más gente (facturar, equipo, IVA, contabilidad).
+FUNCIONES_DEGRADADO: frozenset[str] = FUNCIONES_NUCLEO | frozenset(
+    {"vencimientos", "conciliacion"}
+)
+
+# Estados en los que la cuenta deja de tener el plan completo y cae a FUNCIONES_DEGRADADO.
+# 'vencida' es el estado EFECTIVO (ya contempla los días de gracia), no el guardado.
+ESTADOS_SIN_SERVICIO: tuple[str, ...] = ("vencida", "cancelada")
 
 ESTADOS = ("prueba", "activa", "vencida", "cancelada", "sin_cargo")
 CICLOS = ("mensual", "anual")
@@ -189,6 +216,122 @@ def estado_efectivo(sus: models.Suscripcion) -> str:
 def al_dia(sus: models.Suscripcion) -> bool:
     """True si la cuenta está en regla (no debe nada hoy)."""
     return estado_efectivo(sus) in ("activa", "prueba", "sin_cargo")
+
+
+# --- Qué puede usar la cuenta (el plan atado a las funciones) ---------------------------------
+# Tres capas, en este orden:
+#   1. el PLAN define el set base (PLANES[...]["funciones"]),
+#   2. el ESTADO lo puede recortar: una cuenta que no está en regla cae a FUNCIONES_DEGRADADO,
+#   3. las EXCEPCIONES por cuenta (Suscripcion.funciones_json) pisan lo anterior en los dos
+#      sentidos — sumar una función fuera del plan (acuerdo particular, piloto) o sacarla.
+# El núcleo queda SIEMPRE encendido, pase lo que pase.
+
+
+def overrides_de(sus: models.Suscripcion) -> dict[str, bool]:
+    """Las excepciones guardadas para esta cuenta ({clave: True/False}). Ignora claves que ya no
+    existen en el catálogo y el núcleo (no se puede apagar)."""
+    try:
+        crudo = json.loads(sus.funciones_json) if sus.funciones_json else {}
+    except ValueError:
+        return {}
+    if not isinstance(crudo, dict):
+        return {}
+    return {
+        clave: bool(valor)
+        for clave, valor in crudo.items()
+        if clave in CLAVES_FUNCIONES and clave not in FUNCIONES_NUCLEO
+    }
+
+
+def serializar_overrides(overrides: dict[str, bool] | None) -> str | None:
+    """Normaliza las excepciones para guardarlas. Vacío → NULL (la cuenta sigue el plan a secas)."""
+    limpio = {
+        clave: bool(valor)
+        for clave, valor in (overrides or {}).items()
+        if clave in CLAVES_FUNCIONES and clave not in FUNCIONES_NUCLEO
+    }
+    return json.dumps(limpio, ensure_ascii=False) if limpio else None
+
+
+def funciones_de(sus: models.Suscripcion) -> dict[str, bool]:
+    """Qué puede usar HOY esta cuenta: {clave: True/False} sobre todo el catálogo."""
+    incluidas = set(plan_de(sus)["funciones"])
+    if estado_efectivo(sus) in ESTADOS_SIN_SERVICIO:
+        incluidas &= set(FUNCIONES_DEGRADADO)
+    for clave, activa in overrides_de(sus).items():
+        incluidas.add(clave) if activa else incluidas.discard(clave)
+    incluidas |= FUNCIONES_NUCLEO
+    return {clave: clave in incluidas for clave in CLAVES_FUNCIONES}
+
+
+NOMBRES_FUNCIONES: dict[str, str] = {f["clave"]: f["nombre"] for f in FUNCIONES}
+
+
+def funciones_que_pierde(sus: models.Suscripcion) -> list[str]:
+    """Los NOMBRES de las secciones que la cuenta deja de tener el día que venza (en lenguaje del
+    contador, para el aviso previo). Vacío si no pierde nada: ya está degradada, o su plan no
+    incluye nada por encima del set mínimo."""
+    hoy = set(k for k, v in funciones_de(sus).items() if v)
+    despues = (hoy & set(FUNCIONES_DEGRADADO)) | FUNCIONES_NUCLEO
+    return [NOMBRES_FUNCIONES[c] for c in CLAVES_FUNCIONES if c in hoy and c not in despues]
+
+
+def avisar_vencimientos(db: Session, hoy: dt.date | None = None, dias: int = 7) -> dict:
+    """Manda el aviso previo a los titulares cuya suscripción vence dentro de `dias`.
+
+    Vencer degrada la cuenta (pierde facturación, equipo, IVA y contabilidad hasta regularizar), así
+    que el contador tiene que enterarse ANTES y sin depender de que entre a la app. UNO por
+    vencimiento: al mandarlo se marca `aviso_vence_enviado` con esa fecha, y si después se registra
+    un pago el `vence` cambia y el aviso vuelve a habilitarse solo. Si el mail no sale (SMTP caído)
+    no se marca y se reintenta en la próxima pasada. Devuelve un resumen."""
+    hoy = hoy or _hoy()
+    limite = (hoy + dt.timedelta(days=dias)).isoformat()
+    candidatas = db.scalars(
+        select(models.Suscripcion).where(
+            models.Suscripcion.estado.in_(("activa", "prueba")),
+            models.Suscripcion.vence.is_not(None),
+            models.Suscripcion.vence <= limite,
+            models.Suscripcion.vence >= hoy.isoformat(),
+        )
+    ).all()
+
+    enviados = 0
+    for sus in candidatas:
+        if sus.aviso_vence_enviado == sus.vence:
+            continue  # ya avisamos por este vencimiento
+        titular = db.get(models.Usuario, sus.usuario_id)
+        if titular is None or not titular.activo:
+            continue
+        restantes = dias_restantes(sus)
+        if email_svc.enviar_aviso_vencimiento(
+            titular, sus.vence, restantes if restantes is not None else 0, funciones_que_pierde(sus)
+        ):
+            sus.aviso_vence_enviado = sus.vence
+            db.commit()
+            enviados += 1
+    return {"candidatas": len(candidatas), "enviados": enviados}
+
+
+def suscripcion_vigente(db: Session, usuario: models.Usuario) -> models.Suscripcion | None:
+    """La suscripción que gobierna a este usuario, SIN escribir en la base: la propia si es una
+    cuenta plena, la del titular si es un usuario del estudio (el equipo se cubre con la del
+    titular). None si todavía no tiene fila."""
+    dueño_id = usuario.titular_id or usuario.id
+    return db.scalar(
+        select(models.Suscripcion).where(models.Suscripcion.usuario_id == dueño_id)
+    )
+
+
+def funciones_de_usuario(db: Session, usuario: models.Usuario) -> dict[str, bool]:
+    """Las funciones habilitadas para este usuario. Los ADMIN de Órbita pueden todo (operan el
+    sistema). Una cuenta sin fila de suscripción se evalúa con el plan por defecto: no queda
+    bloqueada de entrada, pero tampoco hereda funciones que no le corresponden."""
+    if usuario.rol == "admin":
+        return {clave: True for clave in CLAVES_FUNCIONES}
+    sus = suscripcion_vigente(db, usuario) or models.Suscripcion(
+        usuario_id=usuario.id, plan=PLAN_DEFAULT, estado="sin_cargo", ciclo="mensual"
+    )
+    return funciones_de(sus)
 
 
 def clientes_de_la_cuenta(db: Session, usuario_id: int) -> int:

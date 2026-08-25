@@ -4,7 +4,12 @@ opera sólo sus asignados; el titular ve toda la cartera del equipo (ver securit
 
 Todo el router exige una cuenta PLENA (titular_actual): un empleado no puede administrar el equipo
 ni crear otros usuarios. El alta siempre fuerza rol='contador' y titular_id=el titular logueado, así
-que desde acá no se pueden crear admins ni titulares."""
+que desde acá no se pueden crear admins ni titulares.
+
+Además el plan del estudio tiene que incluir el equipo: `_titular_con_equipo` para administrar los
+usuarios y `_titular_con_cartera` para repartir los clientes entre ellos. OJO: bajar de plan cierra
+la ADMINISTRACIÓN del equipo, no las cuentas ya creadas — los empleados siguen entrando y operando
+sus clientes. Para cortarles el acceso hay que desactivarlos (panel superadmin)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -19,13 +24,35 @@ from .. import models
 from ..db import get_db
 from ..schemas import AsignarClienteIn, AsignarClientesIn, MiembroIn, MiembroOut, MiembroPatch
 from ..security import (
+    MENSAJE_SIN_FUNCION,
     PERMISOS_EQUIPO,
     hashear_password,
     permisos_efectivos,
     titular_actual,
+    usuario_puede,
 )
 
 router = APIRouter(prefix="/api/equipo", tags=["equipo"])
+
+
+def _con_funcion(clave: str):
+    """Cuenta plena (titular) + el plan del estudio incluye `clave`. Las dos condiciones juntas
+    porque `titular_actual` ya resuelve la primera y no queremos duplicar dependencias."""
+
+    def _dep(
+        titular: models.Usuario = Depends(titular_actual), db: Session = Depends(get_db)
+    ) -> models.Usuario:
+        if not usuario_puede(db, titular, clave):
+            raise HTTPException(status_code=403, detail=MENSAJE_SIN_FUNCION)
+        return titular
+
+    return _dep
+
+
+# Administrar los usuarios del estudio (alta, edición, permisos, baja).
+_titular_con_equipo = _con_funcion("usuarios")
+# Repartir la cartera entre ellos (cada cliente tiene un responsable).
+_titular_con_cartera = _con_funcion("permisos")
 
 
 def _iso(d: dt.datetime | None) -> str | None:
@@ -76,7 +103,7 @@ def _miembro_out(db: Session, u: models.Usuario, clientes: int | None = None) ->
 
 @router.get("/miembros", response_model=list[MiembroOut])
 def listar_miembros(
-    db: Session = Depends(get_db), titular: models.Usuario = Depends(titular_actual)
+    db: Session = Depends(get_db), titular: models.Usuario = Depends(_titular_con_equipo)
 ):
     """Los usuarios del equipo del titular, con cuántos clientes tiene asignados cada uno."""
     miembros = db.scalars(
@@ -98,7 +125,7 @@ def listar_miembros(
 def crear_miembro(
     datos: MiembroIn,
     db: Session = Depends(get_db),
-    titular: models.Usuario = Depends(titular_actual),
+    titular: models.Usuario = Depends(_titular_con_equipo),
 ):
     """Crea la cuenta de un usuario del equipo. Entra con email + la contraseña que fija el titular;
     hereda el nombre del estudio. Sin CUIT/DNI (cuenta interna). El email queda confirmado (la
@@ -136,7 +163,7 @@ def editar_miembro(
     miembro_id: int,
     cambios: MiembroPatch,
     db: Session = Depends(get_db),
-    titular: models.Usuario = Depends(titular_actual),
+    titular: models.Usuario = Depends(_titular_con_equipo),
 ):
     """Activa/desactiva la cuenta, actualiza sus permisos o le fija una contraseña nueva.
     Desactivado: el empleado no puede iniciar sesión ni operar (mismo corte que el panel admin);
@@ -160,7 +187,7 @@ def editar_miembro(
 def eliminar_miembro(
     miembro_id: int,
     db: Session = Depends(get_db),
-    titular: models.Usuario = Depends(titular_actual),
+    titular: models.Usuario = Depends(_titular_con_equipo),
 ):
     """Elimina la cuenta del miembro. Sus clientes asignados NO se pierden: pasan al titular (que ya
     los veía). Se limpia su registro de alertas (FK) antes de borrar la cuenta."""
@@ -182,7 +209,7 @@ def eliminar_miembro(
 def asignar_clientes(
     datos: AsignarClientesIn,
     db: Session = Depends(get_db),
-    titular: models.Usuario = Depends(titular_actual),
+    titular: models.Usuario = Depends(_titular_con_cartera),
 ):
     """Asigna EN LOTE varios clientes a un responsable del equipo (el titular o un empleado). Sólo
     toca clientes que ya son de la cartera del equipo: un CUIT ajeno simplemente no se actualiza."""
@@ -208,7 +235,7 @@ def asignar_cliente(
     cuit: str,
     datos: AsignarClienteIn,
     db: Session = Depends(get_db),
-    titular: models.Usuario = Depends(titular_actual),
+    titular: models.Usuario = Depends(_titular_con_cartera),
 ):
     """Cambia el responsable de un cliente dentro del equipo: al propio titular o a uno de sus
     empleados. Sólo mueve la asignación (quién lo ve/opera); los datos del cliente no se tocan."""

@@ -727,6 +727,13 @@ class UsuarioOut(BaseModel):
     iva_habilitada: bool = False
     # Rollout gateado del apartado de Contabilidad (libro diario / plan de cuentas).
     contabilidad_habilitada: bool = False
+    # Qué le habilita el plan del estudio ({clave: bool} sobre el catálogo de funciones; ver
+    # services/suscripciones.FUNCIONES). El front arma el menú y esconde secciones con esto; el
+    # backend cierra igual cada endpoint (security.requiere_funcion). Los tres flags de arriba son
+    # el mismo dato ya combinado con su rollout, y se mantienen por compatibilidad.
+    funciones: dict[str, bool] = {}
+    plan: str = ""        # clave del plan del estudio (del titular, si es un usuario del equipo)
+    plan_nombre: str = "" # nombre para mostrar
     # Equipo del estudio: True = cuenta de EMPLEADO (creada desde "Gestión de usuarios"); el front
     # le restringe la navegación (sin Novedades/Configuración/Gestión) y esconde las acciones sin
     # permiso. `permisos` trae los efectivos ({clave: bool}); None para cuentas plenas (pueden todo).
@@ -1537,6 +1544,8 @@ class FuncionPlanOut(BaseModel):
     clave: str
     nombre: str
     grupo: str  # encabezado bajo el que se agrupa en la tabla
+    # True = viene con cualquier plan y no se puede apagar (el panel admin la muestra fija).
+    nucleo: bool = False
 
 
 class PlanOut(BaseModel):
@@ -1587,7 +1596,25 @@ class SuscripcionOut(BaseModel):
     al_dia: bool = True
     limite_clientes: int | None = None   # None = sin tope
     clientes_en_uso: int = 0
+    # Lo que la cuenta tiene habilitado hoy ({clave: bool}): ya contempla el plan, el estado y las
+    # excepciones. En "Mi suscripción" se tildan/tachan sobre la comparativa de planes.
+    funciones: dict[str, bool] = {}
     pagos: list[PagoSuscripcionOut] = []
+
+
+class AvisoSuscripcionOut(BaseModel):
+    """Lo mínimo para avisarle al contador que su suscripción está por vencer (o venció).
+
+    A propósito NO trae precio, pagos ni comparativa de planes: el apartado "Mi suscripción" sigue
+    siendo interno, pero el aviso tiene que llegarle igual, porque vencer le apaga secciones."""
+
+    hay_aviso: bool = False              # False = no hay nada que avisar (el front no muestra nada)
+    estado: str = "sin_cargo"
+    vence: str | None = None             # ISO
+    dias_restantes: int | None = None    # negativo si ya venció
+    # Nombres de las secciones que se pierden al vencer (o que ya se perdieron). En lenguaje del
+    # contador; el front las lista para que sepa qué está en juego.
+    se_pierde: list[str] = []
 
 
 class AdminSuscripcionOut(BaseModel):
@@ -1613,9 +1640,16 @@ class AdminSuscripcionOut(BaseModel):
     dias_restantes: int | None = None
     limite_clientes: int | None = None
     clientes: int = 0                    # clientes que consumen el cupo (propios + de su equipo)
+    # Usuarios del equipo que cuelgan de esta cuenta: si el plan deja de incluir `usuarios`, son los
+    # que se quedan sin entrar. El panel lo avisa antes de guardar.
+    empleados: int = 0
     ultimo_pago: str | None = None       # ISO de la fecha del último pago registrado
     total_pagado: float = 0.0
     notas: str | None = None             # notas internas (no las ve el contador)
+    # Acceso EFECTIVO de la cuenta ({clave: bool}: plan + estado + excepciones) y las excepciones
+    # guardadas aparte, que son las que el admin edita.
+    funciones: dict[str, bool] = {}
+    funciones_override: dict[str, bool] = {}
 
 
 class AdminSuscripcionesResumen(BaseModel):
@@ -1657,6 +1691,10 @@ class AdminSuscripcionPatch(BaseModel):
     inicio: str | None = None            # ISO
     vence: str | None = None             # ISO
     notas: str | None = None
+    # Excepciones de funciones para esta cuenta ({clave: True/False}), que pisan al plan en los dos
+    # sentidos. Mandar {} las borra (la cuenta vuelve a seguir el plan a secas); no mandar el campo
+    # las deja como están. Las funciones del núcleo se ignoran (no se pueden apagar).
+    funciones: dict[str, bool] | None = None
 
 
 class PagoSuscripcionIn(BaseModel):

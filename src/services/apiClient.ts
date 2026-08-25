@@ -3,7 +3,7 @@
  * La base se configura con VITE_API_URL (.env.local); por defecto apunta al backend local.
  * Si hay sesión, adjunta el token JWT en el header Authorization automáticamente.
  */
-import { tokenActual, logoutCuenta } from '@/lib/cuenta';
+import { tokenActual, logoutCuenta, guardarMotivoSalida } from '@/lib/cuenta';
 
 export const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api';
 
@@ -25,17 +25,40 @@ function conAuth(base?: Record<string, string>): Record<string, string> | undefi
   return Object.keys(headers).length ? headers : undefined;
 }
 
+/** Detalle legible que mandó el backend en el body de un error (o el fallback que se le pase). */
+function detalleDe(cuerpo: string, fallback: string): string {
+  try {
+    const d = (JSON.parse(cuerpo) as { detail?: unknown }).detail;
+    return typeof d === 'string' && d ? d : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Cierra la sesión y manda al login con el motivo a la vista. */
+function cerrarSesion(motivo: string): never {
+  guardarMotivoSalida(motivo);
+  logoutCuenta();
+  if (!window.location.pathname.startsWith('/login')) window.location.href = '/login';
+  throw new Error(motivo);
+}
+
 async function handle<T>(res: Response, publico = false): Promise<T> {
   // El 401 "cerrar sesión + ir al login" SÓLO aplica a requests AUTENTICADAS (token vencido/ inválido).
   // En endpoints públicos (login, registro, recuperación) un 401 es un error de credenciales: hay que
   // devolver el detalle del backend (ej. "Email o contraseña incorrectos"), NO "tu sesión expiró".
   if (res.status === 401 && !publico) {
-    logoutCuenta();
-    if (!window.location.pathname.startsWith('/login')) window.location.href = '/login';
-    throw new Error('Tu sesión expiró. Iniciá sesión de nuevo.');
+    cerrarSesion('Tu sesión expiró. Iniciá sesión de nuevo.');
   }
   if (!res.ok) {
     const detalle = await res.text().catch(() => '');
+    // 403 que el backend marcó como "esta sesión ya no sirve" (cuenta deshabilitada, acceso
+    // suspendido): sacamos a la persona con el motivo, en vez de dejarla adentro chocándose contra
+    // un error en cada pantalla. Los otros 403 (una sección que no entra en el plan) no tocan la
+    // sesión: el resto de la app sigue andando.
+    if (res.status === 403 && res.headers.get('X-Orbita-Sesion') === 'cerrada' && !publico) {
+      cerrarSesion(detalleDe(detalle, 'Tu acceso a Órbita quedó suspendido.'));
+    }
     throw new ApiError(res.status, `API ${res.status} ${res.statusText}: ${detalle}`);
   }
   return res.json() as Promise<T>;
@@ -49,9 +72,7 @@ export function apiGet<T>(path: string): Promise<T> {
 export async function apiGetBlob(path: string): Promise<Blob> {
   const res = await fetch(`${BASE_URL}${path}`, { headers: conAuth() });
   if (res.status === 401) {
-    logoutCuenta();
-    if (!window.location.pathname.startsWith('/login')) window.location.href = '/login';
-    throw new Error('Tu sesión expiró. Iniciá sesión de nuevo.');
+    cerrarSesion('Tu sesión expiró. Iniciá sesión de nuevo.');
   }
   if (!res.ok) {
     const detalle = await res.text().catch(() => '');

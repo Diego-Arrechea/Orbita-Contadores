@@ -22,9 +22,28 @@ from .config import (
     settings,
 )
 from .db import get_db
+from .services import suscripciones as suscripciones_svc
 
 ALGORITMO = "HS256"
 _bearer = HTTPBearer(auto_error=False)
+
+# Los 403 que dejan a la cuenta SIN acceso a la app (no los de "esta sección no entra en tu plan")
+# viajan con esta cabecera: el front la usa para cerrar la sesión y mandar al login con el motivo,
+# en vez de dejar al usuario adentro chocándose contra errores en cada pantalla. Va expuesta en el
+# CORS del main (expose_headers), si no el browser no la deja leer.
+CABECERA_SESION_CERRADA = {"X-Orbita-Sesion": "cerrada"}
+
+MENSAJE_CUENTA_DESHABILITADA = (
+    "Tu cuenta fue deshabilitada. Escribinos a orbitaglobalclientes@gmail.com para reactivarla."
+)
+
+# Copy para el EMPLEADO cuyo estudio dejó de tener los usuarios del equipo contratados. Le hablamos
+# de lo que puede hacer (avisarle al titular), no de planes ni de cobranza: el estado comercial del
+# estudio no es asunto suyo y no queremos que se entere del monto ni del vencimiento.
+MENSAJE_EQUIPO_SIN_PLAN = (
+    "Tu estudio no tiene habilitados los usuarios del equipo en este momento, así que tu acceso "
+    "quedó suspendido. Avisale a quien administra la cuenta del estudio para reactivarlo."
+)
 
 
 def _secret() -> str:
@@ -120,59 +139,135 @@ def usuario_actual(
         # Cuenta inhabilitada por un administrador: corta la sesión aunque el token siga vigente.
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=(
-                "Tu cuenta fue deshabilitada. Escribinos a orbitaglobalclientes@gmail.com "
-                "para reactivarla."
-            ),
+            detail=MENSAJE_CUENTA_DESHABILITADA,
+            headers=CABECERA_SESION_CERRADA,
         )
     # Marca transitoria (no se persiste): la sesión es una impersonación hecha por un admin.
     usuario._imp_admin = bool(payload.get("adm"))  # type: ignore[attr-defined]
+    motivo = acceso_suspendido(db, usuario)
+    if motivo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=motivo,
+            headers=CABECERA_SESION_CERRADA,
+        )
     return usuario
 
 
-def usuario_puede_facturar(usuario: models.Usuario) -> bool:
-    """¿Puede emitir comprobantes? Habilitados por FACTURACION_EMAILS + admins + impersonación de
-    admin (claim 'adm' del token). Pensado para que un admin pueda probar facturando en cualquier
-    cliente al 'entrar como', sin habilitar a los contadores reales."""
-    return facturacion_habilitada_para(usuario.email, usuario.rol) or bool(
+# --- Qué puede usar la cuenta: el plan de la suscripción -----------------------------------------
+# El acceso a cada función sale de `services.suscripciones.funciones_de_usuario()` (plan + estado +
+# excepciones por cuenta). Los gates de abajo lo combinan con lo que ya existía:
+#   acceso = rollout del backend (allowlist)  Y  plan de la suscripción  Y  permiso del equipo
+# El rollout sigue siendo el interruptor maestro de una feature nueva (nada se abre por subir de
+# plan si todavía no está abierta); el plan es la palanca COMERCIAL, por cuenta.
+#
+# Los usuarios del estudio se evalúan con la suscripción de su titular (la resuelve el servicio).
+# Los ADMIN de Órbita pueden todo. Al impersonar, el acceso refleja el de la cuenta impersonada:
+# es justamente lo que un admin necesita para verificar un cambio de plan.
+
+# Copy único para todos los 403 por plan: el contador ve siempre lo mismo, sin detalles internos.
+MENSAJE_SIN_FUNCION = (
+    "Esta sección no está incluida en el plan de tu estudio. Escribinos y la habilitamos."
+)
+
+
+def funciones_usuario(db: Session, usuario: models.Usuario) -> dict[str, bool]:
+    """{clave: True/False} para todo el catálogo de funciones. Se cachea en el objeto de la request
+    (vive lo que dura la sesión de la request) para no re-consultar en cada gate."""
+    cache = getattr(usuario, "_funciones", None)
+    if cache is None:
+        cache = suscripciones_svc.funciones_de_usuario(db, usuario)
+        usuario._funciones = cache  # type: ignore[attr-defined]
+    return cache
+
+
+def usuario_puede(db: Session, usuario: models.Usuario, clave: str) -> bool:
+    """¿El plan de esta cuenta incluye la función `clave`?"""
+    return bool(funciones_usuario(db, usuario).get(clave, False))
+
+
+def requiere_funcion(clave: str):
+    """Fábrica de dependencias FastAPI: como `usuario_actual`, pero además exige que el plan de la
+    cuenta incluya la función `clave` (403 si no). El front esconde la sección con el mismo dato
+    (UsuarioOut.funciones); esto la cierra de verdad."""
+
+    def _dep(
+        usuario: models.Usuario = Depends(usuario_actual), db: Session = Depends(get_db)
+    ) -> models.Usuario:
+        if not usuario_puede(db, usuario, clave):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail=MENSAJE_SIN_FUNCION
+            )
+        return usuario
+
+    return _dep
+
+
+def acceso_suspendido(db: Session, usuario: models.Usuario) -> str | None:
+    """¿Esta cuenta quedó SIN acceso a la app? Devuelve el motivo (texto para el usuario) o None.
+
+    Hoy el único caso son los usuarios del equipo ("Gestión de usuarios") cuando el estudio
+    deja de tener contratada la función `usuarios`: el titular sigue entrando y ve toda la cartera
+    —incluidos los clientes que tenía repartidos—, pero sus empleados no.
+
+    Es un estado DERIVADO, no una baja: no tocamos `Usuario.activo`. Así el empleado vuelve solo
+    cuando el estudio recupera la función, sin que nadie tenga que acordarse de reactivarlo uno por
+    uno; y cubre también el caso en que la cuenta se degrada sola por vencimiento (ahí no hay
+    ninguna acción del admin a la que engancharse). La baja administrativa (`activo=False`) sigue
+    siendo cosa aparte y manda antes que esto.
+
+    Excepción: una impersonación hecha por un admin (claim 'adm') entra igual, para que soporte
+    pueda mirar la cuenta aunque esté suspendida."""
+    if not es_empleado(usuario) or getattr(usuario, "_imp_admin", False):
+        return None
+    if usuario_puede(db, usuario, "usuarios"):
+        return None
+    return MENSAJE_EQUIPO_SIN_PLAN
+
+
+def usuario_puede_facturar(db: Session, usuario: models.Usuario) -> bool:
+    """¿Puede emitir comprobantes? Hace falta el rollout (FACTURACION_EMAILS + admins + impersonación
+    de admin, para que un admin pueda probar facturando en cualquier cliente al 'entrar como') Y que
+    el plan de la cuenta incluya la facturación."""
+    rollout = facturacion_habilitada_para(usuario.email, usuario.rol) or bool(
         getattr(usuario, "_imp_admin", False)
+    )
+    return rollout and usuario_puede(db, usuario, "facturacion")
+
+
+def usuario_puede_iva(db: Session, usuario: models.Usuario) -> bool:
+    """¿Puede ver el apartado de IVA? Rollout (IVA_EMAILS + admins) Y plan que lo incluya. NO lleva
+    el bonus de impersonación: al 'entrar como' otra cuenta, el IVA refleja el acceso REAL de esa
+    cuenta, así el admin ve exactamente lo que ve el contador después de cambiarle el plan."""
+    return iva_habilitada_para(usuario.email, usuario.rol) and usuario_puede(db, usuario, "iva")
+
+
+def usuario_iva(
+    usuario: models.Usuario = Depends(usuario_actual), db: Session = Depends(get_db)
+) -> models.Usuario:
+    """Dependencia FastAPI: como `usuario_actual`, pero además exige que la cuenta tenga habilitado el
+    apartado de IVA (403 si no). Cierra los endpoints de IVA por detrás del gate del front."""
+    if not usuario_puede_iva(db, usuario):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=MENSAJE_SIN_FUNCION)
+    return usuario
+
+
+def usuario_puede_contabilidad(db: Session, usuario: models.Usuario) -> bool:
+    """¿Puede ver el apartado de Contabilidad? Rollout (CONTABILIDAD_EMAILS + admins) Y plan que lo
+    incluya. Como el de IVA, NO lleva el bonus de impersonación: al 'entrar como' otra cuenta
+    refleja el acceso REAL de esa cuenta."""
+    return contabilidad_habilitada_para(usuario.email, usuario.rol) and usuario_puede(
+        db, usuario, "contabilidad"
     )
 
 
-def usuario_puede_iva(usuario: models.Usuario) -> bool:
-    """¿Puede ver el apartado de IVA? Habilitados por IVA_EMAILS + admins (rol). A diferencia de
-    facturación, NO lleva el bonus de impersonación: al 'entrar como' otra cuenta, el IVA refleja el
-    acceso REAL de esa cuenta (allowlist/rol), así aparece sólo en las que lo tienen (p. ej. Durso) y
-    no en todas por el sólo hecho de que un admin esté impersonando."""
-    return iva_habilitada_para(usuario.email, usuario.rol)
-
-
-def usuario_iva(usuario: models.Usuario = Depends(usuario_actual)) -> models.Usuario:
-    """Dependencia FastAPI: como `usuario_actual`, pero además exige que la cuenta tenga habilitado el
-    apartado de IVA (403 si no). Cierra los endpoints de IVA por detrás del gate del front."""
-    if not usuario_puede_iva(usuario):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tenés habilitado el apartado de IVA.",
-        )
-    return usuario
-
-
-def usuario_puede_contabilidad(usuario: models.Usuario) -> bool:
-    """¿Puede ver el apartado de Contabilidad? Habilitados por CONTABILIDAD_EMAILS + admins (rol).
-    Como el de IVA, NO lleva el bonus de impersonación: al 'entrar como' otra cuenta refleja el
-    acceso REAL de esa cuenta."""
-    return contabilidad_habilitada_para(usuario.email, usuario.rol)
-
-
-def usuario_contabilidad(usuario: models.Usuario = Depends(usuario_actual)) -> models.Usuario:
+def usuario_contabilidad(
+    usuario: models.Usuario = Depends(usuario_actual), db: Session = Depends(get_db)
+) -> models.Usuario:
     """Dependencia FastAPI: como `usuario_actual`, pero además exige que la cuenta tenga habilitado
     el apartado de Contabilidad (403 si no)."""
-    if not usuario_puede_contabilidad(usuario):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tenés habilitado el apartado de Contabilidad.",
-        )
+    if not usuario_puede_contabilidad(db, usuario):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=MENSAJE_SIN_FUNCION)
     return usuario
 
 

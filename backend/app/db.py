@@ -1,6 +1,7 @@
 """SQLAlchemy: engine, sesión y Base declarativa."""
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Iterator
 
 from sqlalchemy import create_engine, text
@@ -399,13 +400,62 @@ def _migrar_asientos_manuales(conn) -> None:
         conn.execute(text("ALTER TABLE asientos_manuales ADD COLUMN anulado_por VARCHAR(120)"))
 
 
+def _una_vez(conn, clave: str) -> bool:
+    """Guard para migraciones que corren UNA SOLA VEZ en la vida de la base (backfills de datos que
+    no se pueden re-aplicar sin pisar decisiones posteriores del admin). Devuelve True la primera
+    vez y False siempre después. Portable SQLite + Postgres."""
+    conn.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS migraciones_aplicadas ("
+            "clave VARCHAR(80) PRIMARY KEY, aplicada_en TIMESTAMP)"
+        )
+    )
+    ya = conn.execute(
+        text("SELECT 1 FROM migraciones_aplicadas WHERE clave = :c"), {"c": clave}
+    ).first()
+    if ya:
+        return False
+    conn.execute(
+        text("INSERT INTO migraciones_aplicadas (clave, aplicada_en) VALUES (:c, :t)"),
+        {"c": clave, "t": dt.datetime.now(dt.timezone.utc)},
+    )
+    return True
+
+
 def _migrar_suscripciones(conn) -> None:
-    """Renombra el plan inicial `piloto` (catálogo de la primera versión) al plan base `monitoreo`,
-    que es el primero de los tres escalones actuales. Idempotente y portable: sólo toca las filas
-    que quedaron con la clave vieja."""
-    if not _columnas(conn, "suscripciones"):
+    """Suscripciones: renombre del plan viejo, columna de excepciones y backfill de planes.
+
+    1. `piloto` (catálogo de la primera versión) → `monitoreo`, el primero de los tres escalones.
+    2. `funciones_json` (excepciones por cuenta) y `aviso_vence_enviado` (aviso previo mandado).
+    3. Backfill ÚNICO: hasta ahora el plan era informativo y todas las cuentas usaban todo. Al pasar
+       a que el plan mande, las cuentas que YA existían pasan a 'completo' para que nadie pierda
+       funciones de un día para el otro; de ahí en más el admin baja de plan al que corresponda.
+       Corre una sola vez (`_una_vez`): si se re-aplicara, le devolvería el plan completo a las
+       cuentas que el admin bajó después. Las cuentas nuevas arrancan en PLAN_DEFAULT.
+    """
+    cols = _columnas(conn, "suscripciones")
+    if not cols:
         return
     conn.execute(text("UPDATE suscripciones SET plan = 'monitoreo' WHERE plan = 'piloto'"))
+    if "funciones_json" not in cols:
+        conn.execute(text("ALTER TABLE suscripciones ADD COLUMN funciones_json TEXT"))
+    if "aviso_vence_enviado" not in cols:
+        conn.execute(text("ALTER TABLE suscripciones ADD COLUMN aviso_vence_enviado VARCHAR(20)"))
+
+    if not _una_vez(conn, "suscripciones_plan_manda"):
+        return
+    # Las cuentas plenas que ya tenían suscripción: al plan completo.
+    conn.execute(text("UPDATE suscripciones SET plan = 'completo'"))
+    # Y las que nunca abrieron el apartado (no tienen fila): se les crea una, también en completo.
+    # `sin_cargo` = no se les cobra hasta que el admin les asigne plan y precio.
+    conn.execute(
+        text(
+            "INSERT INTO suscripciones (usuario_id, plan, estado, ciclo) "
+            "SELECT u.id, 'completo', 'sin_cargo', 'mensual' FROM usuarios u "
+            "WHERE u.titular_id IS NULL AND NOT EXISTS ("
+            "  SELECT 1 FROM suscripciones s WHERE s.usuario_id = u.id)"
+        )
+    )
 
 
 def _migrar_cierres_contables(conn) -> None:

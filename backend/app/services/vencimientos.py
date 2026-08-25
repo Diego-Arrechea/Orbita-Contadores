@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..config import settings
 from . import email as email_svc
+from . import suscripciones
 
 logger = logging.getLogger("orbita.vencimientos")
 
@@ -147,16 +148,21 @@ def preparar(db: Session, cliente: models.ClienteARCA, hoy: dt.date | None = Non
 
 
 def _master_activo(db: Session, usuario_id: int | None, cache: dict[int | None, bool]) -> bool:
-    """¿El estudio dueño de este cliente tiene ACTIVADO el envío automático? El master vive en la
-    config del TITULAR (config_json.vencimientos.activo); para un empleado se mira la del titular.
-    Cachea por usuario_id para no releer la config en cada cliente."""
+    """¿El estudio dueño de este cliente manda el recordatorio automático? Dos condiciones: que su
+    plan incluya los recordatorios y que los tenga ACTIVADOS. El master vive en la config del
+    TITULAR (config_json.vencimientos.activo); para un empleado se mira la del titular.
+    Cachea por usuario_id para no releer la config ni la suscripción en cada cliente."""
     if usuario_id in cache:
         return cache[usuario_id]
     activo = False
     u = db.get(models.Usuario, usuario_id) if usuario_id else None
     if u is not None:
         titular = db.get(models.Usuario, u.titular_id) if u.titular_id else u
-        if titular is not None and titular.config_json:
+        if (
+            titular is not None
+            and titular.config_json
+            and suscripciones.funciones_de_usuario(db, titular).get("vencimientos")
+        ):
             try:
                 cfg = json.loads(titular.config_json)
                 activo = bool((cfg.get("vencimientos") or {}).get("activo"))
