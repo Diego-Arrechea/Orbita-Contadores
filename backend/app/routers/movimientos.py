@@ -1,5 +1,6 @@
 """Endpoints de conciliación bancaria: importar extractos, listar movimientos y clasificarlos.
-Protegidos: cada contador opera sólo sobre sus propios clientes (reusa _cliente_propio)."""
+Protegidos: cada contador opera sólo sobre sus propios clientes (reusa _cliente_propio) y el plan
+del estudio tiene que incluir la conciliación (dependencia de router, 403 si no)."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,11 +9,15 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..db import get_db
 from ..schemas import ClasificarIn, ImportarMovimientosIn, ImportarResumenOut, MovimientoOut
-from ..security import requiere_permiso, usuario_actual
+from ..security import requiere_funcion, requiere_permiso, usuario_actual
 from ..services import conciliacion
 from .clientes import _cliente_propio
 
-router = APIRouter(prefix="/api", tags=["movimientos"])
+router = APIRouter(
+    prefix="/api",
+    tags=["movimientos"],
+    dependencies=[Depends(requiere_funcion("conciliacion"))],
+)
 
 
 def _mov_out(m: models.MovimientoBancario) -> MovimientoOut:

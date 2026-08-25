@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { login, mensajeDeError } from '@/services/authService';
-import { iniciarSesion } from '@/lib/cuenta';
+import { iniciarSesion, tomarMotivoSalida } from '@/lib/cuenta';
 
 export function Login() {
   const navigate = useNavigate();
@@ -16,7 +16,9 @@ export function Login() {
   const aviso = (location.state as { aviso?: string } | null)?.aviso;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  // Si a la persona la sacaron de la app (cuenta deshabilitada, acceso suspendido), el motivo
+  // llega hasta acá para que sepa por qué no puede entrar. Se lee una sola vez.
+  const [error, setError] = useState<string | null>(() => tomarMotivoSalida());
   const [cargando, setCargando] = useState(false);
 
   async function entrar(e: FormEvent) {

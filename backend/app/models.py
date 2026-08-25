@@ -840,9 +840,10 @@ class Suscripcion(Base):
     corre `vence` hacia adelante. No hay pasarela de pago todavía (`referencia` queda para cuando
     la haya).
 
-    OJO — hoy la suscripción NO corta el servicio: es informativa/administrativa. Vencer sólo cambia
-    el estado que se ve en el panel y en "Mi suscripción"; no bloquea el login ni la API. El corte
-    (y el aviso previo) se decide en una etapa posterior."""
+    El `plan` decide qué funciones puede usar la cuenta (ver services/suscripciones.funciones_de:
+    plan + estado + `funciones_json`): cambiarlo desde el panel le habilita o le apaga las secciones
+    al contador. Vencer o cancelar NO bloquea el login ni la app: degrada la cuenta al set mínimo
+    (sigue viendo su cartera; pierde facturación, equipo, IVA y contabilidad)."""
 
     __tablename__ = "suscripciones"
 
@@ -863,10 +864,18 @@ class Suscripcion(Base):
     # Tope de clientes de la cuenta. NULL = el del plan; 0 (o el del plan en NULL) = sin tope.
     # Hoy es informativo: no impide dar de alta más clientes.
     limite_clientes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Excepciones de funciones para ESTA cuenta ({clave: True/False}), que pisan lo que trae el plan
+    # en los dos sentidos: sumar una función fuera del plan (acuerdo particular, piloto) o sacarla.
+    # NULL = la cuenta sigue el plan a secas. Ver services/suscripciones.funciones_de().
+    funciones_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     inicio: Mapped[str | None] = mapped_column(String(20), nullable=True)  # ISO aaaa-mm-dd
     # Hasta cuándo está paga (ISO aaaa-mm-dd). NULL = sin vencimiento (planes sin cargo).
     vence: Mapped[str | None] = mapped_column(String(20), nullable=True)
     cancelada_en: Mapped[str | None] = mapped_column(String(20), nullable=True)  # ISO
+    # Último `vence` por el que YA se mandó el aviso previo (ISO). Evita repetir el correo todos los
+    # días de la ventana de aviso; al correrse el vencimiento (pago nuevo) vuelve a habilitarse solo
+    # porque la fecha cambia. Ver services/suscripciones.avisar_vencimientos().
+    aviso_vence_enviado: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Notas internas del admin (acuerdos, a quién se le factura, etc.). NO se muestran al contador.
     notas: Mapped[str | None] = mapped_column(Text, nullable=True)
     creada_en: Mapped[dt.datetime] = mapped_column(

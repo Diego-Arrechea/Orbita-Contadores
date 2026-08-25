@@ -35,12 +35,13 @@ router = APIRouter(prefix="/api", tags=["facturacion"])
 log = logging.getLogger("orbita.facturacion")
 
 
-def _exigir_habilitado(usuario: models.Usuario) -> None:
-    """Rollout gateado: emails en FACTURACION_EMAILS + admins + impersonación de admin."""
-    if not usuario_puede_facturar(usuario):
+def _exigir_habilitado(db: Session, usuario: models.Usuario) -> None:
+    """Rollout gateado (FACTURACION_EMAILS + admins + impersonación de admin) Y plan del estudio que
+    incluya la facturación."""
+    if not usuario_puede_facturar(db, usuario):
         raise HTTPException(
             status_code=403,
-            detail="La facturación electrónica todavía no está habilitada para tu cuenta.",
+            detail="La facturación electrónica no está habilitada para tu cuenta.",
         )
 
 
@@ -136,7 +137,7 @@ def contexto_facturacion(
     usuario: models.Usuario = Depends(usuario_actual),
 ):
     """Si el cliente ya puede facturar sin esperar (certificado generado)."""
-    _exigir_habilitado(usuario)
+    _exigir_habilitado(db, usuario)
     _cliente_propio(db, cuit, usuario)
     return facturacion_svc.contexto(db, cuit)
 
@@ -164,7 +165,7 @@ def facturar(
 ):
     """Emite una Factura C / Nota de Crédito C a nombre del cliente (emisión REAL en producción).
     Genera el certificado del cliente la primera vez (puede tardar ~1 min)."""
-    _exigir_habilitado(usuario)
+    _exigir_habilitado(db, usuario)
     _cliente_propio(db, cuit, usuario)
     asociado = body.comprobante_asociado.model_dump() if body.comprobante_asociado else None
     items = [i.model_dump() for i in body.items] if body.items else None
@@ -223,7 +224,7 @@ def comprobante_pdf_endpoint(
     usuario: models.Usuario = Depends(usuario_actual),
 ):
     """Devuelve el PDF (representación impresa) de un comprobante emitido desde la app."""
-    _exigir_habilitado(usuario)
+    _exigir_habilitado(db, usuario)
     _cliente_propio(db, cuit, usuario)
     comp = (
         db.query(models.ComprobanteEmitido)
@@ -290,7 +291,7 @@ def preparar_facturacion(
 ):
     """Arranca, en segundo plano, la generación del certificado del cliente. Devuelve job_id para
     seguir el progreso (el bootstrap es scraping y tarda ~1 min)."""
-    _exigir_habilitado(usuario)
+    _exigir_habilitado(db, usuario)
     _cliente_propio(db, cuit, usuario)
     job_id = jobs.crear_job()
     threading.Thread(target=_correr_preparacion, args=(job_id, cuit), daemon=True).start()
@@ -302,8 +303,9 @@ def progreso_preparacion(
     cuit: str,
     job_id: str,
     usuario: models.Usuario = Depends(usuario_actual),
+    db: Session = Depends(get_db),
 ):
-    _exigir_habilitado(usuario)
+    _exigir_habilitado(db, usuario)
     job = jobs.obtener(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job no encontrado.")

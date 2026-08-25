@@ -86,6 +86,51 @@ def enviar_link_reset(usuario: models.Usuario, token: str) -> bool:
     return enviar_email(usuario.email, asunto, cuerpo_html, cuerpo_texto)
 
 
+def enviar_aviso_vencimiento(
+    usuario: models.Usuario, vence: str, dias: int, se_pierde: list[str]
+) -> bool:
+    """Avisa al titular que su suscripción está por vencer y qué deja de tener si no la regulariza.
+
+    `se_pierde` son los nombres de las secciones que quedan fuera al vencer (ya en lenguaje del
+    contador). Si la lista viene vacía no se mencionan pérdidas: el aviso es sólo la fecha."""
+    cuando = "hoy" if dias == 0 else "mañana" if dias == 1 else f"en {dias} días"
+    asunto = f"Tu suscripción a Órbita vence {cuando}"
+
+    if se_pierde:
+        lista_html = "".join(f"<li>{s}</li>" for s in se_pierde)
+        aviso_html = (
+            "<p>Si no llegamos a regularizarla, estas secciones quedan fuera hasta que se ponga "
+            f"al día:</p><ul>{lista_html}</ul>"
+            "<p>Tu cartera de clientes, las alertas y los recordatorios siguen como están.</p>"
+        )
+        aviso_texto = (
+            "Si no llegamos a regularizarla, estas secciones quedan fuera hasta que se ponga al "
+            "día:\n" + "".join(f"  - {s}\n" for s in se_pierde)
+            + "Tu cartera de clientes, las alertas y los recordatorios siguen como están.\n"
+        )
+    else:
+        aviso_html = aviso_texto = ""
+
+    cuerpo_html = f"""\
+<div style="font-family:Arial,Helvetica,sans-serif;color:#1a1a1a;line-height:1.5">
+  <p>Hola {usuario.nombre},</p>
+  <p>Te escribimos para avisarte que tu suscripción a Órbita vence el <strong>{vence}</strong>.</p>
+  {aviso_html}
+  <p>Respondé este correo y lo resolvemos en el día.</p>
+  <p style="color:#666;font-size:13px">
+    Si ya la regularizaste, ignorá este mensaje.
+  </p>
+</div>"""
+    cuerpo_texto = (
+        f"Hola {usuario.nombre},\n\n"
+        f"Te escribimos para avisarte que tu suscripción a Órbita vence el {vence}.\n"
+        f"{aviso_texto}"
+        "\nRespondé este correo y lo resolvemos en el día.\n"
+        "Si ya la regularizaste, ignorá este mensaje."
+    )
+    return enviar_email(usuario.email, asunto, cuerpo_html, cuerpo_texto)
+
+
 def enviar_link_confirmacion(usuario: models.Usuario, token: str) -> bool:
     """Arma y manda el correo de confirmación de email con el enlace al frontend."""
     link = f"{settings.app_base_url.rstrip('/')}/confirmar-email?token={token}"

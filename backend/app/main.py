@@ -51,6 +51,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Para que el front pueda leer la marca de "esta sesión ya no sirve" (ver security.py).
+    expose_headers=["X-Orbita-Sesion"],
 )
 
 app.include_router(auth.router)

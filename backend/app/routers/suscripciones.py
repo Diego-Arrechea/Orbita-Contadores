@@ -8,8 +8,9 @@ Dos routers en el mismo archivo porque comparten toda la lógica de armado:
                                 por un admin (para mirar la pantalla como la vería el contador).
   • `/api/admin/suscripciones` — listado, edición y cobranza manual (sólo rol=admin).
 
-Hoy la suscripción NO corta el servicio: vencer cambia el estado que se muestra, nada más. Ver
-services/suscripciones.py.
+El PLAN de cada cuenta decide qué funciones puede usar (ver services/suscripciones.funciones_de):
+cambiarlo desde acá le habilita o le apaga las secciones al contador, sin ningún paso extra. Vencer
+o cancelar no bloquea la app: degrada la cuenta al set mínimo.
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ from .. import models
 from ..db import get_db
 from ..schemas import (
     AdminSuscripcionDetalleOut,
+    AvisoSuscripcionOut,
     AdminSuscripcionOut,
     AdminSuscripcionesOut,
     AdminSuscripcionesResumen,
@@ -74,12 +76,25 @@ def _pago_out(p: models.PagoSuscripcion) -> PagoSuscripcionOut:
     )
 
 
+def _conteo_empleados(db: Session) -> dict[int, int]:
+    """Cuántos usuarios del equipo tiene cada titular (una sola consulta para todo el listado)."""
+    return {
+        fila[0]: fila[1]
+        for fila in db.execute(
+            select(models.Usuario.titular_id, func.count())
+            .where(models.Usuario.titular_id.is_not(None))
+            .group_by(models.Usuario.titular_id)
+        ).all()
+    }
+
+
 def _fila_admin(
     sus: models.Suscripcion,
     usuario: models.Usuario,
     clientes: int,
     ultimo_pago: str | None = None,
     total_pagado: float = 0.0,
+    empleados: int = 0,
 ) -> AdminSuscripcionOut:
     return AdminSuscripcionOut(
         usuario_id=usuario.id,
@@ -102,9 +117,12 @@ def _fila_admin(
         dias_restantes=svc.dias_restantes(sus),
         limite_clientes=svc.limite_efectivo(sus),
         clientes=clientes,
+        empleados=empleados,
         ultimo_pago=ultimo_pago,
         total_pagado=total_pagado,
         notas=sus.notas,
+        funciones=svc.funciones_de(sus),
+        funciones_override=svc.overrides_de(sus),
     )
 
 
@@ -120,6 +138,37 @@ def _acceso_apartado(usuario: models.Usuario = Depends(titular_actual)) -> model
             status_code=403, detail="No tenés habilitado el apartado de suscripción."
         )
     return usuario
+
+
+# Cuántos días antes del vencimiento el contador ya ve el aviso en la app. Va antes que el del
+# mail (settings.sus_aviso_dias) a propósito: quien está usando la app se entera primero.
+DIAS_AVISO_APP = 10
+
+
+@router.get("/aviso", response_model=AvisoSuscripcionOut)
+def aviso_vencimiento(
+    db: Session = Depends(get_db), titular: models.Usuario = Depends(titular_actual)
+):
+    """El aviso de vencimiento para el contador. A diferencia del resto del apartado, este endpoint
+    NO está detrás del gate interno: mientras "Mi suscripción" siga cerrada, el contador igual tiene
+    que enterarse de que su cuenta está por vencer, porque vencer le apaga secciones. Devuelve lo
+    justo para el cartel (fecha + qué se pierde), nunca precios ni historial de pagos."""
+    sus = svc.suscripcion_vigente(db, titular)
+    if sus is None:
+        return AvisoSuscripcionOut()
+    estado = svc.estado_efectivo(sus)
+    dias = svc.dias_restantes(sus)
+    # Sin cargo o cancelada no hay nada que regularizar; el resto avisa al acercarse o al pasarse.
+    hay = estado not in ("sin_cargo", "cancelada") and (
+        estado == "vencida" or (dias is not None and dias <= DIAS_AVISO_APP)
+    )
+    return AvisoSuscripcionOut(
+        hay_aviso=hay,
+        estado=estado,
+        vence=sus.vence,
+        dias_restantes=dias,
+        se_pierde=svc.funciones_que_pierde(sus) if hay else [],
+    )
 
 
 @router.get("/planes", response_model=CatalogoPlanesOut)
@@ -161,6 +210,7 @@ def mi_suscripcion(
         al_dia=svc.al_dia(sus),
         limite_clientes=svc.limite_efectivo(sus),
         clientes_en_uso=svc.clientes_de_la_cuenta(db, titular.id),
+        funciones=svc.funciones_de(sus),
         pagos=[_pago_out(p) for p in svc.pagos_de(db, sus)],
     )
 
@@ -215,11 +265,14 @@ def listar_suscripciones(db: Session = Depends(get_db)):
         or 0
     )
 
+    empleados = _conteo_empleados(db)
     items: list[AdminSuscripcionOut] = []
     for u in usuarios:
         sus = suscripciones.get(u.id) or _transitoria(u)
         ultimo, total = pagos.get(sus.id, (None, 0.0)) if sus.id else (None, 0.0)
-        items.append(_fila_admin(sus, u, clientes.get(u.id, 0), ultimo, total))
+        items.append(
+            _fila_admin(sus, u, clientes.get(u.id, 0), ultimo, total, empleados.get(u.id, 0))
+        )
 
     por_estado = {e: 0 for e in svc.ESTADOS}
     for it in items:
@@ -263,6 +316,7 @@ def detalle_suscripcion(usuario_id: int, db: Session = Depends(get_db)):
             conteos.get(usuario.id, 0),
             pagos[0].fecha if pagos else None,
             total,
+            _conteo_empleados(db).get(usuario.id, 0),
         ),
         pagos=[_pago_out(p) for p in pagos],
     )
@@ -308,6 +362,9 @@ def editar_suscripcion(
         sus.vence = datos["vence"] or None
     if "notas" in datos:
         sus.notas = datos["notas"] or None
+    if "funciones" in datos:
+        # Excepciones por cuenta: pisan al plan en los dos sentidos. {} las borra.
+        sus.funciones_json = svc.serializar_overrides(datos["funciones"])
 
     sus.actualizada_en = dt.datetime.now(dt.timezone.utc)
     _registrar(
@@ -327,6 +384,7 @@ def editar_suscripcion(
         conteos.get(usuario.id, 0),
         pagos[0].fecha if pagos else None,
         sum(float(p.importe or 0) for p in pagos),
+        _conteo_empleados(db).get(usuario.id, 0),
     )
 
 

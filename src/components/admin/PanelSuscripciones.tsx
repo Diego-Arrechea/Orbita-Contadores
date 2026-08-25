@@ -3,8 +3,12 @@
  *
  * Desde acá se ve quién está al día, quién está por vencer y cuánto factura la cartera, se le
  * cambia el plan/precio/vencimiento a una cuenta y se registran los cobros (la cobranza es manual:
- * cada pago corre el vencimiento un ciclo). Vencer NO corta el servicio todavía: sólo cambia el
- * estado que se ve acá y en "Mi suscripción" del contador.
+ * cada pago corre el vencimiento un ciclo).
+ *
+ * El plan MANDA: al guardarlo, el contador gana o pierde las secciones correspondientes (la próxima
+ * vez que abra la app o vuelva a la pestaña). Debajo del plan se ve exactamente qué le queda
+ * habilitado y se puede hacer una excepción puntual sin cambiarlo de plan. Vencer o cancelar no lo
+ * bloquea: lo degrada al set mínimo (sigue viendo su cartera).
  */
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -57,6 +61,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { Separator } from '@/components/ui/separator';
 import { cn, formatCurrency, formatDate } from '@/lib/utils';
 import { mensajeDeError } from '@/services/authService';
 import {
@@ -70,7 +75,9 @@ import {
   type AdminSuscripcion,
   type CicloSuscripcion,
   type EstadoSuscripcion,
+  type FuncionPlan,
   type MedioPago,
+  type Plan,
 } from '@/services/suscripcionService';
 
 const QK = ['admin', 'suscripciones'] as const;
@@ -137,6 +144,123 @@ function Metrica({
   );
 }
 
+// --- Qué le queda habilitado a la cuenta ---
+// El plan define el set base; acá se ve el resultado y se puede tildar/destildar una función suelta
+// (queda como EXCEPCIÓN de la cuenta, no cambia el plan). Las del núcleo vienen con cualquier plan
+// y no se pueden apagar. Si la cuenta está vencida o cancelada, el backend la degrada igual: lo que
+// se ve acá es el plan que recupera al ponerse al día.
+
+/** Qué queda tildado para una función: la excepción de la cuenta si la hay, si no lo que trae el plan. */
+function activa(
+  clave: string,
+  overrides: Record<string, boolean>,
+  incluidasPorPlan: Set<string>
+): boolean {
+  return overrides[clave] ?? incluidasPorPlan.has(clave);
+}
+
+function EditorFunciones({
+  funciones,
+  plan,
+  overrides,
+  onCambiar,
+  empleados,
+}: {
+  funciones: FuncionPlan[];
+  plan?: Plan;
+  overrides: Record<string, boolean>;
+  onCambiar: (o: Record<string, boolean>) => void;
+  empleados: number;
+}) {
+  const incluidasPorPlan = new Set(plan?.funciones ?? []);
+  // Un tilde que coincide con el plan no es una excepción: se saca del override para que la cuenta
+  // siga al plan (si mañana el plan cambia, la sigue acompañando).
+  function alternar(clave: string, valor: boolean) {
+    const nuevo = { ...overrides };
+    if (valor === incluidasPorPlan.has(clave)) delete nuevo[clave];
+    else nuevo[clave] = valor;
+    onCambiar(nuevo);
+  }
+
+  const grupos = funciones.reduce<Record<string, FuncionPlan[]>>((acc, f) => {
+    (acc[f.grupo] ??= []).push(f);
+    return acc;
+  }, {});
+  const excepciones = Object.keys(overrides).length;
+  // Sacar los usuarios del equipo deja gente afuera de la app: se avisa antes de guardar.
+  const dejaAfuera = empleados > 0 && !activa('usuarios', overrides, incluidasPorPlan);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <Label>Qué tiene habilitado</Label>
+        {excepciones > 0 && (
+          <button
+            type="button"
+            className="text-xs text-primary hover:underline"
+            onClick={() => onCambiar({})}
+          >
+            Quitar las {excepciones} excepcion{excepciones === 1 ? '' : 'es'}
+          </button>
+        )}
+      </div>
+      <div className="space-y-3 rounded-lg border border-border/60 p-3">
+        {Object.entries(grupos).map(([grupo, items]) => (
+          <div key={grupo} className="space-y-1.5">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {grupo}
+            </p>
+            {items.map(f => {
+              const marcada = f.nucleo || activa(f.clave, overrides, incluidasPorPlan);
+              const excepcion = overrides[f.clave] !== undefined;
+              return (
+                <label
+                  key={f.clave}
+                  className={cn(
+                    'flex items-start gap-2.5 rounded-md px-1.5 py-1 text-sm',
+                    f.nucleo ? 'opacity-60' : 'cursor-pointer hover:bg-muted/50'
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                    checked={marcada}
+                    disabled={f.nucleo}
+                    onChange={e => alternar(f.clave, e.target.checked)}
+                  />
+                  <span className="min-w-0">
+                    <span className={cn(!marcada && 'text-muted-foreground line-through')}>
+                      {f.nombre}
+                    </span>
+                    {f.nucleo && <span className="ml-1.5 text-xs text-muted-foreground">(base)</span>}
+                    {excepcion && (
+                      <span className="ml-1.5 text-xs text-warning-foreground">
+                        · excepción, fuera del plan
+                      </span>
+                    )}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      {dejaAfuera && (
+        <div className="rounded-lg border border-danger/25 bg-danger/12 px-3.5 py-2.5 text-xs text-danger">
+          Sin los usuarios del equipo, {empleados === 1 ? 'la cuenta' : `las ${empleados} cuentas`}{' '}
+          que el estudio creó para su gente {empleados === 1 ? 'deja' : 'dejan'} de entrar: al
+          intentarlo ven un aviso para que hablen con el titular. El titular sigue entrando y viendo
+          toda la cartera, incluidos esos clientes. Vuelven solas si se les devuelve la función.
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">
+        Al guardar, el contador gana o pierde estas secciones. Destildá una sola para hacer una
+        excepción sin cambiarle el plan.
+      </p>
+    </div>
+  );
+}
+
 // --- Editar la suscripción de una cuenta ---
 
 function DialogEditar({
@@ -162,6 +286,7 @@ function DialogEditar({
   const [inicio, setInicio] = useState(sus.inicio ?? '');
   const [vence, setVence] = useState(sus.vence ?? '');
   const [notas, setNotas] = useState(sus.notas ?? '');
+  const [funciones, setFunciones] = useState<Record<string, boolean>>(sus.funciones_override ?? {});
   const [error, setError] = useState<string | null>(null);
 
   const guardar = useMutation({
@@ -175,6 +300,7 @@ function DialogEditar({
         inicio: inicio || null,
         vence: vence || null,
         notas: notas.trim() || null,
+        funciones,
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: QK });
@@ -184,10 +310,11 @@ function DialogEditar({
   });
 
   const planElegido = planes.find(p => p.clave === plan);
+  const degradada = estado === 'cancelada' || sus.estado === 'vencida';
 
   return (
     <Dialog open={open} onOpenChange={o => !guardar.isPending && onOpenChange(o)}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CreditCard className="h-5 w-5 text-primary" /> Suscripción de {sus.nombre}{' '}
@@ -305,6 +432,24 @@ function DialogEditar({
             <p className="text-xs text-muted-foreground">No las ve el contador.</p>
           </div>
         </div>
+
+        <Separator />
+
+        {degradada && (
+          <div className="rounded-lg border border-warning/25 bg-warning/12 px-3.5 py-2.5 text-xs text-warning-foreground">
+            La cuenta no está en regla: mientras siga así conserva el panel, las alertas, los
+            recordatorios y la conciliación, y no puede facturar, sumar usuarios ni entrar a IVA o
+            Contabilidad. Lo de abajo es lo que recupera al ponerse al día.
+          </div>
+        )}
+
+        <EditorFunciones
+          funciones={catalogo?.funciones ?? []}
+          plan={planElegido}
+          overrides={funciones}
+          onCambiar={setFunciones}
+          empleados={sus.empleados}
+        />
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={guardar.isPending}>

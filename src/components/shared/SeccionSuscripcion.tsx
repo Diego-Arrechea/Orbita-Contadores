@@ -132,11 +132,22 @@ function tope(limite: number | null | undefined): string {
 function ComparativaPlanes({
   catalogo,
   planActual,
+  funcionesActuales,
 }: {
   catalogo: CatalogoPlanes;
   planActual: string;
+  /** Lo que la cuenta tiene habilitado HOY. Puede diferir del plan de lista (una función suelta
+   *  acordada aparte, o el recorte mientras la cuenta no está en regla): en la columna del plan
+   *  propio mandan estas marcas, no las del catálogo. */
+  funcionesActuales: Record<string, boolean>;
 }) {
   const { planes, funciones } = catalogo;
+
+  /** ¿Entra esta función en este plan? Para el plan propio, lo que la cuenta realmente tiene. */
+  function incluida(planClave: string, funcion: string, delPlan: boolean): boolean {
+    if (planClave !== planActual) return delPlan;
+    return funcionesActuales[funcion] ?? delPlan;
+  }
 
   // Agrupa las funciones respetando el orden en que las manda el backend.
   const grupos: { grupo: string; items: typeof funciones }[] = [];
@@ -209,7 +220,7 @@ function ComparativaPlanes({
                           p.clave === planActual && 'bg-primary/15'
                         )}
                       >
-                        <Marca incluido={p.funciones.includes(f.clave)} />
+                        <Marca incluido={incluida(p.clave, f.clave, p.funciones.includes(f.clave))} />
                       </td>
                     ))}
                   </tr>
@@ -263,7 +274,7 @@ function ComparativaPlanes({
               )}
               <ul className="mt-3 space-y-1.5 border-t border-border pt-3">
                 {funciones.map(f => {
-                  const incluido = p.funciones.includes(f.clave);
+                  const incluido = incluida(p.clave, f.clave, p.funciones.includes(f.clave));
                   return (
                     <li
                       key={f.clave}
@@ -506,7 +517,13 @@ export function SeccionSuscripcion() {
         </div>
       </Card>
 
-      {catalogo && <ComparativaPlanes catalogo={catalogo} planActual={sus.plan} />}
+      {catalogo && (
+        <ComparativaPlanes
+          catalogo={catalogo}
+          planActual={sus.plan}
+          funcionesActuales={sus.funciones ?? {}}
+        />
+      )}
 
       {/* Pagos */}
       <Card className="p-6">

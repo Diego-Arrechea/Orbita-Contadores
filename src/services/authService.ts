@@ -21,6 +21,12 @@ export interface Usuario {
   facturacion_habilitada?: boolean; // rollout gateado: el front muestra "Emitir comprobante" sólo si true
   iva_habilitada?: boolean; // rollout gateado: el front muestra el apartado de IVA sólo si true
   contabilidad_habilitada?: boolean; // rollout gateado: apartado de Contabilidad (diario + plan de cuentas)
+  /** Qué habilita el plan del estudio ({clave: bool}; claves de FuncionPlan). Con esto se arma el
+   *  menú y se esconden las secciones que no corresponden. Los tres flags de arriba son el mismo
+   *  dato ya combinado con su rollout. El backend cierra igual cada endpoint. */
+  funciones?: Record<string, boolean>;
+  plan?: string; // clave del plan del estudio (el del titular, si es un usuario del equipo)
+  plan_nombre?: string;
   /** true = cuenta de usuario del estudio (la creó el titular en Gestión de usuarios): navegación
    *  restringida (sin Novedades/Configuración/Gestión) y acciones acotadas por `permisos`. */
   es_empleado?: boolean;

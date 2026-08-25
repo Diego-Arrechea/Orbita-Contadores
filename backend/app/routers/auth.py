@@ -25,6 +25,8 @@ from ..schemas import (
     UsuarioOut,
 )
 from ..security import (
+    MENSAJE_CUENTA_DESHABILITADA,
+    acceso_suspendido,
     crear_token,
     es_empleado,
     generar_email_token,
@@ -32,6 +34,7 @@ from ..security import (
     hashear_email_token,
     hashear_password,
     hashear_reset_token,
+    funciones_usuario,
     permisos_efectivos,
     usuario_actual,
     usuario_puede_facturar,
@@ -40,12 +43,15 @@ from ..security import (
     verificar_password,
 )
 from ..services import crisp, email
+from ..services import suscripciones as suscripciones_svc
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-def _usuario_out(u: models.Usuario) -> UsuarioOut:
+def _usuario_out(db: Session, u: models.Usuario) -> UsuarioOut:
     empleado = es_empleado(u)
+    funciones = funciones_usuario(db, u)
+    sus = suscripciones_svc.suscripcion_vigente(db, u)
     return UsuarioOut(
         id=u.id,
         nombre=u.nombre,
@@ -59,17 +65,22 @@ def _usuario_out(u: models.Usuario) -> UsuarioOut:
         rol=u.rol,
         email_confirmado=bool(u.email_confirmado),
         aviso_alertas_pendiente=u.aviso_alertas_pendiente or 0,
-        facturacion_habilitada=usuario_puede_facturar(u),
-        iva_habilitada=usuario_puede_iva(u),
-        contabilidad_habilitada=usuario_puede_contabilidad(u),
+        facturacion_habilitada=usuario_puede_facturar(db, u),
+        iva_habilitada=usuario_puede_iva(db, u),
+        contabilidad_habilitada=usuario_puede_contabilidad(db, u),
+        # Lo que el plan del estudio le habilita: con esto el front arma el menú y esconde las
+        # secciones que no corresponden (el backend las cierra igual en cada endpoint).
+        funciones=funciones,
+        plan=sus.plan if sus else suscripciones_svc.PLAN_DEFAULT,
+        plan_nombre=suscripciones_svc.plan_de(sus)["nombre"] if sus else "",
         es_empleado=empleado,
         # Sólo para empleados: el front esconde las acciones sin permiso (el backend igual enforca).
         permisos=permisos_efectivos(u) if empleado else None,
     )
 
 
-def _auth_out(usuario: models.Usuario) -> AuthOut:
-    return AuthOut(token=crear_token(usuario.id), usuario=_usuario_out(usuario))
+def _auth_out(db: Session, usuario: models.Usuario) -> AuthOut:
+    return AuthOut(token=crear_token(usuario.id), usuario=_usuario_out(db, usuario))
 
 
 @router.post("/registro", response_model=AuthOut, status_code=status.HTTP_201_CREATED)
@@ -113,7 +124,10 @@ def registrar(datos: RegistroIn, db: Session = Depends(get_db)):
         ) from e
     db.refresh(usuario)
     crisp.intentar_sincronizar(usuario)  # crea el contacto en Crisp (best-effort: no rompe el alta)
-    return _auth_out(usuario)
+    # Toda cuenta nace con su suscripción (plan por defecto, sin cargo): así el acceso a las
+    # funciones sale siempre de una fila real y el admin la ve en el panel desde el día uno.
+    suscripciones_svc.obtener_o_crear(db, usuario)
+    return _auth_out(db, usuario)
 
 
 @router.post("/login", response_model=AuthOut)
@@ -124,22 +138,22 @@ def login(datos: LoginIn, db: Session = Depends(get_db)):
     if usuario is None or not verificar_password(datos.password, usuario.password_hash):
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos.")
     if not usuario.activo:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Tu cuenta fue deshabilitada. Escribinos a orbitaglobalclientes@gmail.com "
-                "para reactivarla."
-            ),
-        )
+        raise HTTPException(status_code=403, detail=MENSAJE_CUENTA_DESHABILITADA)
+    # Usuario del equipo de un estudio que dejó de tener contratados los usuarios: no entra, y se
+    # entera acá (con el motivo) en vez de pasar el login y chocarse contra errores adentro.
+    motivo = acceso_suspendido(db, usuario)
+    if motivo:
+        raise HTTPException(status_code=403, detail=motivo)
     usuario.ultimo_acceso = dt.datetime.now(dt.timezone.utc)
     db.commit()
-    return _auth_out(usuario)
+    return _auth_out(db, usuario)
 
 
 @router.get("/me", response_model=UsuarioOut)
-def me(usuario: models.Usuario = Depends(usuario_actual)):
-    """Devuelve el contador logueado (sirve para rehidratar la sesión en el front)."""
-    return _usuario_out(usuario)
+def me(usuario: models.Usuario = Depends(usuario_actual), db: Session = Depends(get_db)):
+    """Devuelve el contador logueado (sirve para rehidratar la sesión en el front). El front lo
+    re-consulta al abrir la app y al volver a la pestaña: de ahí toma los cambios de plan."""
+    return _usuario_out(db, usuario)
 
 
 @router.post("/aviso-alertas")
@@ -201,7 +215,7 @@ def actualizar_perfil(
     db.commit()
     db.refresh(usuario)
     crisp.intentar_sincronizar(usuario)  # mantiene el contacto del CRM al día (best-effort)
-    return _usuario_out(usuario)
+    return _usuario_out(db, usuario)
 
 
 @router.post("/borrar-cuenta")

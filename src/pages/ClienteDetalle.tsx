@@ -50,7 +50,7 @@ import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
 import { formatCuit, formatDate, cn } from '@/lib/utils';
 import { derivarAlertas } from '@/lib/alertas';
 import { descargarReporteExcel } from '@/lib/reporteExcel';
-import { esAdminReal, puedeFacturar, tienePermiso } from '@/lib/cuenta';
+import { esAdminReal, puedeFacturar, puedeUsar, tienePermiso } from '@/lib/cuenta';
 import { getMovimientos } from '@/services/movimientosService';
 import { useQueryClient } from '@tanstack/react-query';
 import { useClienteReal, useComunicaciones, qkClientes } from '@/lib/queries';
@@ -108,6 +108,8 @@ export function ClienteDetalle() {
 
   const esReal = cliente?.fuente === 'arca';
   const facturarHabilitado = esReal && puedeFacturar();
+  // La conciliación puede no estar incluida en el plan del estudio: ahí la solapa no va.
+  const verConciliacion = puedeUsar('conciliacion');
   // El historial de sincronizaciones es diagnóstico interno (resultados/motivos técnicos): sólo lo ve
   // el superadmin, incluso cuando está mirando la cartera de un contador impersonado. El contador NO
   // lo ve (para él la app "simplemente tiene" el dato).
@@ -421,7 +423,9 @@ export function ClienteDetalle() {
                   <Briefcase className="h-3.5 w-3.5" /> Relación de dependencia
                 </TabsTrigger>
               )}
-              <TabsTrigger value="reconciliacion" className={tabTriggerClass}>Reconciliación bancaria</TabsTrigger>
+              {verConciliacion && (
+                <TabsTrigger value="reconciliacion" className={tabTriggerClass}>Reconciliación bancaria</TabsTrigger>
+              )}
               <TabsTrigger value="comprobantes" className={tabTriggerClass}>Comprobantes</TabsTrigger>
               <TabsTrigger value="dfe" className={cn(tabTriggerClass, 'inline-flex items-center gap-1.5')}>
                 Domicilio Fiscal Electrónico
@@ -449,7 +453,9 @@ export function ClienteDetalle() {
           />
         </TabsContent>
         <TabsContent value="estado-cuenta" className="mt-0 space-y-4">
-          {tienePermiso('editar_cliente') && <VistaPreviaVencimiento cliente={cliente} />}
+          {puedeUsar('vencimientos') && tienePermiso('editar_cliente') && (
+            <VistaPreviaVencimiento cliente={cliente} />
+          )}
           <EstadoCuenta cliente={cliente} />
         </TabsContent>
         {!!cliente.facilidades?.length && (
@@ -473,9 +479,11 @@ export function ClienteDetalle() {
             <RelacionDependencia cliente={cliente} calc={calc} />
           </TabsContent>
         )}
-        <TabsContent value="reconciliacion" className="mt-0">
-          <ReconciliacionBancaria cliente={cliente} />
-        </TabsContent>
+        {verConciliacion && (
+          <TabsContent value="reconciliacion" className="mt-0">
+            <ReconciliacionBancaria cliente={cliente} />
+          </TabsContent>
+        )}
         <TabsContent value="comprobantes" className="mt-0">
           <ListaComprobantes cliente={cliente} onCambio={() => void refetchCliente()} />
         </TabsContent>

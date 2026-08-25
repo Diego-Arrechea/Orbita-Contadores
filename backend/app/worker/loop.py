@@ -34,6 +34,7 @@ from ..services.puntos_venta import paso_worker as puntos_venta_paso_worker
 from ..services.alertas import evaluar_y_notificar
 from ..services.scheduler import _sincronizar_con_reintento
 from ..services.sincronizacion import sincronizar_padron
+from ..services.suscripciones import avisar_vencimientos
 from ..services.vencimientos import pasar_vencimientos
 from .janitor import limpiar_perfiles_viejos
 
@@ -295,6 +296,30 @@ def _quizas_vencimientos() -> None:
         db.close()
 
 
+_ultimo_aviso_suscripcion = 0.0
+
+
+def _quizas_aviso_suscripcion() -> None:
+    """Una vez por día, avisa por mail a los contadores cuya suscripción está por vencer. Vencer les
+    apaga secciones, así que el aviso tiene que salir solo y antes. Idempotente por vencimiento (ver
+    services/suscripciones.avisar_vencimientos), y no-op si no hay SMTP configurado."""
+    global _ultimo_aviso_suscripcion
+    if not settings.sus_aviso_enabled:
+        return
+    if time.monotonic() - _ultimo_aviso_suscripcion < 24 * 3600:
+        return
+    _ultimo_aviso_suscripcion = time.monotonic()
+    db = SessionLocal()
+    try:
+        res = avisar_vencimientos(db, dias=settings.sus_aviso_dias)
+        if res["enviados"]:
+            logger.info("aviso de suscripción: %s", res)
+    except Exception:  # noqa: BLE001
+        logger.warning("avisar_vencimientos falló", exc_info=True)
+    finally:
+        db.close()
+
+
 _ultimo_janitor = 0.0
 
 
@@ -349,6 +374,7 @@ def main() -> None:
         _latir()  # registra el latido (vivo + en vuelo) para el panel admin
         _quizas_pasar_alertas()
         _quizas_vencimientos()
+        _quizas_aviso_suscripcion()
         _quizas_janitor()
         _stop.wait(settings.sync_poll_segundos)
 

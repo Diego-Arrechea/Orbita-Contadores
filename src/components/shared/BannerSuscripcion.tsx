@@ -3,26 +3,26 @@
  *
  * La suscripción vive escondida en Configuración (es administración, no trabajo del día), así que
  * nadie va a entrar a mirar si venció: el aviso tiene que salir a buscar al contador donde ya está.
- * Aparece sólo cuando hay algo que hacer —el vencimiento está cerca o ya pasó— y lleva directo a la
- * pestaña. El resto del tiempo no ocupa lugar.
+ * Aparece sólo cuando hay algo que hacer —el vencimiento está cerca o ya pasó— y el resto del
+ * tiempo no ocupa lugar.
  *
- * Mismo gate que el apartado (`esAdminReal`): mientras la suscripción no esté abierta a los
- * contadores, el aviso tampoco. Al abrirla, este componente ya queda funcionando.
+ * Lo ve cualquier CUENTA PLENA, no sólo el equipo de Órbita: vencer apaga secciones (facturación,
+ * equipo, IVA, contabilidad), así que el contador tiene que enterarse antes de que le pase. Para
+ * eso usa `/suscripcion/aviso`, que devuelve la fecha y qué está en juego pero NO precios ni
+ * historial de pagos: el apartado "Mi suscripción" sigue siendo interno hasta que estén los precios
+ * definidos. El link a la pestaña sólo aparece para quien la tiene.
  *
- * Vencer NO corta el servicio hoy, así que la copy avisa y ofrece regularizar; nunca amenaza con
- * cortar nada.
+ * Además del cartel, el backend manda un mail unos días antes (services/suscripciones.
+ * avisar_vencimientos): el que no entra a la app durante una semana se entera igual.
  */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, CalendarClock, ChevronRight, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { esAdminReal } from '@/lib/cuenta';
+import { esAdminReal, esEmpleado } from '@/lib/cuenta';
 import { formatDate } from '@/lib/utils';
-import { obtenerMiSuscripcion, type MiSuscripcion } from '@/services/suscripcionService';
-
-/** Cuántos días antes del vencimiento empieza a avisar. */
-const DIAS_AVISO = 10;
+import { obtenerAvisoSuscripcion, type AvisoSuscripcion } from '@/services/suscripcionService';
 
 const LS_OCULTO = 'orbita_aviso_suscripcion';
 const hoyISO = () => new Date().toISOString().slice(0, 10);
@@ -46,10 +46,11 @@ function posponerHastaMañana(): void {
 
 type Aviso = { tono: 'danger' | 'warning'; titulo: string; detalle: string };
 
-/** Qué avisar, si es que hay algo que avisar. */
-function avisoDe(s: MiSuscripcion): Aviso | null {
+/** Qué avisar, si es que hay algo que avisar. El backend ya decidió si corresponde (`hay_aviso`);
+ *  acá sólo se redacta. */
+function avisoDe(s: AvisoSuscripcion): Aviso | null {
+  if (!s.hay_aviso) return null;
   const dias = s.dias_restantes;
-  if (s.estado === 'sin_cargo' || s.estado === 'cancelada') return null;
 
   if (s.estado === 'vencida' || (dias !== null && dias !== undefined && dias < 0)) {
     return {
@@ -57,12 +58,15 @@ function avisoDe(s: MiSuscripcion): Aviso | null {
       titulo: s.vence
         ? `Tu suscripción venció el ${formatDate(s.vence)}`
         : 'Tenés un período pendiente de pago',
-      detalle: 'Escribinos y lo regularizamos en el día.',
+      detalle: s.se_pierde.length
+        ? `Hasta que se regularice no vas a poder usar: ${s.se_pierde.join(', ')}. Tu cartera de ` +
+          'clientes, las alertas y los recordatorios siguen como están. Escribinos y lo ' +
+          'resolvemos en el día.'
+        : 'Escribinos y lo regularizamos en el día.',
     };
   }
 
-  if (dias === null || dias === undefined || dias > DIAS_AVISO || !s.vence) return null;
-
+  if (dias === null || dias === undefined || !s.vence) return null;
   const cuando =
     dias === 0 ? 'hoy' : dias === 1 ? 'mañana' : `en ${dias} días (${formatDate(s.vence)})`;
   return {
@@ -70,28 +74,35 @@ function avisoDe(s: MiSuscripcion): Aviso | null {
     titulo:
       s.estado === 'prueba'
         ? `Tu período de prueba termina ${cuando}`
-        : `Tu suscripción se renueva ${cuando}`,
-    detalle: 'Si querés cambiar de plan o revisar la facturación, entrá a tu suscripción.',
+        : `Tu suscripción vence ${cuando}`,
+    detalle: s.se_pierde.length
+      ? `Si no llegamos a renovarla vas a dejar de tener: ${s.se_pierde.join(', ')}. Escribinos y ` +
+        'lo resolvemos en el día.'
+      : 'Escribinos y lo resolvemos en el día.',
   };
 }
 
 export function BannerSuscripcion() {
-  const habilitado = esAdminReal();
-  const { data: sus } = useQuery({
-    queryKey: ['suscripcion'],
-    queryFn: obtenerMiSuscripcion,
+  // Los usuarios del equipo no tienen suscripción propia (se cubren con la del titular): a ellos no
+  // les mostramos nada, no es su decisión ni su información.
+  const habilitado = !esEmpleado();
+  const { data: aviso } = useQuery({
+    queryKey: ['suscripcion', 'aviso'],
+    queryFn: obtenerAvisoSuscripcion,
     enabled: habilitado,
   });
   const [pospuesto, setPospuesto] = useState(pospuestoHoy);
 
-  if (!habilitado || !sus) return null;
-  const aviso = avisoDe(sus);
-  if (!aviso) return null;
+  if (!habilitado || !aviso) return null;
+  const texto = avisoDe(aviso);
+  if (!texto) return null;
 
-  const esUrgente = aviso.tono === 'danger';
+  const esUrgente = texto.tono === 'danger';
   if (!esUrgente && pospuesto) return null;
 
   const Icono = esUrgente ? AlertTriangle : CalendarClock;
+  // El apartado con los planes y la facturación todavía es interno: sólo enlazamos a quien lo tiene.
+  const verApartado = esAdminReal();
 
   return (
     <div
@@ -112,14 +123,16 @@ export function BannerSuscripcion() {
 
         <div className="min-w-0 flex-1">
           <div className={'font-semibold ' + (esUrgente ? 'text-danger' : 'text-warning-foreground')}>
-            {aviso.titulo}
+            {texto.titulo}
           </div>
-          <p className="mt-0.5 text-sm text-muted-foreground">{aviso.detalle}</p>
-          <Button asChild size="sm" variant="outline" className="mt-3">
-            <Link to="/configuracion?tab=suscripcion">
-              Ver mi suscripción <ChevronRight className="h-4 w-4" />
-            </Link>
-          </Button>
+          <p className="mt-0.5 text-sm text-muted-foreground">{texto.detalle}</p>
+          {verApartado && (
+            <Button asChild size="sm" variant="outline" className="mt-3">
+              <Link to="/configuracion?tab=suscripcion">
+                Ver mi suscripción <ChevronRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          )}
         </div>
 
         {/* El aviso de "por vencer" se puede posponer hasta mañana; el de vencido se queda. */}

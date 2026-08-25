@@ -13,13 +13,16 @@ import {
   cuentaActual,
   esAdmin,
   esEmpleado,
+  puedeUsar,
   puedeVerContabilidad,
   puedeVerIVA,
   tienePermiso,
   tokenActual,
   actualizarUsuarioGuardado,
   impersonando,
+  type FuncionPlan,
 } from '@/lib/cuenta';
+import { useSesion } from '@/lib/useSesion';
 import { getMe, registrarLogout } from '@/services/authService';
 import { InvalidadorCache } from '@/components/shared/InvalidadorCache';
 import { CargasToasts } from '@/components/shared/CargasToasts';
@@ -48,6 +51,14 @@ function RequireCuentaPlena({ children }: { children: ReactNode }) {
   return esEmpleado() ? <Navigate to="/" replace /> : <>{children}</>;
 }
 
+/** Secciones que dependen del plan del estudio: si el plan no las incluye, la ruta lleva al
+ *  dashboard (además de no figurar en el menú). El backend cierra igual sus endpoints. */
+function RequireFuncion({ funcion, children }: { funcion: FuncionPlan; children: ReactNode }) {
+  useSesion(); // si le cambian el plan mientras navega, la ruta se re-evalúa
+  if (!cuentaActual()) return <Navigate to="/login" replace />;
+  return puedeUsar(funcion) ? <>{children}</> : <Navigate to="/" replace />;
+}
+
 /** Alta de clientes: para usuarios del estudio, sólo con el permiso que da el titular. */
 function RequireNuevoCliente({ children }: { children: ReactNode }) {
   if (!cuentaActual()) return <Navigate to="/login" replace />;
@@ -57,6 +68,7 @@ function RequireNuevoCliente({ children }: { children: ReactNode }) {
 /** Apartado de IVA: rollout gateado (allowlist IVA_EMAILS + admins). Sin habilitación → al dashboard.
  *  El backend valida el mismo gate en cada endpoint. */
 function RequireIVA({ children }: { children: ReactNode }) {
+  useSesion();
   if (!cuentaActual()) return <Navigate to="/login" replace />;
   return puedeVerIVA() ? <>{children}</> : <Navigate to="/" replace />;
 }
@@ -64,6 +76,7 @@ function RequireIVA({ children }: { children: ReactNode }) {
 /** Apartado de Contabilidad: rollout gateado (allowlist CONTABILIDAD_EMAILS + admins). Sin
  *  habilitación → al dashboard. El backend valida el mismo gate en cada endpoint. */
 function RequireContabilidad({ children }: { children: ReactNode }) {
+  useSesion();
   if (!cuentaActual()) return <Navigate to="/login" replace />;
   return puedeVerContabilidad() ? <>{children}</> : <Navigate to="/" replace />;
 }
@@ -81,13 +94,20 @@ import { Admin } from '@/pages/Admin';
 import { GestionUsuarios } from '@/pages/GestionUsuarios';
 
 export default function App() {
-  // Al cargar la app con sesión, refresca los datos del usuario (rol, estado) desde el backend y los
-  // re-guarda. Así se reflejan los cambios sin obligar a re-loguear. Silencioso: si el token ya no
-  // sirve, los guards de ruta se encargan de mandar al login.
+  // Al cargar la app con sesión —y cada vez que el contador vuelve a la pestaña— refresca los datos
+  // del usuario (rol, estado, plan del estudio) desde el backend y los re-guarda. Así un cambio de
+  // plan se refleja sin obligar a re-loguear. Silencioso: si el token ya no sirve, los guards de
+  // ruta se encargan de mandar al login.
   useEffect(() => {
-    if (tokenActual()) {
-      getMe().then(actualizarUsuarioGuardado).catch(() => {});
+    function refrescar() {
+      if (tokenActual()) getMe().then(actualizarUsuarioGuardado).catch(() => {});
     }
+    refrescar();
+    function alVolver() {
+      if (document.visibilityState === 'visible') refrescar();
+    }
+    document.addEventListener('visibilitychange', alVolver);
+    return () => document.removeEventListener('visibilitychange', alVolver);
   }, []);
 
   // Registra el "último cierre" de la app para el panel admin cuando el contador cierra o recarga la
@@ -122,7 +142,14 @@ export default function App() {
       >
         <Route path="/" element={<Dashboard />} />
         <Route path="/alertas" element={<Alertas />} />
-        <Route path="/conciliacion" element={<Conciliacion />} />
+        <Route
+          path="/conciliacion"
+          element={
+            <RequireFuncion funcion="conciliacion">
+              <Conciliacion />
+            </RequireFuncion>
+          }
+        />
         <Route
           path="/iva"
           element={
@@ -152,7 +179,9 @@ export default function App() {
           path="/usuarios"
           element={
             <RequireCuentaPlena>
-              <GestionUsuarios />
+              <RequireFuncion funcion="usuarios">
+                <GestionUsuarios />
+              </RequireFuncion>
             </RequireCuentaPlena>
           }
         />

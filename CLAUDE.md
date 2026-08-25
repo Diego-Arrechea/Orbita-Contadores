@@ -37,6 +37,30 @@ pertenencia con `_cliente_propio()` (404 si no es suyo). Token JWT en `Authoriza
 `Usuario.rol` ('contador'|'admin') habilita el panel `/admin`; `Usuario.activo=false` bloquea login
 y API (403). Admins sembrados al arrancar: ver `ADMINS_SEMILLA` en `db.py`.
 
+## Qué puede usar cada cuenta (el plan manda)
+El plan de la `Suscripcion` decide qué secciones ve y puede abrir el estudio. La verdad la calcula
+`services/suscripciones.funciones_de()` en tres capas: **plan** (`PLANES[...]["funciones"]`) →
+**estado** (vencida/cancelada recorta a `FUNCIONES_DEGRADADO`) → **excepciones por cuenta**
+(`Suscripcion.funciones_json`, suman o restan). El núcleo (`panel`, `alertas`, `estado_cuenta`)
+nunca se apaga. Al agregar una función nueva: sumala a `FUNCIONES`, metela en los planes que
+correspondan y gateá sus endpoints.
+- **Backend**: `security.requiere_funcion("clave")` como dependencia (de router o de endpoint), o
+  `usuario_puede(db, usuario, "clave")`. Fórmula: rollout (allowlist del `.env`) **Y** plan **Y**
+  permiso de equipo. Los admins pueden todo; los empleados heredan la suscripción del titular.
+- **Frontend**: `UsuarioOut.funciones` viaja en la sesión; `lib/cuenta.puedeUsar('clave')` esconde
+  menú/rutas/solapas y `useSesion()` re-renderiza cuando cambia. `App.tsx` refresca la sesión
+  (`getMe`) al abrir la app y al volver a la pestaña: de ahí sale el cambio de plan sin re-login.
+- **Aviso previo**: vencer degrada, así que se avisa antes por dos vías —
+  `GET /api/suscripcion/aviso` (abierto a cualquier cuenta plena, sin precios ni pagos: el apartado
+  sigue interno) que alimenta `BannerSuscripcion`, y un mail del worker
+  (`services/suscripciones.avisar_vencimientos`, idempotente por fecha de vencimiento,
+  `SUS_AVISO_DIAS`/`SUS_AVISO_ENABLED`).
+- **Cuentas suspendidas**: `security.acceso_suspendido()` deja SIN acceso a los usuarios del equipo
+  cuando su estudio pierde la función `usuarios` (estado derivado, no toca `Usuario.activo`: vuelven
+  solos al recuperarla). Esos 403 —y el de cuenta deshabilitada— llevan la cabecera
+  `X-Orbita-Sesion: cerrada` (expuesta en el CORS): `apiClient` cierra la sesión y el login muestra
+  el motivo (`tomarMotivoSalida`). Un 403 por plan NO corta la sesión.
+
 ## Migraciones (sin Alembic)
 `create_all()` crea tablas nuevas; para columnas nuevas en tablas existentes está
 `asegurar_columnas()` en `db.py`, que corre al iniciar la app. La parte de `usuarios`

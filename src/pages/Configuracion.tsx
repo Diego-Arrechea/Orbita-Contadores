@@ -63,7 +63,13 @@ import {
   actualizarPerfil,
   borrarCuenta,
 } from '@/services/authService';
-import { actualizarUsuarioGuardado, esAdminReal, logoutCuenta, usuarioActual } from '@/lib/cuenta';
+import {
+  actualizarUsuarioGuardado,
+  esAdminReal,
+  logoutCuenta,
+  puedeUsar,
+  usuarioActual,
+} from '@/lib/cuenta';
 import { SeccionSuscripcion } from '@/components/shared/SeccionSuscripcion';
 import { enviarPruebaWhatsapp } from '@/services/notificacionesService';
 import { PrevisualizacionVencimientos } from '@/components/shared/PrevisualizacionVencimientos';
@@ -96,8 +102,14 @@ export function Configuracion() {
   // La pestaña de suscripción todavía no está abierta a los contadores: si llega el deep-link sin
   // habilitación, se ignora (si no, el contenedor quedaría vacío, sin pestaña que lo muestre).
   const verSuscripcion = esAdminReal();
+  // Los recordatorios de vencimiento pueden no entrar en el plan del estudio: sin ellos, la pestaña
+  // no va (sus endpoints responden 403).
+  const verVencimientos = puedeUsar('vencimientos');
   const tabPedida =
-    tabParam && TABS_VALIDAS.includes(tabParam) && (tabParam !== 'suscripcion' || verSuscripcion)
+    tabParam &&
+    TABS_VALIDAS.includes(tabParam) &&
+    (tabParam !== 'suscripcion' || verSuscripcion) &&
+    (tabParam !== 'vencimientos' || verVencimientos)
       ? tabParam
       : 'ventanas';
   const [tab, setTab] = useState(tabPedida);
@@ -359,7 +371,9 @@ export function Configuracion() {
           <TabsTrigger value="ventanas" className="shrink-0"><Calendar className="h-3.5 w-3.5" />Ventanas</TabsTrigger>
           <TabsTrigger value="umbrales" className="shrink-0"><Bell className="h-3.5 w-3.5" />Alertas</TabsTrigger>
           <TabsTrigger value="notificaciones" className="shrink-0"><MessageCircle className="h-3.5 w-3.5" />WhatsApp</TabsTrigger>
-          <TabsTrigger value="vencimientos" className="shrink-0"><MailCheck className="h-3.5 w-3.5" />Vencimientos</TabsTrigger>
+          {verVencimientos && (
+            <TabsTrigger value="vencimientos" className="shrink-0"><MailCheck className="h-3.5 w-3.5" />Vencimientos</TabsTrigger>
+          )}
           <TabsTrigger value="categorias" className="shrink-0"><Database className="h-3.5 w-3.5" />Categorías</TabsTrigger>
           <TabsTrigger value="causales" className="shrink-0"><Info className="h-3.5 w-3.5" />Causales</TabsTrigger>
           <TabsTrigger value="cuenta" className="shrink-0"><UserCog className="h-3.5 w-3.5" />Cuenta</TabsTrigger>
@@ -735,9 +749,11 @@ export function Configuracion() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="vencimientos" className="mt-0">
-          <PrevisualizacionVencimientos />
-        </TabsContent>
+        {verVencimientos && (
+          <TabsContent value="vencimientos" className="mt-0">
+            <PrevisualizacionVencimientos />
+          </TabsContent>
+        )}
 
         <TabsContent value="categorias">
           <Card className="overflow-hidden">

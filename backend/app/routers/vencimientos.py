@@ -6,7 +6,8 @@ la cartera, el contador la completa, y acá se importan las filas ya parseadas (
 conciliación: el archivo se parsea en el browser y sólo viajan las filas). El armado y envío del
 mail mensual se agregan en un paso posterior.
 
-Protegido y multi-tenant: cada contador sólo toca los clientes de su cartera (reusa ids_cartera).
+Protegido y multi-tenant: cada contador sólo toca los clientes de su cartera (reusa ids_cartera)
+y el plan del estudio tiene que incluir los recordatorios (dependencia de router, 403 si no).
 """
 from __future__ import annotations
 
@@ -28,11 +29,15 @@ from ..schemas import (
     PruebaVencimientoOut,
     VencimientoClienteOut,
 )
-from ..security import ids_cartera, requiere_permiso, usuario_actual
+from ..security import ids_cartera, requiere_funcion, requiere_permiso, usuario_actual
 from ..services import vencimientos as vencimientos_svc
 from .clientes import _cliente_propio
 
-router = APIRouter(prefix="/api/vencimientos", tags=["vencimientos"])
+router = APIRouter(
+    prefix="/api/vencimientos",
+    tags=["vencimientos"],
+    dependencies=[Depends(requiere_funcion("vencimientos"))],
+)
 
 # Validación de email deliberadamente laxa: alcanza para descartar celdas obviamente mal cargadas
 # (sin @ o sin dominio) sin rechazar direcciones válidas raras. La verdad la da el servidor de mail.

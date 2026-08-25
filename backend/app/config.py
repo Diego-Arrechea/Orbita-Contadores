@@ -183,6 +183,14 @@ class Settings(BaseSettings):
     # Validez del enlace de confirmación de email (horas). 48h da un margen cómodo.
     email_confirm_token_horas: int = 48
 
+    # Aviso previo al vencimiento de la SUSCRIPCIÓN del contador (mail al titular). Vencer degrada
+    # la cuenta (pierde facturación, equipo, IVA y contabilidad hasta regularizar), así que el aviso
+    # tiene que llegar antes y solo. `sus_aviso_dias` = con cuántos días de anticipación se manda
+    # (uno solo por vencimiento: la marca vive en Suscripcion.aviso_vence_enviado).
+    # SUS_AVISO_ENABLED=false lo apaga sin tocar nada más; sin SMTP configurado ya es un no-op.
+    sus_aviso_enabled: bool = True
+    sus_aviso_dias: int = 7
+
 
 settings = Settings()
 
