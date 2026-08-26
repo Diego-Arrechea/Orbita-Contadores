@@ -84,6 +84,11 @@ class Usuario(Base):
     # habilitados (default). Sólo aplica a empleados: para cuentas plenas se ignora (pueden todo).
     # Los edita el titular desde "Gestión de usuarios"; se enforcan en los endpoints (requiere_permiso).
     permisos_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Cuenta de DEMOSTRACIÓN: su cartera son clientes de ejemplo, cargados a mano para mostrar el
+    # producto (facultad, prueba comercial). No se consultan contra los organismos ni se les manda
+    # nada a sus contactos: el motor continuo los saltea, el recordatorio de vencimientos no sale y
+    # las consultas en vivo de la ficha responden con lo que ya está cargado. Ver services/demo.py.
+    demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     # Cuenta habilitada. False = el contador no puede iniciar sesión ni operar (la deshabilita un
     # admin desde el panel). El chequeo vive en login y en usuario_actual.
     activo: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")

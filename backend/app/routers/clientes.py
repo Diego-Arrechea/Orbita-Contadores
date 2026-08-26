@@ -41,8 +41,9 @@ from ..schemas import (
     resolver_regimen,
 )
 from ..scraping import jobs
-from ..security import ids_cartera, requiere_permiso, usuario_actual
+from ..security import bloquear_si_demo, ids_cartera, requiere_permiso, usuario_actual
 from ..services import comunicaciones as comunicaciones_svc
+from ..services import demo as demo_svc
 from ..services import ipc
 from ..services import sincronizacion
 from ..services.scheduler import estado_scheduler
@@ -618,6 +619,7 @@ def actualizar_clave_cliente(
     clientes afectados de este contador (la clave es de esa cuenta, no de un cliente puntual); si
     quedara mal, la próxima sincronización vuelve a marcar el que corresponda."""
     cliente = _cliente_propio(db, cuit, usuario)
+    bloquear_si_demo(db, usuario, "Los clientes de ejemplo no tienen clave que actualizar.")
     clave = datos.clave.strip()
     if not clave:
         raise HTTPException(status_code=400, detail="La clave no puede estar vacía.")
@@ -745,6 +747,7 @@ def sincronizar_cliente(
     """Dispara, en un thread, la sincronización COMPLETA (comprobantes + padrón) y devuelve un job_id
     para seguir el progreso. Corre en background: sigue aunque el front navegue o recargue la página."""
     _cliente_propio(db, cuit, usuario)
+    bloquear_si_demo(db, usuario, "Sus datos ya están al día.")
     job_id = jobs.crear_job()
     threading.Thread(target=_correr_sync, args=(job_id, cuit), daemon=True).start()
     return {"job_id": job_id}
@@ -826,6 +829,7 @@ def sincronizar_todos_endpoint(
     """Dispara, en un thread, la sincronización SECUENCIAL de TODOS los clientes del contador y
     devuelve un job_id para seguir el progreso (mismo registro de jobs que el sync por-cliente).
     Corre en background: sigue aunque el front navegue o recargue la página."""
+    bloquear_si_demo(db, usuario, "Sus datos ya están al día.")
     ids = ids_cartera(db, usuario)
     total = db.scalar(
         select(func.count())
@@ -997,6 +1001,10 @@ def sincronizar_deuda_cliente(
 ):
     """Consulta la CCMA en vivo (Estado de cuenta → cálculo de deuda) y cachea el detalle."""
     cliente = _cliente_propio(db, cuit, usuario)
+    if demo_svc.es_demo(db, usuario):
+        # Cartera de ejemplo: el estado de cuenta ya viene cargado, se devuelve tal cual.
+        detalle = json.loads(cliente.deuda_detalle) if cliente.deuda_detalle else None
+        return {"deuda_detalle": detalle, "ok": bool(detalle)}
     try:
         res = sincronizacion.sincronizar_deuda(db, cuit)
     except ValueError as e:
@@ -1016,6 +1024,12 @@ def constancia_cliente(
     """Constancia de inscripción OFICIAL del cliente, traída en vivo, como HTML listo para abrir e
     imprimir/guardar en PDF desde el navegador (trae verificador y vigencia del día). Sólo titular."""
     cliente = _cliente_propio(db, cuit, usuario)
+    if demo_svc.es_demo(db, usuario):
+        raise HTTPException(
+            status_code=409,
+            detail="Los clientes de ejemplo de la cuenta de demostración no tienen constancia de "
+            "inscripción: no están inscriptos ante el organismo.",
+        )
     credencial = db.get(models.CredencialARCA, cliente.cuit_credencial)
     if credencial is None:
         raise HTTPException(
@@ -1100,6 +1114,9 @@ def sincronizar_comunicaciones_cliente(
     """Trae en vivo las comunicaciones del DFE y las cachea. Pensado para el motor de sync; expuesto
     también acá para poder refrescar a demanda (y para probar en desarrollo sin esperar al worker)."""
     _cliente_propio(db, cuit, usuario)
+    if demo_svc.es_demo(db, usuario):
+        # Cartera de ejemplo: las comunicaciones ya vienen cargadas.
+        return [_com_out(c) for c in comunicaciones_svc.listar(db, cuit)]
     try:
         comunicaciones_svc.sincronizar_comunicaciones(db, cuit)
     except ValueError as e:

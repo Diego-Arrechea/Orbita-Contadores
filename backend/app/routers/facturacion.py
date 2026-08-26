@@ -26,7 +26,13 @@ from ..config import settings
 from ..db import SessionLocal, get_db
 from ..schemas import JobOut
 from ..scraping import jobs
-from ..security import admin_actual, requiere_permiso, usuario_actual, usuario_puede_facturar
+from ..security import (
+    admin_actual,
+    bloquear_si_demo,
+    requiere_permiso,
+    usuario_actual,
+    usuario_puede_facturar,
+)
 from ..services import comprobante_pdf
 from ..services import facturacion as facturacion_svc
 from .clientes import _cliente_propio
@@ -166,6 +172,7 @@ def facturar(
     """Emite una Factura C / Nota de Crédito C a nombre del cliente (emisión REAL en producción).
     Genera el certificado del cliente la primera vez (puede tardar ~1 min)."""
     _exigir_habilitado(db, usuario)
+    bloquear_si_demo(db, usuario, "Los clientes de ejemplo no emiten comprobantes.")
     _cliente_propio(db, cuit, usuario)
     asociado = body.comprobante_asociado.model_dump() if body.comprobante_asociado else None
     items = [i.model_dump() for i in body.items] if body.items else None
@@ -292,6 +299,7 @@ def preparar_facturacion(
     """Arranca, en segundo plano, la generación del certificado del cliente. Devuelve job_id para
     seguir el progreso (el bootstrap es scraping y tarda ~1 min)."""
     _exigir_habilitado(db, usuario)
+    bloquear_si_demo(db, usuario, "Los clientes de ejemplo no emiten comprobantes.")
     _cliente_propio(db, cuit, usuario)
     job_id = jobs.crear_job()
     threading.Thread(target=_correr_preparacion, args=(job_id, cuit), daemon=True).start()

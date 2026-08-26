@@ -22,6 +22,7 @@ from .config import (
     settings,
 )
 from .db import get_db
+from .services import demo as demo_svc
 from .services import suscripciones as suscripciones_svc
 
 ALGORITMO = "HS256"
@@ -369,3 +370,15 @@ def ids_cartera(db: Session, usuario: models.Usuario) -> list[int]:
             db.scalars(select(models.Usuario.id).where(models.Usuario.titular_id == usuario.id))
         )
     return ids
+
+
+def bloquear_si_demo(db: Session, usuario: models.Usuario, accion: str = "") -> None:
+    """Corta una acción que saldría hacia afuera (traer datos del organismo, emitir, dar de alta un
+    cliente) cuando la cuenta es de DEMOSTRACIÓN: su cartera es de ejemplo y no existe ante ARCA.
+    `accion` completa el mensaje ("no se dan de alta clientes nuevos"). Ver services/demo.py."""
+    if not demo_svc.es_demo(db, usuario):
+        return
+    detalle = "Esta es una cuenta de demostración: su cartera es de ejemplo y ya viene cargada."
+    if accion:
+        detalle = f"{detalle} {accion}"
+    raise HTTPException(status_code=409, detail=detalle)
