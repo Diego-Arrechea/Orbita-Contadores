@@ -699,9 +699,12 @@ def sembrar_cliente(db, usuario, idx: int, cfg: dict, hoy: dt.date) -> dict:
     mail, tel = contacto_de(cfg, rng)
 
     # La clave fiscal del cliente: en la demo no abre nada, pero la columna es obligatoria y así la
-    # ficha se comporta igual que con un cliente real.
+    # ficha se comporta igual que con un cliente real. El flush va acá a propósito: el cliente
+    # apunta a la credencial por clave foránea y Postgres la exige YA escrita (SQLite no chista, así
+    # que sin esto anda en desarrollo y revienta en producción).
     if db.get(models.CredencialARCA, cuit) is None:
         db.add(models.CredencialARCA(cuit=cuit, clave_cifrada=cifrar(b"demo-sin-uso")))
+        db.flush()
 
     movimientos = generar_movimientos(rng, cfg, cuit, hoy)
     desde12 = inicio_ventana_12m(hoy)
