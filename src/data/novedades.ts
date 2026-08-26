@@ -42,6 +42,30 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-08-26-cartera-vacia-usuarios-del-estudio',
+    fecha: '2026-08-26',
+    titulo: 'Queda claro cuándo un usuario todavía no tiene clientes',
+    resumen:
+      'Si alguien de tu equipo abre su cartera y no ve a nadie, ahora el mensaje dice por qué.',
+    items: [
+      {
+        tipo: 'arreglo',
+        texto:
+          'Cuando un usuario de tu estudio entraba y todavía no le habías asignado ningún cliente, la pantalla decía que no había resultados para los filtros aplicados —aunque no hubiera ningún filtro puesto— y parecía una falla. Ahora le avisa que todavía no tiene clientes a su cargo y que se los tenés que asignar vos.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'En Gestión de usuarios, los integrantes que no tienen ningún cliente asignado quedan marcados como "Sin clientes", para que veas de un vistazo quién todavía no puede trabajar.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Si tu cartera está vacía porque todavía no cargaste clientes, la pantalla te lo dice y te ofrece el botón para agregar el primero.',
+      },
+    ],
+  },
+  {
     id: '2026-08-24-iva-contabilidad-suscripcion',
     fecha: '2026-08-24',
     titulo: 'IVA y Contabilidad, para todos',
