@@ -77,6 +77,9 @@ def _migrar_usuarios(conn) -> None:
         # Baja en cascada: True = el empleado se deshabilitó al dar de baja a su titular (se revierte
         # solo al reactivarlo). Ver routers/admin.py.
         "desactivado_en_cascada": "BOOLEAN DEFAULT FALSE" if not es_sqlite else "BOOLEAN DEFAULT 0",
+        # Cuenta de demostración (cartera de ejemplo): queda fuera del motor continuo y de los
+        # envíos automáticos a sus contactos. Ver models.Usuario.demo.
+        "demo": "BOOLEAN DEFAULT FALSE" if not es_sqlite else "BOOLEAN DEFAULT 0",
     }
     for nombre, tipo in nuevas.items():
         if nombre not in cols:

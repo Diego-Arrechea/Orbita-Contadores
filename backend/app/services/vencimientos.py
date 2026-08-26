@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..config import settings
+from . import demo
 from . import email as email_svc
 from . import suscripciones
 
@@ -151,12 +152,13 @@ def _master_activo(db: Session, usuario_id: int | None, cache: dict[int | None, 
     """¿El estudio dueño de este cliente manda el recordatorio automático? Dos condiciones: que su
     plan incluya los recordatorios y que los tenga ACTIVADOS. El master vive en la config del
     TITULAR (config_json.vencimientos.activo); para un empleado se mira la del titular.
+    Una cuenta de demostración nunca manda: sus clientes son de ejemplo (ver services/demo.py).
     Cachea por usuario_id para no releer la config ni la suscripción en cada cliente."""
     if usuario_id in cache:
         return cache[usuario_id]
     activo = False
     u = db.get(models.Usuario, usuario_id) if usuario_id else None
-    if u is not None:
+    if u is not None and not demo.es_demo(db, u):
         titular = db.get(models.Usuario, u.titular_id) if u.titular_id else u
         if (
             titular is not None

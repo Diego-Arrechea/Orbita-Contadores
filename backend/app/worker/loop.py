@@ -27,6 +27,7 @@ from sqlalchemy import func, or_, select
 from ..config import settings
 from ..db import SessionLocal
 from ..models import ClienteARCA, Extraccion, WorkerHeartbeat
+from ..services import demo as demo_svc
 from ..services.agro import paso_worker as agro_paso_worker
 from ..services.aportes import paso_worker as aportes_paso_worker
 from ..services.facilidades import paso_worker as facilidades_paso_worker
@@ -88,6 +89,9 @@ def _clientes_vencidos(db, limite: dt.datetime, limite_fallidos: dt.datetime):
     )
     # coalesce a una fecha muy vieja: NULL (nunca sincronizado) ordena primero, de forma portable.
     epoch = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)
+    # Cuentas de demostración: su cartera es de ejemplo (no existe ante los organismos), así que
+    # nunca entra al ciclo. Ver services/demo.py.
+    ids_demo = demo_svc.ids_demo(db)
     q = (
         select(ClienteARCA.cuit, ClienteARCA.cuit_credencial)
         .outerjoin(ult, ult.c.cuit == ClienteARCA.cuit)
@@ -108,6 +112,7 @@ def _clientes_vencidos(db, limite: dt.datetime, limite_fallidos: dt.datetime):
             # que no tenemos, así que reintentar es en vano hasta que el cliente la desactive. Una sync
             # exitosa (cuando la desactive) apaga el flag y el cliente vuelve al ciclo.
             ClienteARCA.doble_factor.is_(False),
+            *([ClienteARCA.usuario_id.notin_(ids_demo)] if ids_demo else []),
             or_(
                 ult.c.fecha.is_(None),                                            # nunca sincronizado
                 ult.c.fecha < limite,                                             # vencido normal

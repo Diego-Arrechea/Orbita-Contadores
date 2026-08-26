@@ -5,12 +5,13 @@ import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete
+from sqlalchemy.orm import Session
 
 from .. import models
 from ..crypto import cifrar
-from ..db import SessionLocal
+from ..db import SessionLocal, get_db
 from ..schemas import JobOut, MonitorearIn, OnboardingIn, RepresentadoOut
-from ..security import requiere_permiso, usuario_actual
+from ..security import bloquear_si_demo, requiere_permiso, usuario_actual
 from ..arca import motor
 from ..scraping import jobs
 from ..services import sincronizacion
@@ -26,9 +27,11 @@ class _CargaCancelada(Exception):
 @router.post("/representados", response_model=list[RepresentadoOut])
 def listar_representados(
     datos: OnboardingIn,
-    _usuario: models.Usuario = Depends(requiere_permiso("nuevo_cliente")),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(requiere_permiso("nuevo_cliente")),
 ):
     """Loguea con la clave del contador y devuelve sus CUITs operables (él + representados)."""
+    bloquear_si_demo(db, usuario, "No se dan de alta clientes nuevos.")
     try:
         return motor.listar_representados(datos.cuit, datos.clave)
     except Exception as e:  # noqa: BLE001
@@ -40,12 +43,14 @@ def listar_representados(
 @router.post("/monitorear")
 def monitorear(
     datos: MonitorearIn,
+    sesion: Session = Depends(get_db),
     usuario: models.Usuario = Depends(requiere_permiso("nuevo_cliente")),
 ):
     """Guarda la clave del contador (cifrada), registra los clientes elegidos y dispara, en un
     thread, la PRIMERA sincronización (histórico) de cada uno. Devuelve job_id para el progreso.
     Los clientes quedan asignados a quien hace el alta (usuario_id): si la hace un empleado con el
     permiso 'nuevo_cliente', el cliente entra automáticamente a su cartera."""
+    bloquear_si_demo(sesion, usuario, "No se dan de alta clientes nuevos.")
     if not datos.seleccionados:
         raise HTTPException(status_code=400, detail="No hay clientes seleccionados.")
 
