@@ -838,7 +838,15 @@ export function GestionUsuarios() {
                         </div>
                         <div className="text-xs text-muted-foreground">{m.email}</div>
                       </TableCell>
-                      <TableCell className="text-center tabular-nums">{m.clientes}</TableCell>
+                      <TableCell className="text-center">
+                        {m.clientes > 0 ? (
+                          <span className="tabular-nums">{m.clientes}</span>
+                        ) : (
+                          <Badge variant="warning" title="Asignale clientes para que pueda trabajar">
+                            Sin clientes
+                          </Badge>
+                        )}
+                      </TableCell>
                       <TableCell className="text-sm">{fechaHora(m.ultimo_acceso)}</TableCell>
                       <TableCell className="text-center">
                         {m.activo ? (
@@ -917,9 +925,13 @@ export function GestionUsuarios() {
                   ) : (
                     <Badge variant="muted">Desactivada</Badge>
                   )}
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {m.clientes} cliente(s) a cargo
-                  </span>
+                  {m.clientes > 0 ? (
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {m.clientes} cliente{m.clientes === 1 ? '' : 's'} a cargo
+                    </span>
+                  ) : (
+                    <Badge variant="warning">Sin clientes</Badge>
+                  )}
                   <span className="text-xs text-muted-foreground">
                     Último acceso: {fechaHora(m.ultimo_acceso)}
                   </span>

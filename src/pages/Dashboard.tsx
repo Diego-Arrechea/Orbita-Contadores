@@ -50,7 +50,7 @@ import { useClientesReales } from '@/lib/queries';
 import { RecordatoriosContactosBanner } from '@/components/shared/RecordatoriosContactosBanner';
 import { BannerSuscripcion } from '@/components/shared/BannerSuscripcion';
 import { useCargas } from '@/context/CargasContext';
-import { cuentaActual, puedeUsar, tienePermiso } from '@/lib/cuenta';
+import { cuentaActual, esEmpleado, puedeUsar, tienePermiso } from '@/lib/cuenta';
 import { formatCuit, formatPercent, formatDate } from '@/lib/utils';
 import type { EstadoAlerta, TipoActividad } from '@/types';
 
@@ -577,8 +577,8 @@ export function Dashboard() {
             })}
             {filtrados.length === 0 && cargando.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-10 text-muted-foreground">
-                  No hay clientes que coincidan con los filtros aplicados.
+                <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
+                  <CarteraSinFilas sinCartera={clientesConCalculo.length === 0} />
                 </TableCell>
               </TableRow>
             )}
@@ -708,12 +708,44 @@ export function Dashboard() {
             );
           })}
           {filtrados.length === 0 && cargando.length === 0 && (
-            <div className="text-center py-10 text-muted-foreground">
-              No hay clientes que coincidan con los filtros aplicados.
+            <div className="py-10 text-center text-muted-foreground">
+              <CarteraSinFilas sinCartera={clientesConCalculo.length === 0} />
             </div>
           )}
         </div>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * Qué decirle a quien abre la cartera y no ve ninguna fila. Distingue el caso REAL, porque el
+ * mensaje único de antes ("no coinciden con los filtros") era engañoso: un usuario del estudio al
+ * que todavía no le repartieron clientes leía que el problema eran los filtros —que ni siquiera
+ * había tocado— y lo reportaba como que la cuenta no le mostraba sus clientes.
+ */
+function CarteraSinFilas({ sinCartera }: { sinCartera: boolean }) {
+  if (!sinCartera) {
+    return <span>No hay clientes que coincidan con los filtros aplicados.</span>;
+  }
+  if (esEmpleado()) {
+    return (
+      <span>
+        Todavía no tenés clientes a tu cargo. Pedile a quien administra la cuenta del estudio que te
+        asigne los que llevás: apenas lo haga, aparecen acá.
+      </span>
+    );
+  }
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <span>Todavía no tenés clientes en tu cartera.</span>
+      {tienePermiso('nuevo_cliente') && (
+        <Button asChild size="sm">
+          <Link to="/clientes/nuevo">
+            <Plus className="h-4 w-4" /> Agregar el primero
+          </Link>
+        </Button>
+      )}
     </div>
   );
 }
