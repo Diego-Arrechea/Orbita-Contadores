@@ -30,6 +30,7 @@ from app import models
 from app.crypto import cifrar
 from app.db import Base, SessionLocal, asegurar_columnas, engine
 from app.security import hashear_password
+from app.services import categorias_afip
 from app.services import conciliacion as conciliacion_svc
 from app.services import contabilidad as contabilidad_svc
 
@@ -43,7 +44,10 @@ SEMILLA = 26082026  # cartera reproducible: misma semilla, misma historia
 # en varios lados y un número mal formado no pasaría.
 DOC_BASE = 99_100_000
 
-# Tabla oficial del monotributo (misma que usa el front en src/data/categorias.ts).
+# Escala del monotributo. Es el FALLBACK: al arrancar, `cargar_categorias_oficiales()` la pisa con
+# los montos vigentes que publica el organismo —la misma fuente que usa la app para mostrar el tope
+# de cada cliente—. Sin eso la cartera quedaría calibrada contra topes viejos y media cartera
+# aparecería como "debería recategorizarse" apenas el contador abre el panel.
 CATEGORIAS: dict[str, dict] = {
     "A": {"tope": 10_277_988, "servicios": 42_387, "comercio": 42_387},
     "B": {"tope": 15_058_448, "servicios": 48_251, "comercio": 48_251},
@@ -129,6 +133,24 @@ LOCALIDADES = [
 
 
 # --- Utilidades ------------------------------------------------------------------------------
+
+
+def cargar_categorias_oficiales() -> str:
+    """Actualiza CATEGORIAS con la escala vigente. Devuelve una línea para el log."""
+    try:
+        oficiales = categorias_afip.montos_categorias()
+    except Exception:  # noqa: BLE001 — sin conexión a la tabla pública: seguimos con el fallback
+        oficiales = None
+    if not oficiales:
+        return "Escala del monotributo: se usa la tabla de referencia del script (sin actualizar)."
+    for c in oficiales:
+        if c.codigo in CATEGORIAS:
+            CATEGORIAS[c.codigo] = {
+                "tope": float(c.topeAnual),
+                "servicios": float(c.cuotaServicios),
+                "comercio": float(c.cuotaComercio),
+            }
+    return f"Escala del monotributo: vigente (tope Cat. A ${CATEGORIAS['A']['tope']:,.0f})."
 
 
 def digito_verificador(base: str) -> str:
@@ -927,6 +949,7 @@ def main() -> None:
             print(f"Se limpió la cartera anterior ({borrados} clientes).")
 
         hoy = dt.date.today()
+        print(cargar_categorias_oficiales())
         print(f"Generando {len(CARTERA)} clientes de ejemplo...")
         resumen = []
         for idx, cfg in enumerate(CARTERA):
