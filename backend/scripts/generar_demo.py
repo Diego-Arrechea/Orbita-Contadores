@@ -719,7 +719,10 @@ def sembrar_cliente(db, usuario, idx: int, cfg: dict, hoy: dt.date) -> dict:
         nombre=cfg["nombre"],
         cuit_credencial=cuit,
         usuario_id=usuario.id,
-        regimen="responsable_inscripto" if es_ri else "monotributo",
+        # Lo que guarda el padrón: 'monotributo' o 'no_monotributo'. Que un cliente sea responsable
+        # inscripto lo resuelve el sistema al ver que emite comprobantes clase A (resolver_regimen),
+        # igual que con un cliente real.
+        regimen="no_monotributo" if es_ri else "monotributo",
         email_cliente=mail,
         telefono_cliente=tel,
         # El recordatorio queda habilitado en la ficha (así la pantalla de Vencimientos muestra a
