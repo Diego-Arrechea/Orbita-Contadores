@@ -251,6 +251,7 @@ export function calcularCliente(
   // comprobantes. Sin oficial, `facturacion12` ya incluye la carga manual.
   const fechaProyectada = proyectarCruceTope(
     oficialValido ? cliente.facturacion12mOficial! + factManual12 : facturacion12,
+    ultimos12.map(m => m.emitidasNetas + m.ingresosNoFacturados),
     promUlt3,
     variacion,
     topeRef,
@@ -320,8 +321,28 @@ export function calcularCliente(
   };
 }
 
+/**
+ * Mes en que la facturación cruzaría el tope si se mantiene el ritmo actual.
+ *
+ * El tope se mide sobre los ÚLTIMOS 12 MESES, que es una ventana que se corre: cada mes que entra,
+ * sale el de un año atrás. Por eso la proyección no acumula y ya: suma el mes proyectado y resta el
+ * que se cae de la ventana. Un contribuyente que factura parejo nunca cruza nada —su ventana se
+ * queda quieta— y sólo cruza el que viene creciendo. (Acumulando sin restar, cualquiera con
+ * actividad terminaba "cruzando el tope" en algún momento de los 36 meses, y la alerta se le
+ * encendía a la cartera entera.)
+ *
+ * El horizonte es de 12 meses: el aviso existe para poder hacer algo (recategorizarse en la ventana
+ * que viene, o prepararse para salir del régimen), y un cruce estimado a dos o tres años no es
+ * accionable — es ruido amarillo en el semáforo durante años.
+ *
+ * `mensuales` son los 12 meses que hoy forman la ventana, del más viejo al más nuevo.
+ */
+/** Hasta dónde mira la proyección de cruce de tope (meses). */
+const MESES_PROYECCION = 12;
+
 function proyectarCruceTope(
   acumulado12: number,
+  mensuales: number[],
   promedioMensual: number,
   variacion: number,
   tope: number,
@@ -329,11 +350,14 @@ function proyectarCruceTope(
   if (acumulado12 >= tope) return undefined;
   let acumulado = acumulado12;
   let prom = promedioMensual;
+  const ventana = [...mensuales];
   const fecha = new Date(HOY);
-  for (let i = 0; i < 36; i++) {
+  for (let i = 0; i < MESES_PROYECCION; i++) {
     fecha.setMonth(fecha.getMonth() + 1);
     prom = prom * (1 + Math.max(-0.1, Math.min(variacion, 0.2)));
-    acumulado += prom;
+    const sale = ventana.shift() ?? 0;
+    ventana.push(prom);
+    acumulado += prom - sale;
     if (acumulado >= tope) return fecha;
   }
   return undefined;

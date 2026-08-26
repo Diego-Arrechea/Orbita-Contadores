@@ -676,17 +676,14 @@ def asegurar_usuario(db, email: str, password: str, nombre: str, apellido: str, 
     usuario.acepto_terminos = True
     usuario.email_confirmado = True  # sin banner de "confirmá tu correo" en la demo
     usuario.aviso_alertas_pendiente = 0
-    # Config del estudio, elegida para que el panel se lea:
-    #  - la proyección de facturación se fija en 2% mensual en vez de seguir el índice del mercado,
-    #    así el semáforo no cambia de color porque cambió una expectativa de inflación;
-    #  - el aviso por PROYECCIÓN de cruce de tope queda apagado (el umbral del 80% sigue activo).
-    #    Ese aviso se le enciende a casi cualquier monotributista con actividad, y en una cartera
-    #    entera tapa a los que sí necesitan atención. El profesor puede prenderlo en Configuración;
-    #  - los envíos automáticos, apagados: los contactos de la cartera son de ejemplo.
+    # Config del estudio. Los criterios de alertas quedan en los valores por defecto (así se ve el
+    # producto como viene); lo único que se fija es la proyección de facturación en 2% mensual en
+    # vez de seguir el índice del mercado, para que el semáforo no cambie de color de un día para
+    # otro porque cambió una expectativa de inflación. Los envíos automáticos, apagados: los
+    # contactos de la cartera son de ejemplo.
     usuario.config_json = json.dumps({
         "inflacionAuto": False,
         "inflacionMensualProyeccion": 0.02,
-        "alertas": {"tope": {"proyeccionCruce": False}},
         "vencimientos": {"activo": False},
         "notificaciones": {"activo": False, "horaDesde": 9, "horaHasta": 21},
     }, ensure_ascii=False)

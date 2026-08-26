@@ -206,6 +206,12 @@ def _migrar_clientes_arca(conn) -> None:
     cols = _columnas(conn, "clientes_arca")
     if not cols:
         return
+    # `regimen` nació VARCHAR(20) y no le entra 'responsable_inscripto' (21 caracteres), que es lo
+    # que devuelve el padrón de impuestos cuando el contribuyente tiene IVA activo. SQLite no valida
+    # el largo, así que el problema sólo aparece en Postgres, y recién al sincronizar el primer
+    # responsable inscripto. Ampliar un varchar es sólo metadata: no reescribe la tabla.
+    if not es_sqlite:
+        conn.execute(text("ALTER TABLE clientes_arca ALTER COLUMN regimen TYPE VARCHAR(24)"))
     if "alertas_baseline_en" not in cols:
         tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
         conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN alertas_baseline_en {tipo}"))
