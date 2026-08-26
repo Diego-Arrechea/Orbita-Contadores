@@ -42,6 +42,30 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-08-26-topes-y-aviso-de-cruce',
+    fecha: '2026-08-26',
+    titulo: 'Los topes del monotributo, siempre en la escala vigente',
+    resumen:
+      'Las alertas se calculan contra los montos que rigen hoy, y el aviso de cruce de tope dejó de encenderse a media cartera.',
+    items: [
+      {
+        tipo: 'arreglo',
+        texto:
+          'La escala del monotributo se reajusta cada semestre. Los avisos que te llegaban por mail o WhatsApp se estaban calculando contra los montos anteriores, así que podías ver un cliente en orden en la pantalla y recibir por otro lado un aviso de recategorización del mismo cliente. Ahora los dos usan la escala vigente y dicen lo mismo.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'El aviso "al ritmo actual cruzaría el tope" se le encendía a casi cualquier cliente con actividad y terminaba tapando a los que sí necesitaban atención. Ahora aparece sólo si el cruce se proyecta dentro de los próximos 12 meses: quien factura parejo no vuelve a aparecer marcado.',
+      },
+      {
+        tipo: 'arreglo',
+        texto:
+          'Los clientes responsables inscriptos ya no se traban al actualizar sus datos impositivos.',
+      },
+    ],
+  },
+  {
     id: '2026-08-26-cartera-vacia-usuarios-del-estudio',
     fecha: '2026-08-26',
     titulo: 'Queda claro cuándo un usuario todavía no tiene clientes',
