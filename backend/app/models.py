@@ -160,7 +160,9 @@ class ClienteARCA(Base):
     # si figura en el padrón de Monotributo; 'no_monotributo' si el padrón confirma que NO lo es
     # (RI / exento / empleado / consumidor final). None = todavía no se consultó el padrón (en ese
     # caso el régimen se infiere de los comprobantes que emite). Ver services/sincronizacion.py.
-    regimen: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # 24 y no 20: 'responsable_inscripto' (que produce el padrón de impuestos cuando el
+    # contribuyente tiene IVA activo) son 21 caracteres, y Postgres rechaza el que no entra.
+    regimen: Mapped[str | None] = mapped_column(String(24), nullable=True)
     # Padrón de Monotributo (real, traído del portal Monotributo). Nullable: si el cliente no es
     # monotributista (p. ej. Responsable Inscripto) o aún no se trajo, quedan en None.
     categoria: Mapped[str | None] = mapped_column(String(2), nullable=True)

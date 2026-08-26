@@ -1,6 +1,8 @@
 """App FastAPI: CORS para el front + router de clientes. Crea las tablas al iniciar."""
 from __future__ import annotations
 
+import logging
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -32,10 +34,28 @@ Base.metadata.create_all(bind=engine)
 asegurar_columnas()  # migración ligera: agrega columnas nuevas a tablas existentes
 
 
+def refrescar_escala_monotributo() -> None:
+    """Deja la escala del monotributo en la vigente. Corre en un hilo aparte al levantar la app: si
+    la tabla pública no responde, quedan los valores de referencia y no se demora el arranque."""
+    try:
+        from .data.categorias import aplicar_montos_oficiales
+        from .services.categorias_afip import montos_categorias
+
+        if aplicar_montos_oficiales(montos_categorias()):
+            from .data.categorias import CATEGORIAS
+
+            logging.getLogger("orbita").info(
+                "Escala del monotributo actualizada (tope Cat. A $%s)", f"{CATEGORIAS[0].tope_anual:,.0f}"
+            )
+    except Exception:  # noqa: BLE001 — sin escala vigente seguimos con la de referencia
+        logging.getLogger("orbita").warning("No se pudo actualizar la escala del monotributo", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # El sync continuo lo hace el contenedor worker (app/worker). El scheduler diario in-process
     # queda apagado por defecto para no duplicar el trabajo; se puede reactivar con SCHEDULER_ENABLED.
+    threading.Thread(target=refrescar_escala_monotributo, daemon=True).start()
     if settings.scheduler_enabled:
         iniciar_scheduler(settings.sync_hour)
     yield

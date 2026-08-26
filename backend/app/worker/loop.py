@@ -326,6 +326,28 @@ def _quizas_aviso_suscripcion() -> None:
 
 
 _ultimo_janitor = 0.0
+_ultima_escala = 0.0
+
+
+def _quizas_escala() -> None:
+    """Mantiene al día la escala del monotributo (topes y cuotas por categoría). El worker es un
+    proceso aparte del backend, con su propia copia en memoria: si no la refresca acá, evaluaría las
+    alertas que ENVÍA contra una escala vieja mientras el contador ve la vigente en pantalla."""
+    global _ultima_escala
+    if time.monotonic() - _ultima_escala < 6 * 3600:  # la escala cambia por semestre
+        return
+    _ultima_escala = time.monotonic()
+    try:
+        from ..data.categorias import CATEGORIAS, aplicar_montos_oficiales
+        from ..services.categorias_afip import montos_categorias
+
+        if aplicar_montos_oficiales(montos_categorias()):
+            logger.info(
+                "escala del monotributo actualizada (tope Cat. A $%s)",
+                f"{CATEGORIAS[0].tope_anual:,.0f}",
+            )
+    except Exception:  # noqa: BLE001 — seguimos con la escala de referencia
+        logger.warning("no se pudo actualizar la escala del monotributo", exc_info=True)
 
 
 def _quizas_janitor() -> None:
@@ -381,6 +403,7 @@ def main() -> None:
         _quizas_vencimientos()
         _quizas_aviso_suscripcion()
         _quizas_janitor()
+        _quizas_escala()
         _stop.wait(settings.sync_poll_segundos)
 
     logger.info("motor de sync detenido")

@@ -12,15 +12,16 @@ Es puro: no toca la DB. Determinista.
 from __future__ import annotations
 
 import datetime as dt
+from collections import deque
 from dataclasses import dataclass
 
 from ..data.categorias import (
     CATEGORIAS,
     RATIO_GASTOS_COMERCIO,
     RATIO_GASTOS_SERVICIOS,
-    TOPE_CATEGORIA_K,
     get_categoria,
     inferir_categoria,
+    tope_categoria_k,
 )
 from ..schemas import ClienteOut, HistorialMesOut
 
@@ -57,18 +58,39 @@ def _sumar_meses(fecha: dt.date, n: int) -> dt.date:
     return dt.date(y, mo, min(fecha.day, ult))
 
 
+# Hasta dónde mira la proyección de cruce de tope (meses). Espejo de MESES_PROYECCION en el front.
+MESES_PROYECCION = 12
+
+
 def _proyectar_cruce_tope(
-    acumulado_12: float, promedio_mensual: float, variacion: float, tope: float, hoy: dt.date
+    acumulado_12: float,
+    mensuales: list[float],
+    promedio_mensual: float,
+    variacion: float,
+    tope: float,
+    hoy: dt.date,
 ) -> dt.date | None:
-    """Mes estimado en que la facturación acumulada cruzaría el tope, a ritmo reciente + tendencia.
-    Espejo de proyectarCruceTope(): None si ya lo superó o si no cruza en 36 meses."""
+    """Mes en que la facturación cruzaría el tope si se mantiene el ritmo actual. Espejo de
+    proyectarCruceTope(): None si ya lo superó o si no cruza dentro del horizonte.
+
+    El tope se mide sobre los últimos 12 meses, que es una ventana que se CORRE: cada mes que entra,
+    sale el de un año atrás. Por eso se suma el mes proyectado y se resta el que se cae. Quien
+    factura parejo nunca cruza —su ventana se queda quieta— y sólo cruza el que viene creciendo.
+    El horizonte es de 12 meses: el aviso existe para poder hacer algo (recategorizarse en la ventana
+    que viene, o prepararse para salir del régimen), y un cruce estimado a dos o tres años no es
+    accionable — es ruido amarillo en el semáforo durante años.
+
+    `mensuales` son los 12 meses que hoy forman la ventana, del más viejo al más nuevo."""
     if acumulado_12 >= tope:
         return None
     acumulado = acumulado_12
     prom = promedio_mensual
-    for i in range(1, 37):
+    ventana = deque(mensuales)
+    for i in range(1, MESES_PROYECCION + 1):
         prom = prom * (1 + max(-0.1, min(variacion, 0.2)))
-        acumulado += prom
+        sale = ventana.popleft() if ventana else 0.0
+        ventana.append(prom)
+        acumulado += prom - sale
         if acumulado >= tope:
             return _sumar_meses(hoy, i)
     return None
@@ -154,7 +176,7 @@ def calcular_cliente(
         CATEGORIAS[-1].codigo,
     )
 
-    ratio_gastos_tope_k = compras12 / TOPE_CATEGORIA_K
+    ratio_gastos_tope_k = compras12 / tope_categoria_k()
     ratio_umbral_legal = RATIO_GASTOS_COMERCIO if actividad == "comercio" else RATIO_GASTOS_SERVICIOS
     ratio_superado = ratio_gastos_tope_k > ratio_umbral_legal
 
@@ -165,7 +187,12 @@ def calcular_cliente(
     # Arranca del nivel oficial (lo ya acumulado según ARCA) y proyecta con el ritmo de comprobantes.
     acumulado_proy = cliente.facturacion_12m if oficial_valido else facturacion12
     fecha_proyectada = _proyectar_cruce_tope(
-        acumulado_proy, prom_ult3, variacion, tope_ref, hoy
+        acumulado_proy,
+        [m.emitidasNetas + m.ingresosNoFacturados for m in ultimos12],
+        prom_ult3,
+        variacion,
+        tope_ref,
+        hoy,
     )
 
     # Ventana de recategorización REAL de ARCA (si la trajimos) por sobre el calendario de la config:
