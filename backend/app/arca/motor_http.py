@@ -341,7 +341,21 @@ def datos_monotributo(afip: AFIP, cuit_login: str, clave: str, cuit_objetivo: st
             salida["emails"] = mails
         return salida
 
-    m = afip.monotributo()
+    try:
+        m = afip.monotributo()
+    except AFIPError:
+        # El panel de Monotributo no cargó (fallo transitorio de ARCA). Si el padrón YA dio el
+        # veredicto del régimen, se devuelve eso en vez de perder la pasada entera: el cliente
+        # queda bien identificado (sin categoría/facturómetro, que el caller no pisa). Sin
+        # veredicto del padrón no hay nada que salvar -> propaga para que el caller reintente.
+        if not reg.get("regimen"):
+            raise
+        salida = {"es_monotributista": reg.get("es_monotributista"), "regimen": reg["regimen"]}
+        if acts:
+            salida["actividades"] = acts
+        if mails:
+            salida["emails"] = mails
+        return salida
     es_mono = m.get("es_monotributista")
     # El padrón de impuestos gana como veredicto de "es monotributista": el panel puede caer en el
     # RUT (categoría None) para un monotributista vigente; ahí el impuesto Monotributo activo lo
