@@ -42,6 +42,20 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-09-01-regimen-del-padron',
+    fecha: '2026-09-01',
+    titulo: 'El régimen de cada cliente vuelve a leerse del padrón',
+    resumen:
+      'Clientes monotributistas que aparecían sin régimen definido —y por eso fuera del seguimiento de monotributo— quedan bien identificados.',
+    items: [
+      {
+        tipo: 'arreglo',
+        texto:
+          'Algunos clientes quedaban con el régimen sin determinar: se mostraban sin categoría, sin tope y sin recategorización, como si no fueran monotributistas. Ahora el régimen se toma de la inscripción impositiva del contribuyente, así que se identifican bien aunque el resto de sus datos de monotributo demore en completarse.',
+      },
+    ],
+  },
+  {
     id: '2026-08-26-topes-y-aviso-de-cruce',
     fecha: '2026-08-26',
     titulo: 'Los topes del monotributo, siempre en la escala vigente',
