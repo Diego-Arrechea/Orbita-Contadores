@@ -2415,7 +2415,13 @@ class AFIP:
                 headers={"Accept": "application/json, text/plain, */*", "Referer": URL_PORTAL_APP},
             )
             data = (r.json() or {}).get("data") or {}
-            imp = data.get("impuestos")
+            # ARCA devuelve la lista como "Impuestos" (mayúscula); hubo respuestas con
+            # "impuestos". Se busca la clave sin distinguir mayúsculas: leerla con un solo
+            # casing dejaba la lista vacía => régimen indeterminado para TODA la cartera.
+            imp = next(
+                (v for k, v in data.items() if str(k).lower() == "impuestos"),
+                None,
+            )
             return imp if isinstance(imp, list) else []
         except Exception:  # noqa: BLE001
             return []
