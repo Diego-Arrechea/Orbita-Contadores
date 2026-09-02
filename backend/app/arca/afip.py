@@ -2429,10 +2429,19 @@ class AFIP:
     def regimen_desde_impuestos(self, cuit: str | None = None) -> dict:
         """Régimen impositivo derivado del padrón de impuestos (impuestos_padron). Devuelve
         {regimen, es_monotributista, activos}:
-          - algún impuesto MONOTRIBUTO activo    -> 'monotributo'           (es_monotributista True)
-          - si no, algún IVA activo              -> 'responsable_inscripto' (False)
-          - si no, hay otros impuestos activos   -> 'no_monotributo'        (False)
+          - Monotributo e IVA: gana el de PERÍODO más reciente (ver abajo)
+          - sólo MONOTRIBUTO                     -> 'monotributo'           (es_monotributista True)
+          - sólo IVA                             -> 'responsable_inscripto' (False)
+          - otros impuestos                      -> 'no_monotributo'        (False)
           - sin datos / sin impuestos            -> regimen None, es_monotributista None (NO pisar)
+
+        ⚠️ El padrón devuelve ACTIVO también para inscripciones VIEJAS: quien pasó de Monotributo a
+        Responsable Inscripto sigue mostrando el MONOTRIBUTO de su alta original junto al IVA nuevo
+        (no hay fecha de baja). Por eso "hay MONOTRIBUTO" NO alcanza: desempata el `periodo`
+        (aaaamm) más reciente entre las dos familias, que es la fecha de alta de cada inscripción.
+        Ambos sentidos del cambio quedan bien: mono 2012 + IVA 2019 -> RI; IVA 2016 + mono 2020 ->
+        monotributo. Empate o período ausente -> monotributo (el más conservador: mantiene el
+        seguimiento en vez de sacar al cliente del panel).
 
         es_monotributista None = "no sé" → el caller cae al camino del panel (comportamiento previo).
         False sólo cuando el padrón CONFIRMA inscripción y ninguna es Monotributo (ahí se puede cortar
@@ -2443,20 +2452,36 @@ class AFIP:
         activos = [i for i in imp if str(i.get("estado") or "").strip().upper() == "ACTIVO"]
         descs = [str(i.get("descripcion") or "").upper() for i in activos]
 
-        def _hay(sub: str) -> bool:
-            return any(sub in d for d in descs)
+        def _periodo(item: dict) -> int:
+            try:
+                return int(float(item.get("periodo") or 0))
+            except (TypeError, ValueError):
+                return 0
+
+        # Período (aaaamm) más reciente de cada familia. 'IVA' es la descripción EXACTA del impuesto
+        # 30: los regímenes de retención/percepción ('SIRE - IVA', 'IVA - RG...') no son inscripción
+        # en IVA y no deben contar como RI.
+        mono = [i for i in activos if "MONOTRIBUTO" in str(i.get("descripcion") or "").upper()]
+        iva = [i for i in activos if str(i.get("descripcion") or "").strip().upper() == "IVA"]
+        p_mono = max((_periodo(i) for i in mono), default=0)
+        p_iva = max((_periodo(i) for i in iva), default=0)
 
         if not activos:
             regimen, es_mono = "no_monotributo", False  # inscripto pero todo dado de baja
-        elif _hay("MONOTRIBUTO"):
+        elif mono and iva:
+            if p_iva > p_mono:
+                regimen, es_mono = "responsable_inscripto", False
+            else:
+                regimen, es_mono = "monotributo", True
+        elif mono:
             regimen, es_mono = "monotributo", True
-        elif _hay("IVA"):
+        elif iva:
             regimen, es_mono = "responsable_inscripto", False
         else:
             regimen, es_mono = "no_monotributo", False
         self.log.info(
-            "Régimen (padrón impuestos) %s: %s | activos: %s",
-            cuit or self.cuit, regimen, ", ".join(descs) or "—",
+            "Régimen (padrón impuestos) %s: %s | mono %s / iva %s | activos: %s",
+            cuit or self.cuit, regimen, p_mono or "—", p_iva or "—", ", ".join(descs) or "—",
         )
         return {"regimen": regimen, "es_monotributista": es_mono, "activos": descs}
 
