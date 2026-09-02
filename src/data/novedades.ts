@@ -42,6 +42,20 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-09-02-regimen-ex-monotributistas',
+    fecha: '2026-09-02',
+    titulo: 'Los clientes que dejaron el monotributo se identifican bien',
+    resumen:
+      'Si un cliente pasó a responsable inscripto, ya no se lo sigue tratando como monotributista.',
+    items: [
+      {
+        tipo: 'arreglo',
+        texto:
+          'La inscripción al monotributo queda registrada aunque el cliente después haya pasado a responsable inscripto, y eso hacía que algunos aparecieran como monotributistas —con categoría, tope y recategorización— cuando ya no lo eran. Ahora se toma la inscripción más reciente, así que cada cliente queda en su régimen actual y el cambio se refleja en los dos sentidos.',
+      },
+    ],
+  },
+  {
     id: '2026-09-01-regimen-del-padron',
     fecha: '2026-09-01',
     titulo: 'El régimen de cada cliente vuelve a leerse del padrón',
