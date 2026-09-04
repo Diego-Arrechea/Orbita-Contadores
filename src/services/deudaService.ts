@@ -24,6 +24,9 @@ export interface DeudaSaldoPeriodo {
   saldo: number | null;
   tipo: string; // MONOTRIBUTO | AUTONOMO
   estado: 'DEUDOR' | 'SALDADO' | 'ACREEDOR';
+  /** false = la cuota de ese período todavía no venció (es la del mes en curso): no es deuda.
+   *  Puede faltar en datos guardados antes de que se calculara; ausente = ya vencido. */
+  exigible?: boolean;
 }
 
 /**
