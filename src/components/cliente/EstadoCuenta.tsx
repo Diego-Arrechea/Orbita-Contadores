@@ -13,7 +13,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatCurrency, esPersonaJuridica } from '@/lib/utils';
-import { getDeuda, sincronizarDeuda, type DeudaDetalle } from '@/services/deudaService';
+import {
+  getDeuda,
+  sincronizarDeuda,
+  type DeudaDetalle,
+  type DeudaSaldoPeriodo,
+} from '@/services/deudaService';
 import type { Cliente } from '@/types';
 
 interface Props {
@@ -29,6 +34,15 @@ const ESTADO_SALDO: Record<string, { label: string; variant: 'danger' | 'success
   ACREEDOR: { label: 'A favor', variant: 'success' },
   SALDADO: { label: 'Al día', variant: 'muted' },
 };
+
+/** La cuota del período en curso figura pendiente desde que se devenga, pero no es deuda hasta su
+ *  vencimiento: se muestra aparte para no confundirla con un período impago. */
+const SALDO_A_VENCER = { label: 'A vencer', variant: 'muted' } as const;
+
+function metaSaldo(s: DeudaSaldoPeriodo) {
+  if (s.estado === 'DEUDOR' && s.exigible === false) return SALDO_A_VENCER;
+  return ESTADO_SALDO[s.estado] ?? ESTADO_SALDO.SALDADO;
+}
 
 /** Tab "Estado de cuenta": deuda real de la CCMA (total, capital/intereses, movimientos por período). */
 export function EstadoCuenta({ cliente }: Props) {
@@ -226,7 +240,7 @@ export function EstadoCuenta({ cliente }: Props) {
                   </TableHeader>
                   <TableBody>
                     {saldos.map((s) => {
-                      const meta = ESTADO_SALDO[s.estado] ?? ESTADO_SALDO.SALDADO;
+                      const meta = metaSaldo(s);
                       return (
                         <TableRow key={s.periodo}>
                           <TableCell className="tabular-nums">{s.periodo}</TableCell>
@@ -248,7 +262,7 @@ export function EstadoCuenta({ cliente }: Props) {
               <div className="space-y-2 lg:hidden">
                 <div className="text-sm font-medium">Saldos por período</div>
                 {saldos.map((s) => {
-                  const meta = ESTADO_SALDO[s.estado] ?? ESTADO_SALDO.SALDADO;
+                  const meta = metaSaldo(s);
                   return (
                     <Card key={s.periodo} className="flex items-center justify-between gap-2 p-3 text-sm">
                       <span className="tabular-nums">{s.periodo}</span>

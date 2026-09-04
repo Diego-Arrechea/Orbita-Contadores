@@ -280,6 +280,10 @@ def _adjuntar_saldos_p05(afip: AFIP, cuota: dict, *, solo_si_deuda: bool) -> dic
         filas = afip.saldos_ccma(asegurar_calculo=False)
         cuota["meses_adeudados"] = afip._contar_meses_deudor(filas)  # la racha está arriba (más nuevo)
         if isinstance(cuota.get("deuda_detalle"), dict):
+            # P05 marca DEUDOR al período apenas se devenga, aunque su cuota todavía no haya vencido:
+            # se anota `exigible` para que la pantalla no muestre como deuda la cuota en curso.
+            for f in filas:
+                f["exigible"] = afip._periodo_exigible(f["periodo"])
             # P05 puede traer toda la vida de la cuenta (cientos de meses): guardamos sólo los últimos
             # 24 (más reciente primero) — alcanza para la racha y para el detalle del Estado de cuenta.
             cuota["deuda_detalle"]["saldos_periodo"] = filas[:24]

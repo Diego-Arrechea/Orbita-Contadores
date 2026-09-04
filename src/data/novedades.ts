@@ -42,6 +42,20 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-09-04-cuota-en-curso-no-es-deuda',
+    fecha: '2026-09-04',
+    titulo: 'La cuota del mes en curso ya no cuenta como deuda',
+    resumen:
+      'Los meses adeudados ahora se cuentan sólo desde el vencimiento, con el mismo criterio para toda la cartera.',
+    items: [
+      {
+        tipo: 'arreglo',
+        texto:
+          'La cuota del mes queda registrada como pendiente desde el día 1, así que a clientes al día les figuraba "adeuda 1 mes" por un período que todavía no había vencido — y con criterio despareja, porque a quien ya la había pagado no le aparecía. Ahora un período recién cuenta como adeudado después de su vencimiento, y en el estado de cuenta la cuota en curso se muestra como "A vencer" en vez de deudora.',
+      },
+    ],
+  },
+  {
     id: '2026-09-04-regimen-vs-categoria-cargada',
     fecha: '2026-09-04',
     titulo: 'La categoría cargada a mano ya no tapa el régimen del cliente',

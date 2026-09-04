@@ -3179,11 +3179,35 @@ class AFIP:
         return filas
 
     @staticmethod
-    def _contar_meses_deudor(filas: list[dict]) -> int:
-        """Meses de MONOTRIBUTO en estado DEUDOR SEGUIDOS desde el período más reciente. Corta en el
-        primer mes SALDADO/ACREEDOR. 0 si el más reciente no es deudor (hoy el cliente no adeuda)."""
+    def _periodo_exigible(periodo: str, hoy: _dt.date | None = None) -> bool:
+        """¿La cuota de ese período (mm/aaaa) YA VENCIÓ? La cuota del monotributo vence el 20 del
+        propio mes del período (corrido al lunes si cae fin de semana), así que el período en curso
+        NO es deuda hasta esa fecha.
+
+        La Consulta de Saldos (P05) marca DEUDOR al período apenas se devenga —el día 1—, mucho
+        antes de que sea exigible: contarlo hacía figurar "adeuda 1 mes" a clientes al día, y encima
+        con criterio despareja (el que ya había pagado o tiene débito automático figuraba saldado).
+        Períodos con formato raro se consideran exigibles (no ocultar deuda real)."""
+        m = re.fullmatch(r"(\d{2})/(\d{4})", periodo or "")
+        if not m:
+            return True
+        mes, anio = int(m.group(1)), int(m.group(2))
+        venc = _dt.date(anio, mes, 20)
+        if venc.weekday() == 5:  # sábado -> lunes
+            venc += _dt.timedelta(days=2)
+        elif venc.weekday() == 6:  # domingo -> lunes
+            venc += _dt.timedelta(days=1)
+        return (hoy or _dt.date.today()) > venc
+
+    @classmethod
+    def _contar_meses_deudor(cls, filas: list[dict], hoy: _dt.date | None = None) -> int:
+        """Meses de MONOTRIBUTO en estado DEUDOR SEGUIDOS desde el período más reciente YA VENCIDO.
+        Corta en el primer mes SALDADO/ACREEDOR. 0 si el más reciente no es deudor (hoy el cliente
+        no adeuda). Los períodos todavía no vencidos (la cuota en curso) no cuentan como deuda."""
         racha = 0
         for f in (x for x in filas if x["tipo"] == "MONOTRIBUTO"):  # sólo deudas de monotributo
+            if not cls._periodo_exigible(f["periodo"], hoy):
+                continue  # la cuota del período en curso todavía no venció: no es deuda
             if f["estado"] == "DEUDOR":
                 racha += 1
             else:
