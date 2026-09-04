@@ -58,6 +58,11 @@ export const NOVEDADES: Novedad[] = [
         texto:
           'En el estado de cuenta, la cuota del mes en curso figura ahora en su propio recuadro, con su importe y su fecha de vencimiento, aclarando que no está incluida en la deuda total. Así se entiende por qué el total no coincide con la suma de los períodos de la tabla.',
       },
+      {
+        tipo: 'mejora',
+        texto:
+          'Si hace más de una semana que no podemos actualizar la información de un cliente, el estado de cuenta lo avisa arriba de todo y aclara a qué fecha corresponden los importes, para que no se tomen como el saldo de hoy.',
+      },
     ],
   },
   {

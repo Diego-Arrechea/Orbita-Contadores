@@ -44,6 +44,14 @@ function metaSaldo(s: DeudaSaldoPeriodo) {
   return ESTADO_SALDO[s.estado] ?? ESTADO_SALDO.SALDADO;
 }
 
+/** Días transcurridos desde una fecha 'DD/MM/AAAA' (null si no se entiende el formato). */
+function diasDesde(fecha: string | null | undefined): number | null {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(fecha ?? '');
+  if (!m) return null;
+  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  return Math.floor((Date.now() - d.getTime()) / 86_400_000);
+}
+
 const MESES = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
   'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
@@ -129,9 +137,24 @@ export function EstadoCuenta({ cliente }: Props) {
   // en el total de deuda. Se muestra aparte para que el total y la tabla mes a mes no parezcan
   // contradecirse (la diferencia entre ambos es justamente este importe).
   const cuotaEnCurso = saldos.find(s => s.estado === 'DEUDOR' && s.exigible === false && s.saldo);
+  // Antigüedad del cálculo: mientras no se pueda acceder a la información del cliente (clave por
+  // cambiar, datos de acceso desactualizados), los importes quedan congelados en la última consulta
+  // y la deuda real sigue creciendo. Se avisa para que nadie los tome como el saldo de hoy.
+  const diasCalculo = diasDesde(det?.fecha_calculo);
+  const calculoDesactualizado = diasCalculo !== null && diasCalculo > 7;
 
   return (
     <div className="space-y-4">
+      {calculoDesactualizado && (
+        <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/15 px-4 py-2.5 text-sm text-warning-foreground">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Los importes de esta pantalla son al {det?.fecha_calculo}: hace {diasCalculo} días que no
+            podemos actualizar la información de este cliente, así que la deuda de hoy puede ser
+            mayor.
+          </span>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="font-semibold">Estado de cuenta (CCMA)</h3>
