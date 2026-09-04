@@ -53,6 +53,11 @@ export const NOVEDADES: Novedad[] = [
         texto:
           'La cuota del mes queda registrada como pendiente desde el día 1, así que a clientes al día les figuraba "adeuda 1 mes" por un período que todavía no había vencido — y con criterio despareja, porque a quien ya la había pagado no le aparecía. Ahora un período recién cuenta como adeudado después de su vencimiento, y en el estado de cuenta la cuota en curso se muestra como "A vencer" en vez de deudora.',
       },
+      {
+        tipo: 'mejora',
+        texto:
+          'En el estado de cuenta, la cuota del mes en curso figura ahora en su propio recuadro, con su importe y su fecha de vencimiento, aclarando que no está incluida en la deuda total. Así se entiende por qué el total no coincide con la suma de los períodos de la tabla.',
+      },
     ],
   },
   {

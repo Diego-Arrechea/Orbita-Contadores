@@ -44,6 +44,18 @@ function metaSaldo(s: DeudaSaldoPeriodo) {
   return ESTADO_SALDO[s.estado] ?? ESTADO_SALDO.SALDADO;
 }
 
+const MESES = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+/** '09/2026' -> 'septiembre 2026' (si no tiene ese formato, devuelve el período tal cual). */
+function nombrePeriodo(periodo: string): string {
+  const [mm, aaaa] = periodo.split('/');
+  const mes = MESES[Number(mm) - 1];
+  return mes ? `${mes} ${aaaa}` : periodo;
+}
+
 /** Tab "Estado de cuenta": deuda real de la CCMA (total, capital/intereses, movimientos por período). */
 export function EstadoCuenta({ cliente }: Props) {
   const esReal = cliente.fuente === 'arca';
@@ -113,6 +125,10 @@ export function EstadoCuenta({ cliente }: Props) {
   const det = detalle && !detalle.no_aplica ? detalle : null;
   const movimientos = det?.movimientos ?? [];
   const saldos = det?.saldos_periodo ?? [];
+  // Cuota del período en curso: figura pendiente pero todavía no venció, así que ARCA no la incluye
+  // en el total de deuda. Se muestra aparte para que el total y la tabla mes a mes no parezcan
+  // contradecirse (la diferencia entre ambos es justamente este importe).
+  const cuotaEnCurso = saldos.find(s => s.estado === 'DEUDOR' && s.exigible === false && s.saldo);
 
   return (
     <div className="space-y-4">
@@ -221,6 +237,24 @@ export function EstadoCuenta({ cliente }: Props) {
               </div>
             </Card>
           </div>
+
+          {cuotaEnCurso && (
+            <Card className="flex flex-wrap items-center justify-between gap-3 p-5">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
+                  Cuota de {nombrePeriodo(cuotaEnCurso.periodo)}
+                </div>
+                <p className="text-sm text-muted-foreground max-w-prose">
+                  Todavía no venció
+                  {cliente.proxVencFecha ? ` (vence el ${cliente.proxVencFecha})` : ''}, así que no
+                  está incluida en la deuda total.
+                </p>
+              </div>
+              <div className="text-2xl font-semibold tabular-nums">
+                {formatCurrency(Math.abs(cuotaEnCurso.saldo ?? 0))}
+              </div>
+            </Card>
+          )}
 
           {saldos.length > 0 && (
             <>
