@@ -120,18 +120,24 @@ function construirCliente(
   //   - 'pendiente': el backend NO trae veredicto (regimen null) y no hay categoría ⇒ TODAVÍA no lo
   //     sabemos (típico de un alta que no llegó a traer los datos: clave mal cargada). Antes esto caía
   //     en 'no_monotributo' y la ficha afirmaba "no es monotributista" sobre un cliente sin datos.
+  // El veredicto del backend MANDA: la categoría sólo desempata cuando no hay veredicto. Antes
+  // `catReal` alcanzaba para declarar monotributista, y como la categoría puede venir de una carga
+  // manual del contador (sobrevive a la sincronización), un cliente que el padrón daba como
+  // Responsable Inscripto seguía mostrándose con su categoría vieja de monotributo.
   const regimen: Regimen =
-    bk.regimen === 'monotributo' || catReal
+    bk.regimen === 'monotributo'
       ? 'monotributo'
       : bk.regimen === 'responsable_inscripto'
         ? 'responsable_inscripto'
         : bk.regimen === 'no_monotributo'
           ? 'no_monotributo'
-          : 'pendiente';
+          : catReal
+            ? 'monotributo'
+            : 'pendiente';
   // La categoría sólo aplica a monotributistas: la real del padrón, o inferida por facturación si
   // es monotributista sin ese dato. Para no-monotributistas: null (no se inventa).
   const categoria: CategoriaCodigo | null =
-    catReal ?? (regimen === 'monotributo' ? inferirCategoria(fact12) : null);
+    regimen === 'monotributo' ? (catReal ?? inferirCategoria(fact12)) : null;
   const tipoActividad: TipoActividad =
     bk.actividad === 'comercio' || bk.actividad === 'servicios' ? bk.actividad : 'servicios';
   return {
