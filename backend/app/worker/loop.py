@@ -164,7 +164,10 @@ def _worker(idx: int) -> None:
             n = _sincronizar_con_reintento(db, cuit)
             try:
                 sincronizar_padron(db, cuit)  # best-effort: no aplica o falló, comprobantes ya están
-            except Exception:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001
+                # Se loguea: el except mudo hacía invisible que un cliente quedara con el régimen
+                # (y la categoría/cuota) viejos pasada tras pasada, sin rastro para diagnosticar.
+                logger.warning("[w%d] %s padrón FALLÓ: %s", idx, cuit, e)
                 db.rollback()  # si el fallo dejó la sesión sucia, los pasos siguientes no se caen en cascada
             # Liquidaciones del agro: detección gradual (una vez por cliente en su próxima sync) +
             # mantenimiento semanal de los agropecuarios. best-effort: un fallo acá (p.ej. el WAF
