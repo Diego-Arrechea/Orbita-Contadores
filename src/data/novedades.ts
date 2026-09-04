@@ -42,6 +42,20 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-09-04-regimen-vs-categoria-cargada',
+    fecha: '2026-09-04',
+    titulo: 'La categoría cargada a mano ya no tapa el régimen del cliente',
+    resumen:
+      'Un cliente con categoría cargada manualmente que hoy es responsable inscripto se muestra como tal.',
+    items: [
+      {
+        tipo: 'arreglo',
+        texto:
+          'Si en la ficha había una categoría de monotributo cargada a mano, el cliente seguía figurando como monotributista aunque su situación actual fuera responsable inscripto. Ahora manda el régimen vigente: esos clientes aparecen con su régimen real en el panel y en la ficha, y no se les muestra categoría, tope ni recategorización.',
+      },
+    ],
+  },
+  {
     id: '2026-09-02-regimen-ex-monotributistas',
     fecha: '2026-09-02',
     titulo: 'Los clientes que dejaron el monotributo se identifican bien',
