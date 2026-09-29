@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Orbit, AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
+import { AccesoLayout } from '@/components/layout/AccesoLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
@@ -152,20 +153,10 @@ export function Registro() {
   }
 
   return (
-    <div className="min-h-full flex items-center justify-center p-6 bg-gradient-to-br from-background via-accent/40 to-background">
-      <div className="w-full max-w-lg py-8">
-        <div className="flex items-center justify-center mb-8">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary mr-3">
-            <Orbit className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="text-2xl font-semibold leading-none">Órbita</div>
-            <div className="text-sm text-muted-foreground">Contador</div>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border/60 rounded-2xl shadow-sm p-6 sm:p-8">
-          <h1 className="text-xl font-semibold mb-1">Creá tu estudio</h1>
+    <AccesoLayout>
+      <div className="w-full py-8">
+        <div className="">
+          <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight mb-1.5">Creá tu estudio</h1>
           <p className="text-sm text-muted-foreground mb-6">
             Registrate para empezar a monitorear a tus clientes monotributistas.
           </p>
@@ -272,6 +263,6 @@ export function Registro() {
           </div>
         </div>
       </div>
-    </div>
+    </AccesoLayout>
   );
 }

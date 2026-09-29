@@ -10,7 +10,6 @@ import {
   Users,
   Settings,
   Sparkles,
-  Orbit,
   LogOut,
   ShieldCheck,
   ChevronLeft,
@@ -142,13 +141,16 @@ function ContenidoSidebar({
           colapsada ? 'mb-6 justify-center px-0' : 'mb-9 px-3'
         )}
       >
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md">
-          <Orbit className="h-5 w-5" />
-        </div>
-        {!colapsada && (
+        {colapsada ? (
+          <span className="font-display text-[26px] font-semibold leading-none tracking-tight text-foreground" role="img" aria-label="Órbita">
+            ó<span className="text-primary">.</span>
+          </span>
+        ) : (
           <div className="leading-tight">
-            <div className="font-semibold text-lg tracking-tight text-white">Órbita</div>
-            <div className="text-xs text-[hsl(var(--sidebar-muted))]">Contador</div>
+            <div className="font-display text-[26px] font-semibold leading-none tracking-[-0.03em] text-foreground" aria-label="Órbita Contadores">
+              órbita<span className="text-primary">.</span>
+            </div>
+            <div className="mt-1 text-xs text-[hsl(var(--sidebar-muted))]">Contadores</div>
           </div>
         )}
       </div>
@@ -174,8 +176,8 @@ function ContenidoSidebar({
                 'relative flex items-center rounded-xl font-medium transition-colors',
                 colapsada ? 'h-11 w-11 justify-center' : 'gap-3 px-3.5 py-2.5 text-sm',
                 isActive
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-white'
+                  ? 'bg-[hsl(var(--sidebar-active))] text-primary'
+                  : 'text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-foreground'
               )}
             >
               <item.icon className={cn('shrink-0', colapsada ? 'h-5 w-5' : 'h-4 w-4')} />
@@ -209,7 +211,7 @@ function ContenidoSidebar({
                   type="button"
                   onClick={irAConfiguracion}
                   aria-label="Configurar mi cuenta"
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/20 text-primary text-sm font-semibold transition-colors hover:bg-primary/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-foreground text-sm font-semibold transition-colors hover:bg-accent/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   {cuenta?.iniciales ?? '—'}
                 </button>
@@ -225,7 +227,7 @@ function ContenidoSidebar({
                 <button
                   onClick={salir}
                   aria-label="Salir"
-                  className="text-[hsl(var(--sidebar-muted))] hover:text-white transition-colors p-1.5 rounded-md hover:bg-[hsl(var(--sidebar-hover))]"
+                  className="text-[hsl(var(--sidebar-muted))] hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-[hsl(var(--sidebar-hover))]"
                 >
                   <LogOut className="h-4 w-4" />
                 </button>
@@ -239,13 +241,13 @@ function ContenidoSidebar({
               type="button"
               onClick={irAConfiguracion}
               title="Configurar mi cuenta"
-              className="flex flex-1 min-w-0 items-center gap-3 rounded-lg text-left transition-colors hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="flex flex-1 min-w-0 items-center gap-3 rounded-lg text-left transition-colors hover:bg-black/[0.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary text-sm font-semibold">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground text-sm font-semibold">
                 {cuenta?.iniciales ?? '—'}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-white truncate">{cuenta?.nombre ?? 'Invitado'}</div>
+                <div className="text-sm font-semibold text-foreground truncate">{cuenta?.nombre ?? 'Invitado'}</div>
                 <div className="text-xs text-[hsl(var(--sidebar-muted))] truncate">
                   {cuenta?.estudio ?? ''}
                 </div>
@@ -253,7 +255,7 @@ function ContenidoSidebar({
             </button>
             <button
               onClick={salir}
-              className="text-[hsl(var(--sidebar-muted))] hover:text-white transition-colors p-1.5 rounded-md hover:bg-[hsl(var(--sidebar-hover))]"
+              className="text-[hsl(var(--sidebar-muted))] hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-[hsl(var(--sidebar-hover))]"
               title="Salir"
             >
               <LogOut className="h-4 w-4" />
@@ -294,14 +296,14 @@ export function Sidebar({
           'relative hidden lg:flex shrink-0 flex-col py-7 text-[hsl(var(--sidebar-foreground))] transition-[width] duration-300 ease-in-out',
           colapsada ? 'w-[78px] px-3' : 'w-72 px-4'
         )}
-        style={{ background: 'hsl(var(--sidebar))' }}
+        style={{ background: 'hsl(var(--sidebar))', boxShadow: '1px 0 0 hsl(var(--hairline))' }}
       >
         {/* Botón flotante para colapsar/expandir, montado sobre el borde derecho. */}
         <button
           onClick={toggle}
           title={colapsada ? 'Expandir menú' : 'Colapsar menú'}
           aria-label={colapsada ? 'Expandir menú' : 'Colapsar menú'}
-          className="absolute -right-3 top-9 z-40 flex h-6 w-6 items-center justify-center rounded-full border border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-muted))] shadow-md transition-colors hover:text-white"
+          className="absolute -right-3 top-9 z-40 flex h-6 w-6 items-center justify-center rounded-full border border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar))] text-[hsl(var(--sidebar-muted))] shadow-md transition-colors hover:text-foreground"
         >
           {colapsada ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
         </button>
@@ -315,22 +317,22 @@ export function Sidebar({
         <div
           onClick={onCerrarMobile}
           className={cn(
-            'fixed inset-0 z-40 bg-black/50 transition-opacity duration-300',
+            'fixed inset-0 z-40 bg-navy/50 transition-opacity duration-300',
             abiertoMobile ? 'opacity-100' : 'pointer-events-none opacity-0'
           )}
         />
         {/* Panel */}
         <aside
           className={cn(
-            'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col px-4 py-7 text-[hsl(var(--sidebar-foreground))] shadow-2xl transition-transform duration-300 ease-in-out',
-            abiertoMobile ? 'translate-x-0' : '-translate-x-full'
+            'fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] flex-col px-4 py-7 text-[hsl(var(--sidebar-foreground))] transition-transform duration-300 ease-in-out',
+            abiertoMobile ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
           )}
           style={{ background: 'hsl(var(--sidebar))' }}
         >
           <button
             onClick={onCerrarMobile}
             aria-label="Cerrar menú"
-            className="absolute right-3 top-7 z-10 flex h-8 w-8 items-center justify-center rounded-lg text-[hsl(var(--sidebar-muted))] transition-colors hover:bg-[hsl(var(--sidebar-hover))] hover:text-white"
+            className="absolute right-3 top-7 z-10 flex h-8 w-8 items-center justify-center rounded-lg text-[hsl(var(--sidebar-muted))] transition-colors hover:bg-[hsl(var(--sidebar-hover))] hover:text-foreground"
           >
             <X className="h-5 w-5" />
           </button>

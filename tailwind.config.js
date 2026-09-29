@@ -39,6 +39,10 @@ export default {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        field: 'hsl(var(--field))',
+        hairline: 'hsl(var(--hairline))',
+        navy: { DEFAULT: 'hsl(var(--navy))', 2: 'hsl(var(--navy-2))' },
+        celeste: 'hsl(var(--celeste))',
         success: {
           DEFAULT: 'hsl(var(--success))',
           foreground: 'hsl(var(--success-foreground))',
@@ -58,7 +62,12 @@ export default {
         sm: 'calc(var(--radius) - 4px)',
       },
       fontFamily: {
-        sans: ['"Inter"', 'system-ui', 'sans-serif'],
+        sans: ['"Instrument Sans"', 'system-ui', 'sans-serif'],
+        display: ['"Geist"', '"Instrument Sans"', 'system-ui', 'sans-serif'],
+      },
+      boxShadow: {
+        cta: 'var(--shadow-cta)',
+        'cta-sm': 'var(--shadow-cta-sm)',
       },
       keyframes: {
         'accordion-down': {

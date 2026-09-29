@@ -1099,7 +1099,7 @@ function SelectorResponsable({
           const id = Number(e.target.value);
           if (id !== valor) onCambiar(id);
         }}
-        className="h-9 w-full appearance-none rounded-md border border-input bg-background px-3 pr-8 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+        className="h-9 w-full appearance-none rounded-xl border border-input bg-card px-3 pr-8 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
       >
         {opciones.map(o => (
           <option key={o.id} value={o.id}>

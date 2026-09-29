@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { AccesoLayout } from '@/components/layout/AccesoLayout';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Orbit, AlertCircle, CheckCircle2, Loader2, ArrowRight } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2, ArrowRight } from 'lucide-react';
 import { confirmarEmail, getMe, mensajeDeError } from '@/services/authService';
 import { actualizarUsuarioGuardado, tokenActual } from '@/lib/cuenta';
 
@@ -41,19 +42,9 @@ export function ConfirmarEmail() {
   }, [token]);
 
   return (
-    <div className="min-h-full flex items-center justify-center p-6 bg-gradient-to-br from-background via-accent/40 to-background">
-      <div className="w-full max-w-md">
-        <div className="flex items-center justify-center mb-8">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary mr-3">
-            <Orbit className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="text-2xl font-semibold leading-none">Órbita</div>
-            <div className="text-sm text-muted-foreground">Contador</div>
-          </div>
-        </div>
-
-        <div className="bg-card border border-border/60 rounded-2xl shadow-sm p-6 sm:p-8 text-center">
+    <AccesoLayout>
+      <div className="w-full">
+        <div className=" text-center">
           {estado === 'cargando' && (
             <div className="space-y-3 py-4">
               <Loader2 className="h-7 w-7 animate-spin text-primary mx-auto" />
@@ -67,7 +58,7 @@ export function ConfirmarEmail() {
                 <CheckCircle2 className="h-7 w-7" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold mb-1">¡Correo confirmado!</h1>
+                <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight mb-1.5">¡Correo confirmado!</h1>
                 <p className="text-sm text-muted-foreground">
                   Tu dirección de correo quedó confirmada. Ya está todo listo.
                 </p>
@@ -88,7 +79,7 @@ export function ConfirmarEmail() {
                 <AlertCircle className="h-7 w-7" />
               </div>
               <div>
-                <h1 className="text-xl font-semibold mb-1">No pudimos confirmar tu correo</h1>
+                <h1 className="font-display text-[28px] font-semibold leading-tight tracking-tight mb-1.5">No pudimos confirmar tu correo</h1>
                 <p className="text-sm text-muted-foreground">
                   {error ?? 'El enlace no es válido o ya expiró.'}
                 </p>
@@ -106,6 +97,6 @@ export function ConfirmarEmail() {
           )}
         </div>
       </div>
-    </div>
+    </AccesoLayout>
   );
 }

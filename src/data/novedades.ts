@@ -42,6 +42,29 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-09-29-nuevo-diseno',
+    fecha: '2026-09-29',
+    titulo: 'Órbita estrena diseño',
+    resumen: 'Una imagen renovada, con el mismo estilo que el resto de los productos de Órbita. Todo funciona igual que antes.',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'Colores, tipografías y botones renovados en toda la aplicación: botones y pestañas en forma de píldora, tarjetas con sombra suave y un menú lateral más claro.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Nueva pantalla de ingreso, también para crear tu estudio y recuperar la contraseña, con el estilo de la marca.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Los desplegables y los campos de texto se distinguen mejor, y en la conciliación bancaria los estados de cada movimiento y sus botones se leen de un vistazo.',
+      },
+    ],
+  },
+  {
     id: '2026-09-04-cuota-en-curso-no-es-deuda',
     fecha: '2026-09-04',
     titulo: 'La cuota del mes en curso ya no cuenta como deuda',

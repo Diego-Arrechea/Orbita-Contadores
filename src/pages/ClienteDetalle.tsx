@@ -61,10 +61,10 @@ import { EliminarClienteDialog } from '@/components/cliente/EliminarClienteDialo
 import { EmitirComprobanteDialog } from '@/components/cliente/EmitirComprobanteDialog';
 
 const tabsListClass =
-  'flex w-full bg-transparent p-0 h-auto rounded-none gap-5 sm:gap-7 overflow-x-auto scrollbar-thin justify-start';
+  'flex w-full h-auto gap-2 py-3 overflow-x-auto scrollbar-thin justify-start';
 
 const tabTriggerClass =
-  'shrink-0 data-[state=active]:bg-transparent data-[state=active]:shadow-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-foreground rounded-none px-0 py-3.5 text-muted-foreground hover:text-foreground transition-colors';
+  'shrink-0';
 
 export function ClienteDetalle() {
   const { id } = useParams<{ id: string }>();
@@ -396,7 +396,7 @@ export function ClienteDetalle() {
               )}
           </div>
 
-          <div className="border-t border-border/60 bg-card/70 px-4 sm:px-7">
+          <div className="border-t border-hairline bg-card/70 px-4 sm:px-7">
             <TabsList className={tabsListClass}>
               <TabsTrigger value="situacion" className={tabTriggerClass}>Situación actual</TabsTrigger>
               <TabsTrigger value="estado-cuenta" className={tabTriggerClass}>Estado de cuenta</TabsTrigger>

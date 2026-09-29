@@ -561,9 +561,9 @@ function ResultadosTable({
 
   return (
     <Card className="overflow-hidden">
-      <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-border/60 bg-muted/30">
+      <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-hairline">
         <div className="text-sm inline-flex items-baseline gap-1.5">
-          <span className="font-medium">{resumen.leidos} movimientos leídos</span>
+          <span className="font-display text-base font-semibold">{resumen.leidos} movimientos leídos</span>
           <span className="text-muted-foreground">· {formatCurrency(resumen.totalAcreditado)} acreditado</span>
         </div>
         <Button onClick={onOpenDialog} size="sm">
@@ -658,7 +658,12 @@ function ResultadosTable({
 function EstadoBadge({ mov }: { mov: MovimientoBancario }) {
   const estado = estadoConciliacion(mov);
   const meta = ESTADO_META[estado];
-  return <Badge variant={meta.tono}>{meta.label}</Badge>;
+  return (
+    <Badge variant={meta.tono}>
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
+      {meta.label}
+    </Badge>
+  );
 }
 
 /** Detalle del cruce: con qué factura se conció el movimiento (o el motivo de que no haya match). */
@@ -732,7 +737,7 @@ function AccionesMovimiento({
         <Button size="sm" variant="soft" onClick={() => onClasificar?.(mov, 'ingreso-actividad')} disabled={!onClasificar}>
           Es venta
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => onClasificar?.(mov, 'no-es-venta')} disabled={!onClasificar}>
+        <Button size="sm" variant="outline" onClick={() => onClasificar?.(mov, 'no-es-venta')} disabled={!onClasificar}>
           No es venta
         </Button>
       </div>
@@ -825,7 +830,7 @@ function MovimientoRow({
         {formatCurrency(mov.monto)}
       </TableCell>
       <TableCell>
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col items-start gap-1">
           <EstadoBadge mov={mov} />
           <CruceDetalle mov={mov} />
         </div>
