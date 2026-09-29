@@ -438,7 +438,7 @@ export function Dashboard() {
                         {cliente.nombre}
                         {cliente.facturaAgro && (
                           <Wheat
-                            className="h-3.5 w-3.5 shrink-0 text-emerald-600"
+                            className="h-3.5 w-3.5 shrink-0 text-success"
                             aria-label="Factura agropecuario"
                           >
                             <title>Factura agropecuario</title>
@@ -609,7 +609,7 @@ export function Dashboard() {
                         <span className="font-medium leading-tight truncate">{cliente.nombre}</span>
                         {cliente.facturaAgro && (
                           <Wheat
-                            className="h-3.5 w-3.5 shrink-0 text-emerald-600"
+                            className="h-3.5 w-3.5 shrink-0 text-success"
                             aria-label="Factura agropecuario"
                           >
                             <title>Factura agropecuario</title>

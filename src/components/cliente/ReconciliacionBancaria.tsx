@@ -264,7 +264,7 @@ function ReconciliacionReal({ cliente }: Props) {
 
       <Dialog open={open} onOpenChange={o => { if (!o && step !== 'importing') setOpen(false); }}>
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
           <DialogPrimitive.Content className="fixed left-[50%] top-[50%] z-50 grid w-[min(960px,calc(100vw-2rem))] max-h-[90vh] overflow-auto translate-x-[-50%] translate-y-[-50%] border border-border/60 bg-card shadow-xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-2xl">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border/60">
               <div>
@@ -935,7 +935,7 @@ function ReconciliacionMock({ cliente }: Props) {
 
       <Dialog open={open} onOpenChange={o => { if (!o && step !== 'reconciling') setOpen(false); }}>
         <DialogPrimitive.Portal>
-          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+          <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-overlay/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
           <DialogPrimitive.Content className="fixed left-[50%] top-[50%] z-50 grid w-[min(960px,calc(100vw-2rem))] max-h-[90vh] overflow-auto translate-x-[-50%] translate-y-[-50%] border border-border/60 bg-card shadow-xl duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 sm:rounded-2xl">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border/60">
               <div>

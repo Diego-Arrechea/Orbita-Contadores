@@ -176,7 +176,7 @@ function ContenidoSidebar({
                 'relative flex items-center rounded-xl font-medium transition-colors',
                 colapsada ? 'h-11 w-11 justify-center' : 'gap-3 px-3.5 py-2.5 text-sm',
                 isActive
-                  ? 'bg-[hsl(var(--sidebar-active))] text-primary'
+                  ? 'bg-[hsl(var(--sidebar-active))] text-[hsl(var(--sidebar-active-foreground))]'
                   : 'text-[hsl(var(--sidebar-foreground))] hover:bg-[hsl(var(--sidebar-hover))] hover:text-foreground'
               )}
             >
@@ -241,7 +241,7 @@ function ContenidoSidebar({
               type="button"
               onClick={irAConfiguracion}
               title="Configurar mi cuenta"
-              className="flex flex-1 min-w-0 items-center gap-3 rounded-lg text-left transition-colors hover:bg-black/[0.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="flex flex-1 min-w-0 items-center gap-3 rounded-lg text-left transition-colors hover:bg-foreground/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground text-sm font-semibold">
                 {cuenta?.iniciales ?? '—'}
@@ -317,7 +317,7 @@ export function Sidebar({
         <div
           onClick={onCerrarMobile}
           className={cn(
-            'fixed inset-0 z-40 bg-navy/50 transition-opacity duration-300',
+            'fixed inset-0 z-40 bg-overlay/50 transition-opacity duration-300',
             abiertoMobile ? 'opacity-100' : 'pointer-events-none opacity-0'
           )}
         />

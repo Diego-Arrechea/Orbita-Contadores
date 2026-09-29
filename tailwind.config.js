@@ -43,6 +43,8 @@ export default {
         hairline: 'hsl(var(--hairline))',
         navy: { DEFAULT: 'hsl(var(--navy))', 2: 'hsl(var(--navy-2))' },
         celeste: 'hsl(var(--celeste))',
+        pill: { DEFAULT: 'hsl(var(--pill))', foreground: 'hsl(var(--pill-foreground))' },
+        overlay: 'hsl(var(--overlay))',
         success: {
           DEFAULT: 'hsl(var(--success))',
           foreground: 'hsl(var(--success-foreground))',

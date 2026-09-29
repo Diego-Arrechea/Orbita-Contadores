@@ -4,6 +4,7 @@ import { CargasIndicator } from './CargasIndicator';
 import { PreparacionesIndicator } from './PreparacionesIndicator';
 import { NotificacionesIndicator } from './NotificacionesIndicator';
 import { NovedadesIndicator } from './NovedadesIndicator';
+import { SelectorTema } from '@/components/shared/SelectorTema';
 
 export function Topbar({ onAbrirMenu }: { onAbrirMenu?: () => void }) {
   return (
@@ -21,6 +22,7 @@ export function Topbar({ onAbrirMenu }: { onAbrirMenu?: () => void }) {
       </span>
 
       <div className="ml-auto flex items-center gap-3 sm:gap-4">
+        <SelectorTema />
         <CargasIndicator />
         <PreparacionesIndicator />
         {/* Los usuarios del estudio no ven Novedades (navegación restringida). */}

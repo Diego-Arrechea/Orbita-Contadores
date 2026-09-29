@@ -6,6 +6,21 @@
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#2f6bff" />
+    <script>
+      // Modo oscuro sin destello: aplica la preferencia guardada antes de que cargue la app.
+      // Es la misma lógica que src/lib/tema.ts: si cambiás una, cambiá la otra.
+      (function () {
+        try {
+          var p = localStorage.getItem('orbita_tema') || 'claro';
+          var oscuro =
+            p === 'oscuro' || (p === 'sistema' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (oscuro) {
+            document.documentElement.classList.add('dark');
+            document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0a1120');
+          }
+        } catch (e) {}
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

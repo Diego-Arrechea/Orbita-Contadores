@@ -6,7 +6,9 @@
   /* Tema «Papel» (mismo que Órbita Chat, rediseño del 28-sep con la marca de hiorbita.com):
      azul #2f6bff, navy #0c1526, celeste #6fa8ff, coral para lo que pide atención; grises corridos
      al azul (slate). Elevación en vez de bordes, pastillas en botones y pestañas. */
-  :root {
+  :root,
+  .light {
+    color-scheme: light;
     --background: 218 57% 97%;
     --foreground: 219 52% 10%;
 
@@ -61,6 +63,16 @@
     --sidebar-hover: 210 40% 96%;
     --sidebar-active: 223 100% 96%;
     --sidebar-border: 218 44% 95%;
+    --sidebar-active-foreground: 223 100% 59%;
+
+    /* Interacciones y superficies que antes eran colores fijos en los componentes */
+    --field-hover: 215 32% 94%;      /* hover de botón secundario y pestañas apagadas */
+    --border-hover: 216 32% 82%;     /* borde de un desplegable al pasar el mouse */
+    --ring-soft: 222 100% 92%;       /* halo de foco de campos y desplegables */
+    --pill: 219 52% 10%;             /* pestaña / segmento activo */
+    --pill-foreground: 0 0% 100%;
+    --overlay: 219 52% 10%;          /* velo detrás de los diálogos */
+    --selection: 222 100% 92%;
 
     --radius: 1rem;
 
@@ -69,6 +81,79 @@
     --shadow-lg: 0 1px 3px rgba(12, 21, 38, 0.08), 0 18px 50px rgba(12, 21, 38, 0.14);
     --shadow-cta: 0 6px 18px rgba(47, 107, 255, 0.28);
     --shadow-cta-sm: 0 4px 12px rgba(47, 107, 255, 0.24);
+  }
+
+  /* Modo oscuro: mismo azul de marca sobre el navy de hiorbita.com. Se activa con la clase
+     `dark` en <html> (ver src/lib/tema.ts). Va DESPUÉS de :root para ganarle en la cascada. */
+  .dark {
+    color-scheme: dark;
+    --background: 221 52% 8%;
+    --foreground: 219 55% 94%;
+
+    --card: 221 46% 12%;
+    --card-foreground: 219 55% 94%;
+
+    --primary: 223 100% 62%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 45% 16%;
+    --secondary-foreground: 218 42% 88%;
+
+    --muted: 220 45% 16%;
+    --muted-foreground: 217 24% 66%;
+
+    --accent: 221 56% 21%;
+    --accent-foreground: 221 100% 77%;
+
+    --destructive: 5 85% 62%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 145 61% 47%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 37 87% 53%;
+    --warning-foreground: 39 88% 67%;
+
+    --danger: 5 85% 62%;
+    --danger-foreground: 0 0% 100%;
+
+    --border: 219 40% 22%;
+    --input: 219 37% 27%;
+    --ring: 223 100% 62%;
+
+    --hairline: 219 45% 17%;
+    --field: 220 45% 16%;
+    --navy: 219 52% 10%;
+    --navy-2: 219 53% 15%;
+    --celeste: 216 100% 71%;
+    --ok-bg: 154 39% 12%;
+    --ok-ink: 146 61% 65%;
+    --warn-bg: 40 46% 12%;
+    --warn-ink: 39 88% 67%;
+    --danger-bg: 355 33% 13%;
+    --danger-ink: 6 100% 78%;
+
+    --sidebar: 220 51% 10%;
+    --sidebar-foreground: 219 29% 77%;
+    --sidebar-muted: 217 20% 58%;
+    --sidebar-hover: 220 45% 16%;
+    --sidebar-active: 221 56% 21%;
+    --sidebar-active-foreground: 221 100% 77%;
+    --sidebar-border: 219 45% 17%;
+
+    --field-hover: 219 44% 20%;
+    --border-hover: 219 37% 32%;
+    --ring-soft: 223 60% 27%;
+    --pill: 219 55% 94%;
+    --pill-foreground: 221 52% 8%;
+    --overlay: 221 60% 3%;
+    --selection: 223 60% 30%;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 1px 3px rgba(0, 0, 0, 0.5), 0 20px 50px rgba(0, 0, 0, 0.5);
+    --shadow-cta: 0 6px 18px rgba(61, 115, 255, 0.25);
+    --shadow-cta-sm: 0 4px 12px rgba(61, 115, 255, 0.22);
   }
 
   * {
@@ -106,7 +191,7 @@
   }
 
   ::selection {
-    background: #d6e2ff;
+    background: hsl(var(--selection));
   }
 
   body {
@@ -231,7 +316,7 @@
 .acceso {
   display: flex;
   min-height: 100%;
-  background: #fff;
+  background: hsl(var(--card));
   color: hsl(var(--foreground));
 }
 .acceso-marca {
@@ -272,8 +357,10 @@
 }
 .acceso-bajada { font-size: 16px; line-height: 1.55; color: #b8c6de; }
 .acceso-web { position: relative; font-size: 13px; color: #9fb3d6; }
-.acceso-lado { display: grid; place-items: center; flex: 1; min-width: 0; padding: 32px 24px; background: #fff; }
+.acceso-lado { display: grid; place-items: center; flex: 1; min-width: 0; padding: 32px 24px; background: hsl(var(--card)); position: relative; }
 .acceso-form { width: 400px; max-width: 100%; }
+/* En oscuro los dos paneles quedan casi del mismo tono: una línea fina marca el corte. */
+.dark .acceso-lado { box-shadow: inset 1px 0 0 hsl(var(--hairline)); }
 @media (max-width: 1100px) {
   .acceso-marca { padding: 44px; }
   .acceso-lema { font-size: 36px; }

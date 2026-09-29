@@ -42,6 +42,24 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-09-29-modo-oscuro',
+    fecha: '2026-09-29',
+    titulo: 'Nuevo modo oscuro',
+    resumen: 'Elegí cómo ver Órbita: claro, oscuro o automático según tu dispositivo.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Con el ícono de sol o luna, arriba a la derecha, cambiás entre claro, oscuro y automático (sigue el tema de tu computadora o celular). También está en las pantallas de ingreso. Tu elección se recuerda en cada dispositivo.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Los reportes y todo lo que imprimís o guardás en PDF salen siempre en claro, aunque estés usando el modo oscuro.',
+      },
+    ],
+  },
+  {
     id: '2026-09-29-nuevo-diseno',
     fecha: '2026-09-29',
     titulo: 'Órbita estrena diseño',

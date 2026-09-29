@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { SelectorTema } from '@/components/shared/SelectorTema';
 
 /**
  * Pantallas de acceso (login, registro, recuperar clave, confirmar mail): panel de marca a la
@@ -29,6 +30,7 @@ export function AccesoLayout({ children }: { children: ReactNode }) {
         <div className="acceso-web">hiorbita.com</div>
       </aside>
       <div className="acceso-lado">
+        <SelectorTema className="absolute right-4 top-4" />
         <div className="acceso-form">{children}</div>
       </div>
     </main>

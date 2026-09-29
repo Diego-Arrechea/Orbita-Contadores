@@ -17,7 +17,7 @@ export const DropdownMenuContent = React.forwardRef<
       className={cn(
         // Sólo animación de ENTRADA: con animación de salida, al abrir un diálogo modal desde un
         // ítem el menú queda inert antes de terminar el exit y Radix no lo desmonta (queda visible).
-        'z-50 min-w-[11rem] overflow-hidden rounded-lg border bg-card p-1 text-foreground shadow-md data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
+        'z-50 min-w-[11rem] overflow-hidden rounded-lg border bg-card p-1 text-foreground shadow-md dark:ring-1 dark:ring-white/[0.07] data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
         className,
       )}
       {...props}
