@@ -105,6 +105,14 @@ const PERMISOS_META: { clave: PermisoEquipo; label: string; detalle: string }[] 
   },
 ];
 
+/** Alcance: no es un permiso (default apagado) sino qué parte de la cartera ve. Los clientes
+ *  siguen teniendo un solo responsable; esto sólo le abre la vista (ve_toda_la_cartera). */
+const VER_TODA_LA_CARTERA = {
+  label: 'Ver toda la cartera del estudio',
+  detalle:
+    'Ve todos los clientes del estudio, no sólo los que tiene a cargo. Lo que puede hacer con ellos lo definen los permisos de abajo.',
+};
+
 function fechaHora(iso?: string | null): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('es-AR', {
@@ -122,7 +130,7 @@ function FilaPermiso({
   activo,
   onCambiar,
 }: {
-  meta: (typeof PERMISOS_META)[number];
+  meta: { label: string; detalle: string };
   activo: boolean;
   onCambiar: (v: boolean) => void;
 }) {
@@ -297,6 +305,7 @@ function DialogPermisos({
   onGuardado: () => void;
 }) {
   const [permisos, setPermisos] = useState<Record<PermisoEquipo, boolean>>(permisosCompletos());
+  const [veTodo, setVeTodo] = useState(false);
   const [claveInicial, setClaveInicial] = useState<number | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
@@ -305,6 +314,7 @@ function DialogPermisos({
   if (miembro && miembro.id !== claveInicial) {
     setClaveInicial(miembro.id);
     setPermisos(permisosCompletos(miembro));
+    setVeTodo(miembro.ve_toda_la_cartera);
     setError('');
   }
 
@@ -313,7 +323,7 @@ function DialogPermisos({
     setGuardando(true);
     setError('');
     try {
-      await editarMiembro(miembro.id, { permisos });
+      await editarMiembro(miembro.id, { permisos, ve_toda_la_cartera: veTodo });
       onGuardado();
     } catch (e) {
       setError(mensajeDeError(e));
@@ -330,10 +340,15 @@ function DialogPermisos({
             Permisos de {miembro?.nombre} {miembro?.apellido}
           </DialogTitle>
           <DialogDescription>
-            Elegí qué puede hacer sobre sus clientes asignados. Lo que apagues deja de estar
-            disponible en su cuenta al instante.
+            Elegí qué clientes ve y qué puede hacer con ellos. Lo que cambies se aplica en su
+            cuenta al instante.
           </DialogDescription>
         </DialogHeader>
+        <FilaPermiso
+          meta={VER_TODA_LA_CARTERA}
+          activo={veTodo}
+          onCambiar={setVeTodo}
+        />
         <div className="grid gap-2">
           {PERMISOS_META.map(meta => (
             <FilaPermiso
@@ -777,7 +792,8 @@ export function GestionUsuarios() {
           <h1 className="text-2xl font-semibold tracking-tight">Gestión de usuarios</h1>
           <p className="text-sm text-muted-foreground">
             Creá cuentas para tu equipo, definí sus permisos y asignales monotributistas. Cada
-            usuario ve únicamente los clientes a su cargo.
+            usuario ve únicamente los clientes a su cargo, salvo que en Permisos le abras toda la
+            cartera del estudio.
           </p>
         </div>
         <Button onClick={() => setDialogAlta(true)}>
@@ -839,13 +855,20 @@ export function GestionUsuarios() {
                         <div className="text-xs text-muted-foreground">{m.email}</div>
                       </TableCell>
                       <TableCell className="text-center">
-                        {m.clientes > 0 ? (
-                          <span className="tabular-nums">{m.clientes}</span>
-                        ) : (
-                          <Badge variant="warning" title="Asignale clientes para que pueda trabajar">
-                            Sin clientes
-                          </Badge>
-                        )}
+                        <div className="flex flex-col items-center gap-1">
+                          {m.clientes > 0 ? (
+                            <span className="tabular-nums">{m.clientes}</span>
+                          ) : !m.ve_toda_la_cartera ? (
+                            <Badge variant="warning" title="Asignale clientes para que pueda trabajar">
+                              Sin clientes
+                            </Badge>
+                          ) : null}
+                          {m.ve_toda_la_cartera && (
+                            <Badge variant="default" title="Ve todos los clientes del estudio">
+                              Ve toda la cartera
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-sm">{fechaHora(m.ultimo_acceso)}</TableCell>
                       <TableCell className="text-center">
@@ -929,9 +952,10 @@ export function GestionUsuarios() {
                     <span className="text-xs tabular-nums text-muted-foreground">
                       {m.clientes} cliente{m.clientes === 1 ? '' : 's'} a cargo
                     </span>
-                  ) : (
+                  ) : !m.ve_toda_la_cartera ? (
                     <Badge variant="warning">Sin clientes</Badge>
-                  )}
+                  ) : null}
+                  {m.ve_toda_la_cartera && <Badge variant="default">Ve toda la cartera</Badge>}
                   <span className="text-xs text-muted-foreground">
                     Último acceso: {fechaHora(m.ultimo_acceso)}
                   </span>
@@ -950,7 +974,8 @@ export function GestionUsuarios() {
               <h2 className="text-lg font-semibold tracking-tight">Clientes y responsables</h2>
               <p className="text-sm text-muted-foreground">
                 Vista general de quién lleva cada monotributista (para repartir varios de una vez,
-                usá "Asignar clientes" en el usuario). Cada usuario ve sólo los suyos.
+                usá "Asignar clientes" en el usuario). Cada usuario ve sólo los suyos, salvo los que
+                ven toda la cartera.
               </p>
             </div>
             <div className="relative w-full max-w-xs">

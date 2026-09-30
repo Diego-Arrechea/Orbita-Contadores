@@ -74,6 +74,8 @@ def _migrar_usuarios(conn) -> None:
         # de ese titular; permisos_json guarda sus permisos ({clave: bool}, NULL = todos habilitados).
         "titular_id": "INTEGER REFERENCES usuarios(id)",
         "permisos_json": "TEXT",
+        # Alcance del empleado: True = ve toda la cartera del estudio, no sólo sus asignados.
+        "ve_toda_la_cartera": "BOOLEAN DEFAULT FALSE" if not es_sqlite else "BOOLEAN DEFAULT 0",
         # Baja en cascada: True = el empleado se deshabilitó al dar de baja a su titular (se revierte
         # solo al reactivarlo). Ver routers/admin.py.
         "desactivado_en_cascada": "BOOLEAN DEFAULT FALSE" if not es_sqlite else "BOOLEAN DEFAULT 0",

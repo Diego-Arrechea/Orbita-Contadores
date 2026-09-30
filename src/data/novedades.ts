@@ -42,6 +42,19 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-09-30-equipo-toda-la-cartera',
+    fecha: '2026-09-30',
+    titulo: 'Tu equipo puede ver toda la cartera',
+    resumen: 'Ahora elegís si cada usuario del estudio ve sólo sus clientes o todos.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En Gestión de usuarios → Permisos, tildá «Ver toda la cartera del estudio» y ese usuario pasa a ver todos los clientes del estudio, no sólo los que tiene a cargo. Lo que puede hacer con ellos lo siguen definiendo sus permisos, y cada cliente conserva su responsable.',
+      },
+    ],
+  },
+  {
     id: '2026-09-29-modo-oscuro',
     fecha: '2026-09-29',
     titulo: 'Nuevo modo oscuro',

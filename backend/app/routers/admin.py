@@ -118,12 +118,17 @@ def _conteos_cartera(db: Session) -> dict[int, int]:
         ).all()
     )
     conteos = dict(propios)
-    for empleado_id, titular_id in db.execute(
-        select(models.Usuario.id, models.Usuario.titular_id).where(
-            models.Usuario.titular_id.is_not(None)
-        )
-    ).all():
+    empleados = db.execute(
+        select(
+            models.Usuario.id, models.Usuario.titular_id, models.Usuario.ve_toda_la_cartera
+        ).where(models.Usuario.titular_id.is_not(None))
+    ).all()
+    for empleado_id, titular_id, _ in empleados:
         conteos[titular_id] = conteos.get(titular_id, 0) + propios.get(empleado_id, 0)
+    # El empleado que ve toda la cartera del estudio cuenta lo mismo que su titular.
+    for empleado_id, titular_id, ve_todo in empleados:
+        if ve_todo:
+            conteos[empleado_id] = conteos.get(titular_id, 0)
     return conteos
 
 

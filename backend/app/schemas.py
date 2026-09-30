@@ -842,6 +842,7 @@ class MiembroPatch(BaseModel):
 
     activo: bool | None = None
     permisos: dict[str, bool] | None = None
+    ve_toda_la_cartera: bool | None = None
     password: str | None = Field(default=None, min_length=8, max_length=72)
 
 
@@ -854,6 +855,7 @@ class MiembroOut(BaseModel):
     email: EmailStr
     activo: bool
     permisos: dict[str, bool]
+    ve_toda_la_cartera: bool = False  # ve toda la cartera del estudio, no sólo sus asignados
     clientes: int = 0  # cuántos clientes tiene asignados
     creado_en: str | None = None  # ISO
     ultimo_acceso: str | None = None  # ISO; None = nunca inició sesión

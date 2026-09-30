@@ -294,8 +294,9 @@ def admin_actual(usuario: models.Usuario = Depends(usuario_actual)) -> models.Us
 # --- Equipo del estudio ("Gestión de usuarios") --------------------------------------------------
 # El titular crea cuentas de EMPLEADO (Usuario.titular_id = su id) y les asigna clientes: cada
 # cliente sigue teniendo UN responsable (ClienteARCA.usuario_id). El empleado ve/opera sólo sus
-# asignados; el titular ve toda la cartera del equipo. Los permisos acotan qué ACCIONES puede hacer
-# el empleado sobre sus asignados (se enforcan acá, no sólo en el front).
+# asignados (o toda la cartera del estudio, si el titular le prendió `ve_toda_la_cartera`); el
+# titular ve toda la cartera del equipo. Los permisos acotan qué ACCIONES puede hacer el empleado
+# sobre lo que ve (se enforcan acá, no sólo en el front).
 
 # Permisos disponibles para empleados (clave → descripción para devs; los labels de UI viven en el
 # front). Default: TODOS habilitados; el titular los apaga por empleado (Usuario.permisos_json).
@@ -363,13 +364,17 @@ def titular_actual(usuario: models.Usuario = Depends(usuario_actual)) -> models.
 def ids_cartera(db: Session, usuario: models.Usuario) -> list[int]:
     """Los `usuario_id` cuyos clientes puede ver esta cuenta: los propios y, si tiene equipo, los de
     todos sus empleados (incluidos los desactivados: sus clientes no desaparecen de la vista del
-    titular). Para un empleado o un contador sin equipo devuelve sólo su id."""
-    ids = [usuario.id]
+    titular). Para un empleado o un contador sin equipo devuelve sólo su id. Un empleado con
+    `ve_toda_la_cartera` ve lo mismo que su titular (los permisos siguen acotando qué hace)."""
     if not es_empleado(usuario):
-        ids += list(
-            db.scalars(select(models.Usuario.id).where(models.Usuario.titular_id == usuario.id))
-        )
-    return ids
+        titular_id = usuario.id
+    elif usuario.ve_toda_la_cartera:
+        titular_id = usuario.titular_id
+    else:
+        return [usuario.id]
+    return [titular_id] + list(
+        db.scalars(select(models.Usuario.id).where(models.Usuario.titular_id == titular_id))
+    )
 
 
 def bloquear_si_demo(db: Session, usuario: models.Usuario, accion: str = "") -> None:

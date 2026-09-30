@@ -13,6 +13,7 @@ export interface Miembro {
   email: string;
   activo: boolean;
   permisos: Record<PermisoEquipo, boolean>;
+  ve_toda_la_cartera: boolean; // ve toda la cartera del estudio, no sólo sus asignados
   clientes: number; // cuántos clientes tiene asignados
   creado_en?: string | null;
   ultimo_acceso?: string | null; // null = nunca inició sesión
@@ -34,12 +35,13 @@ export function crearMiembro(datos: MiembroAlta): Promise<Miembro> {
   return apiPost<Miembro>('/equipo/miembros', datos);
 }
 
-/** PATCH parcial: mandá sólo lo que cambia (activo, permisos y/o password nueva). */
+/** PATCH parcial: mandá sólo lo que cambia (activo, permisos, alcance y/o password nueva). */
 export function editarMiembro(
   id: number,
   cambios: {
     activo?: boolean;
     permisos?: Partial<Record<PermisoEquipo, boolean>>;
+    ve_toda_la_cartera?: boolean;
     password?: string;
   }
 ): Promise<Miembro> {

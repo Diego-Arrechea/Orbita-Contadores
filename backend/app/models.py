@@ -84,6 +84,10 @@ class Usuario(Base):
     # habilitados (default). Sólo aplica a empleados: para cuentas plenas se ignora (pueden todo).
     # Los edita el titular desde "Gestión de usuarios"; se enforcan en los endpoints (requiere_permiso).
     permisos_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Alcance del EMPLEADO: True = ve y opera toda la cartera del estudio (la del titular y la de
+    # todo el equipo), no sólo sus asignados; los permisos siguen acotando qué ACCIONES puede hacer.
+    # Default False. Lo prende el titular desde "Gestión de usuarios". Ver security.ids_cartera.
+    ve_toda_la_cartera: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     # Cuenta de DEMOSTRACIÓN: su cartera son clientes de ejemplo, cargados a mano para mostrar el
     # producto (facultad, prueba comercial). No se consultan contra los organismos ni se les manda
     # nada a sus contactos: el motor continuo los saltea, el recordatorio de vencimientos no sale y

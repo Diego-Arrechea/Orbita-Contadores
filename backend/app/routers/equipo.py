@@ -1,6 +1,7 @@
 """Gestión de usuarios del estudio: el titular crea cuentas de EMPLEADO, les prende/apaga permisos
 y les asigna clientes. Cada cliente tiene UN responsable (ClienteARCA.usuario_id): el empleado ve y
-opera sólo sus asignados; el titular ve toda la cartera del equipo (ver security.ids_cartera).
+opera sólo sus asignados, salvo que el titular le prenda `ve_toda_la_cartera`; el titular ve toda la
+cartera del equipo (ver security.ids_cartera).
 
 Todo el router exige una cuenta PLENA (titular_actual): un empleado no puede administrar el equipo
 ni crear otros usuarios. El alta siempre fuerza rol='contador' y titular_id=el titular logueado, así
@@ -95,6 +96,7 @@ def _miembro_out(db: Session, u: models.Usuario, clientes: int | None = None) ->
         email=u.email,
         activo=bool(u.activo),
         permisos=permisos_efectivos(u),
+        ve_toda_la_cartera=bool(u.ve_toda_la_cartera),
         clientes=clientes,
         creado_en=_iso(u.creado_en),
         ultimo_acceso=_iso(u.ultimo_acceso),
@@ -165,10 +167,15 @@ def editar_miembro(
     db: Session = Depends(get_db),
     titular: models.Usuario = Depends(_titular_con_equipo),
 ):
-    """Activa/desactiva la cuenta, actualiza sus permisos o le fija una contraseña nueva.
-    Desactivado: el empleado no puede iniciar sesión ni operar (mismo corte que el panel admin);
-    sus clientes asignados NO se tocan y siguen visibles para el titular."""
+    """Activa/desactiva la cuenta, actualiza sus permisos, qué parte de la cartera ve o le fija una
+    contraseña nueva. Desactivado: el empleado no puede iniciar sesión ni operar (mismo corte que el
+    panel admin); sus clientes asignados NO se tocan y siguen visibles para el titular."""
     miembro = _miembro_propio(db, miembro_id, titular)
+    if cambios.ve_toda_la_cartera is not None:
+        # Abrirle la cartera es repartirla: exige la misma función del plan que asignar clientes.
+        if not usuario_puede(db, titular, "permisos"):
+            raise HTTPException(status_code=403, detail=MENSAJE_SIN_FUNCION)
+        miembro.ve_toda_la_cartera = cambios.ve_toda_la_cartera
     if cambios.activo is not None:
         miembro.activo = cambios.activo
     if cambios.permisos is not None:
