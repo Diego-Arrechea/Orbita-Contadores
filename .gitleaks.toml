@@ -1,0 +1,27 @@
+# Escaneo de secretos con gitleaks (https://github.com/gitleaks/gitleaks).
+# Uso: gitleaks git . --config .gitleaks.toml --redact   (todo el historial)
+#      gitleaks git . --config .gitleaks.toml --redact --pre-commit --staged   (antes de commitear)
+title = "Órbita Contadores"
+
+[extend]
+useDefault = true
+
+# Las reglas por defecto no detectan claves fiscales escritas como `clave = "..."`
+# ni la tupla `CUIT, CLAVE = "20...", "..."` (así se filtró una en jun-2026).
+[[rules]]
+id = "clave-literal"
+description = "Clave o contraseña escrita en el código"
+regex = '''(?i)(?:clave|password|passwd|contrase(?:ñ|n)a)\w*["']?[ \t]*(?:[:=]|,)[ \t]*(?:["'][0-9]{11}["'][ \t]*,[ \t]*)?["']([^"'\s]{6,64})["']'''
+secretGroup = 1
+keywords = ["clave", "password", "passwd", "contrase"]
+
+  # Palabras sueltas (claves de funciones como 'estado_cuenta', 'demo-sin-uso') no son secretos.
+  [[rules.allowlists]]
+  regexTarget = "secret"
+  regexes = ['''^[a-z_\-\.]+$''']
+
+# Falsos positivos de las reglas por defecto.
+[[allowlists]]
+description = "Claves de React en filas de tablas (key: 'facturacion12m', label: ...)"
+regexTarget = "line"
+regexes = ['''key: '[A-Za-z0-9_]+', label:''']

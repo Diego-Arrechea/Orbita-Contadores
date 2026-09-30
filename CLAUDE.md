@@ -96,6 +96,12 @@ Typecheck front: `npx tsc -b`. Compilar backend: `python -m py_compile app/<arch
   `cd deploy/docker && docker compose up -d --build backend`. La migración corre al levantar el
   contenedor. Detalle completo en la memoria `deploy-produccion`.
 
+## Secretos
+Nunca escribas claves fiscales, contraseñas ni tokens reales en el código ni en scripts de prueba:
+van en `backend/.env` o en `backend/data/` (ignorados). Antes de commitear, escaneá lo que está en
+stage con [gitleaks](https://github.com/gitleaks/gitleaks) y la config del repo:
+`gitleaks git . --config .gitleaks.toml --redact --pre-commit --staged`.
+
 ## Backups (Postgres del VPS)
 Cron de root `0 3 * * *` corre `/opt/orbita-backups/backup.sh` → `pg_dump` comprimido a
 `/opt/orbita-backups/orbita_<fecha>.sql.gz`, retención 14 días, log en `backup.log`.
