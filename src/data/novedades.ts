@@ -42,6 +42,19 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-10-05-historico-suma-meses',
+    fecha: '2026-10-05',
+    titulo: 'Sumá los meses que quieras en el histórico',
+    resumen: 'Para saber cuánto puede facturar tu cliente sin pasarse de categoría.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En la ficha del cliente → Histórico mensual, tildá los meses que quieras (o «Últimos 12 meses») y ves la suma y el promedio mensual. En los monotributistas también ves el margen contra el tope de su categoría, cuánto puede facturar por mes en los meses que faltan para completar 12 y qué categoría le correspondería a ese ritmo.',
+      },
+    ],
+  },
+  {
     id: '2026-10-05-iva-correcciones-pdf',
     fecha: '2026-10-05',
     titulo: 'Libro IVA: corregí comprobantes y descargalo en PDF',

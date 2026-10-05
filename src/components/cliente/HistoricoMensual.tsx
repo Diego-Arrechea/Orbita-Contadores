@@ -24,6 +24,7 @@ import { VerDetalle } from '@/components/cliente/VerDetalle';
 import { detalleHistorico } from '@/lib/trazabilidad';
 import { useHistorico } from '@/lib/queries';
 import { formatPuntoVenta, indicePuntosVenta, sistemaCorto } from '@/lib/puntosVenta';
+import { SumaMeses } from '@/components/cliente/SumaMeses';
 import type { Cliente } from '@/types';
 
 interface Props {
@@ -124,6 +125,8 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
   const [vista, setVista] = useState<Vista>('ambos');
   const [rango, setRango] = useState<Rango>(12);
   const [unidad, setUnidad] = useState<Unidad>('nominal');
+  // Meses tildados para sumar (pedido de los contadores: suma/promedio y margen contra el tope).
+  const [seleccion, setSeleccion] = useState<Set<string>>(() => new Set());
 
   // Sólo clientes reales tienen histórico/ajuste; el tab se monta al abrirlo, así que la consulta es
   // efectivamente perezosa. El mock usa el historial embebido.
@@ -211,6 +214,21 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
       ? ` · desde ${formatMesLargo(hist.primerPeriodo)}`
       : '';
   const totalMostrado = filas.reduce((s, f) => s + (vistaEf === 'recibidas' ? f.recib : f.emit), 0);
+
+  // Sólo se suman meses (en la vista por año no aplica). Lo tildado que ya no está en el rango
+  // visible (cambió el rango) simplemente no cuenta.
+  const sumable = !esAnio;
+  const filasSel = sumable ? filas.filter(f => seleccion.has(f.periodo)) : [];
+  const conCasillas = sumable && vistaEf !== 'pv';
+  const todasTildadas = filas.length > 0 && filasSel.length === filas.length;
+  const alternar = (periodo: string) =>
+    setSeleccion(prev => {
+      const sig = new Set(prev);
+      if (sig.has(periodo)) sig.delete(periodo);
+      else sig.add(periodo);
+      return sig;
+    });
+  const tildar = (periodos: string[]) => setSeleccion(new Set(periodos));
 
   return (
     <Card className="p-4 sm:p-6">
@@ -367,6 +385,18 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
         )}
       </div>
 
+      {sumable && (
+        <SumaMeses
+          cliente={cliente}
+          meses={filasSel}
+          nominal={unidad === 'nominal'}
+          hayIngresos={hayIngresos}
+          onUltimos12={() => tildar(filas.slice(-12).map(f => f.periodo))}
+          onTodos={() => tildar(filas.map(f => f.periodo))}
+          onLimpiar={() => tildar([])}
+        />
+      )}
+
       {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
       <div className="mt-6 hidden max-h-80 overflow-auto scrollbar-thin -mx-6 px-6 lg:block">
         {vistaEf === 'pv' ? (
@@ -432,6 +462,20 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
           <Table>
             <TableHeader>
               <TableRow>
+                {conCasillas && (
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      aria-label="Tildar todos los meses"
+                      checked={todasTildadas}
+                      ref={el => {
+                        if (el) el.indeterminate = filasSel.length > 0 && !todasTildadas;
+                      }}
+                      onChange={() => tildar(todasTildadas ? [] : filas.map(f => f.periodo))}
+                      className="h-4 w-4 cursor-pointer accent-[hsl(var(--primary))]"
+                    />
+                  </TableHead>
+                )}
                 <TableHead>{esAnio ? 'Año' : 'Mes'}</TableHead>
                 <TableHead className="text-right">Emitidas netas</TableHead>
                 {hayIngresos && <TableHead className="text-right">Ingresos no fact.</TableHead>}
@@ -440,7 +484,26 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
             </TableHeader>
             <TableBody>
               {[...filas].reverse().map(f => (
-                <TableRow key={f.periodo}>
+                <TableRow
+                  key={f.periodo}
+                  onClick={conCasillas ? () => alternar(f.periodo) : undefined}
+                  className={cn(
+                    conCasillas && 'cursor-pointer',
+                    conCasillas && seleccion.has(f.periodo) && 'bg-primary/[0.06] hover:bg-primary/[0.09]',
+                  )}
+                >
+                  {conCasillas && (
+                    <TableCell className="w-10">
+                      <input
+                        type="checkbox"
+                        aria-label={`Tildar ${formatPeriodoLargo(f.periodo, esAnio)}`}
+                        checked={seleccion.has(f.periodo)}
+                        onChange={() => alternar(f.periodo)}
+                        onClick={e => e.stopPropagation()}
+                        className="h-4 w-4 cursor-pointer accent-[hsl(var(--primary))]"
+                      />
+                    </TableCell>
+                  )}
                   <TableCell className="font-medium">{formatPeriodoLargo(f.periodo, esAnio)}</TableCell>
                   <TableCell className="text-right tabular-nums font-medium">
                     {formatMonto(f.emit)}
@@ -489,9 +552,29 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
           ))}
         {vistaEf !== 'pv' &&
           [...filas].reverse().map(f => (
-            <div key={f.periodo} className="rounded-xl border border-border/60 p-3">
+            <div
+              key={f.periodo}
+              onClick={conCasillas ? () => alternar(f.periodo) : undefined}
+              className={cn(
+                'rounded-xl border border-border/60 p-3',
+                conCasillas && 'cursor-pointer',
+                conCasillas && seleccion.has(f.periodo) && 'border-primary/40 bg-primary/[0.06]',
+              )}
+            >
               <div className="flex items-center justify-between">
-                <span className="font-medium">{formatPeriodoLargo(f.periodo, esAnio)}</span>
+                <span className="inline-flex items-center gap-2 font-medium">
+                  {conCasillas && (
+                    <input
+                      type="checkbox"
+                      aria-label={`Tildar ${formatPeriodoLargo(f.periodo, esAnio)}`}
+                      checked={seleccion.has(f.periodo)}
+                      onChange={() => alternar(f.periodo)}
+                      onClick={e => e.stopPropagation()}
+                      className="h-4 w-4 accent-[hsl(var(--primary))]"
+                    />
+                  )}
+                  {formatPeriodoLargo(f.periodo, esAnio)}
+                </span>
                 <span className="text-sm tabular-nums font-medium">
                   {formatMonto(f.emit)}{' '}
                   <span className="text-xs font-normal text-muted-foreground">emitidas</span>
