@@ -42,6 +42,18 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-10-05-comprobantes-suma-periodo',
+    fecha: '2026-10-05',
+    titulo: 'Suma y promedio del período en Comprobantes',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En la ficha del cliente → Comprobantes, arriba de la lista ves la suma y el promedio mensual de lo que filtraste (emitidos y recibidos por separado, las notas de crédito restan). Hay atajos para «Este mes», «Mes anterior» y «Últimos 12 meses».',
+      },
+    ],
+  },
+  {
     id: '2026-10-05-historico-suma-meses',
     fecha: '2026-10-05',
     titulo: 'Sumá los meses que quieras en el histórico',

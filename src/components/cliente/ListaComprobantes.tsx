@@ -10,6 +10,7 @@ import {
   Loader2,
   Plus,
   Trash2,
+  Calculator,
 } from 'lucide-react';
 import { descargarComprobantePdf, mensajeErrorFacturacion } from '@/services/facturacionService';
 import { eliminarComprobanteManual } from '@/services/comprobantesService';
@@ -383,6 +384,18 @@ export function ListaComprobantes({ cliente, onCambio }: Props) {
         onGuardado={() => onCambio?.()}
       />
 
+      {comprobantes.length > 0 && (
+        <TotalesFiltrados
+          comprobantes={comprobantes}
+          fechaDesde={fechaDesde}
+          fechaHasta={fechaHasta}
+          onRango={(d, h) => {
+            setFechaDesde(d);
+            setFechaHasta(h);
+          }}
+        />
+      )}
+
       {/* Escritorio: tabla. Mobile (< lg): tarjetas apiladas. */}
       <div className="hidden lg:block">
         <Table>
@@ -555,6 +568,117 @@ export function ListaComprobantes({ cliente, onCambio }: Props) {
         </div>
       )}
     </Card>
+  );
+}
+
+/** 'YYYY-MM-DD' de un Date local. */
+function isoLocal(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${dia}`;
+}
+
+/** Meses calendario entre dos fechas 'YYYY-MM-DD', inclusive (ene→mar = 3). */
+function mesesEntre(desde: string, hasta: string): number {
+  const [y1, m1] = desde.split('-').map(Number);
+  const [y2, m2] = hasta.split('-').map(Number);
+  return Math.max(1, (y2 - y1) * 12 + (m2 - m1) + 1);
+}
+
+/** Rangos rápidos para el filtro de fechas: [desde, hasta]. */
+function rangoRapido(cual: 'mes' | 'mesAnterior' | 'anio12'): [string, string] {
+  const hoy = new Date();
+  const y = hoy.getFullYear();
+  const m = hoy.getMonth();
+  if (cual === 'mes') return [isoLocal(new Date(y, m, 1)), isoLocal(new Date(y, m + 1, 0))];
+  if (cual === 'mesAnterior') return [isoLocal(new Date(y, m - 1, 1)), isoLocal(new Date(y, m, 0))];
+  // Últimos 12 meses calendario: del 1° de hace 11 meses al último día del mes en curso.
+  return [isoLocal(new Date(y, m - 11, 1)), isoLocal(new Date(y, m + 1, 0))];
+}
+
+/**
+ * Totales de los comprobantes filtrados: suma neta (las notas de crédito restan) y promedio mensual,
+ * separados en emitidos y recibidos. Pedido de los contadores (reunión 1-oct-2026): filtrar un
+ * período y ver cuánto se facturó y el promedio, para proyectar y avisar antes de recategorizar.
+ * Los meses del promedio son los del rango elegido; sin rango, los que van del primer al último
+ * comprobante filtrado. Importes en pesos (las facturas en moneda extranjera, a su cotización).
+ */
+function TotalesFiltrados({
+  comprobantes,
+  fechaDesde,
+  fechaHasta,
+  onRango,
+}: {
+  comprobantes: Cliente['comprobantes'];
+  fechaDesde: string;
+  fechaHasta: string;
+  onRango: (desde: string, hasta: string) => void;
+}) {
+  const lado = (dir: 'emitido' | 'recibido') => {
+    const cs = comprobantes.filter(c => c.direccion === dir);
+    const neto = cs.reduce((acc, c) => acc + (c.tipo.includes('Nota Crédito') ? -c.monto : c.monto), 0);
+    return { cantidad: cs.length, neto };
+  };
+  const emit = lado('emitido');
+  const recib = lado('recibido');
+  const fechas = comprobantes.map(c => c.fechaEmision).sort();
+  const desde = fechaDesde || fechas[0];
+  const hasta = fechaHasta || fechas[fechas.length - 1];
+  const meses = desde && hasta ? mesesEntre(desde, hasta) : 1;
+
+  const atajo = (label: string, cual: 'mes' | 'mesAnterior' | 'anio12') => {
+    const [d, h] = rangoRapido(cual);
+    const activo = d === fechaDesde && h === fechaHasta;
+    return (
+      <Button
+        key={cual}
+        size="sm"
+        variant={activo ? 'default' : 'outline'}
+        className="h-7 px-2.5 text-xs"
+        onClick={() => onRango(d, h)}
+      >
+        {label}
+      </Button>
+    );
+  };
+
+  const bloque = (titulo: string, l: { cantidad: number; neto: number }) => (
+    <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1">
+      <span className="text-xs font-medium text-muted-foreground">
+        {titulo} ({l.cantidad.toLocaleString('es-AR')})
+      </span>
+      <span className="text-sm">
+        <span className="text-muted-foreground">Suma </span>
+        <span className="font-semibold tabular-nums">{formatMonto(l.neto)}</span>
+      </span>
+      <span className="text-sm">
+        <span className="text-muted-foreground">
+          Promedio mensual{meses > 1 ? ` (${meses} meses)` : ''}{' '}
+        </span>
+        <span className="font-semibold tabular-nums">{formatMonto(l.neto / meses)}</span>
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-3 border-b border-border/60 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex items-start gap-2.5">
+        <Calculator className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <div className="space-y-1">
+          {emit.cantidad > 0 && bloque('Emitidos', emit)}
+          {recib.cantidad > 0 && bloque('Recibidos', recib)}
+          <div className="text-[11px] text-muted-foreground">
+            Según los filtros{desde && hasta ? ` · ${formatDate(desde)} al ${formatDate(hasta)}` : ''}. Las notas
+            de crédito restan.
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {atajo('Este mes', 'mes')}
+        {atajo('Mes anterior', 'mesAnterior')}
+        {atajo('Últimos 12 meses', 'anio12')}
+      </div>
+    </div>
   );
 }
 
