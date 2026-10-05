@@ -42,6 +42,24 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-10-05-enviar-reporte-mail',
+    fecha: '2026-10-05',
+    titulo: 'Mandale el reporte a tu cliente por mail',
+    resumen: 'Con un clic, desde la ficha o desde el reporte.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En la ficha del cliente, en el menú de los tres puntitos, elegí «Enviar reporte»: le llega el reporte en el cuerpo del mail, con un mensaje tuyo arriba si querés. Si responde, te escribe a vos. Podés mandarte una copia y guardar el mail del cliente para la próxima.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Las opciones del reporte (secciones, cards e historial) ahora se guardan por cliente: a cada uno le mandás lo que le sirve. Si no las tocás, usa las opciones generales del estudio.',
+      },
+    ],
+  },
+  {
     id: '2026-10-05-comprobantes-suma-periodo',
     fecha: '2026-10-05',
     titulo: 'Suma y promedio del período en Comprobantes',

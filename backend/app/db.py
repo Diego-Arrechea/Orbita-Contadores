@@ -349,6 +349,14 @@ def _migrar_clientes_arca(conn) -> None:
         conn.execute(
             text("ALTER TABLE clientes_arca ADD COLUMN desactivado_en_cascada BOOLEAN DEFAULT FALSE")
         )
+    # Reporte al cliente: opciones propias (JSON) + último envío por mail. TEXT/VARCHAR portables.
+    if "reporte_config_json" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN reporte_config_json TEXT"))
+    if "reporte_enviado_en" not in cols:
+        tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
+        conn.execute(text(f"ALTER TABLE clientes_arca ADD COLUMN reporte_enviado_en {tipo}"))
+    if "reporte_enviado_a" not in cols:
+        conn.execute(text("ALTER TABLE clientes_arca ADD COLUMN reporte_enviado_a VARCHAR(200)"))
 
 
 def _migrar_comprobantes_emitidos(conn) -> None:

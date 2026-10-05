@@ -248,6 +248,12 @@ class ClienteARCA(Base):
     # Quién completó `email_cliente`: 'padron' = lo eligió la sincronización (se recalcula, y se
     # borra solo si deja de ser plausible) · NULL con mail cargado = lo puso el contador, intocable.
     email_cliente_origen: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Reporte al cliente final: opciones propias de este cliente (secciones, cards, meses de
+    # historial; JSON con la forma de `ConfigReporte` del front). NULL = usa las opciones generales del
+    # estudio. Y el último envío por mail (cuándo y a quién), para mostrarlo en la ficha.
+    reporte_config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reporte_enviado_en: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reporte_enviado_a: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Último período (aaaa-mm) en que se le envió el recordatorio de vencimiento. Hace idempotente el
     # job mensual: si ya se avisó este mes, no se reenvía (sobrevive reinicios/redeploys del worker,
     # a diferencia de un contador en memoria). NULL = nunca se le avisó. Ver services/vencimientos.py.

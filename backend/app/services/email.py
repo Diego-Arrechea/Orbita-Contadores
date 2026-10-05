@@ -27,7 +27,15 @@ def _configurado() -> bool:
     return bool(settings.smtp_host and settings.smtp_user)
 
 
-def enviar_email(destino: str, asunto: str, cuerpo_html: str, cuerpo_texto: str = "") -> bool:
+def enviar_email(
+    destino: str,
+    asunto: str,
+    cuerpo_html: str,
+    cuerpo_texto: str = "",
+    *,
+    responder_a: str | None = None,
+    copia: str | None = None,
+) -> bool:
     """Manda un email best-effort. Devuelve True si se entregó al servidor SMTP, False si no.
     Si SMTP no está configurado, loguea el cuerpo y devuelve False sin lanzar."""
     if not _configurado():
@@ -43,6 +51,10 @@ def enviar_email(destino: str, asunto: str, cuerpo_html: str, cuerpo_texto: str 
     msg["Subject"] = asunto
     msg["From"] = settings.smtp_from or settings.smtp_user
     msg["To"] = destino
+    if responder_a:
+        msg["Reply-To"] = responder_a
+    if copia:
+        msg["Cc"] = copia
     msg.set_content(cuerpo_texto or "Abrí este correo en un cliente que soporte HTML.")
     msg.add_alternative(cuerpo_html, subtype="html")
 

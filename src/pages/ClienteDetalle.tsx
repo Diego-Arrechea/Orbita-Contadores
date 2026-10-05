@@ -7,6 +7,7 @@ import {
   Pencil,
   Trash2,
   FileText,
+  Mail,
   FileSpreadsheet,
   FilePlus2,
   MoreVertical,
@@ -34,6 +35,7 @@ import { EstadoCuenta } from '@/components/cliente/EstadoCuenta';
 import { PlanesFacilidades } from '@/components/cliente/PlanesFacilidades';
 import { VistaPreviaVencimiento } from '@/components/cliente/VistaPreviaVencimiento';
 import { HistoricoMensual } from '@/components/cliente/HistoricoMensual';
+import { EnviarReporteDialog } from '@/components/cliente/EnviarReporteDialog';
 import { FacturacionDetalle } from '@/components/cliente/FacturacionDetalle';
 import { FacturacionAgropecuaria } from '@/components/cliente/FacturacionAgropecuaria';
 import { RelacionDependencia } from '@/components/cliente/RelacionDependencia';
@@ -80,6 +82,7 @@ export function ClienteDetalle() {
   const { data: comunicaciones = [] } = useComunicaciones(id, !clienteMock);
   const comunicacionesSinVer = comunicaciones.filter(c => !c.vista).length;
   const [editarOpen, setEditarOpen] = useState(false);
+  const [enviarReporteOpen, setEnviarReporteOpen] = useState(false);
   const [claveOpen, setClaveOpen] = useState(false);
   const [eliminarOpen, setEliminarOpen] = useState(false);
   // Solapa abierta. `?tab=` permite entrar directo a una (ej. la alerta de comunicaciones nuevas
@@ -293,6 +296,11 @@ export function ClienteDetalle() {
                         <FileText /> Reporte (PDF)
                       </Link>
                     </DropdownMenuItem>
+                    {esReal && (
+                      <DropdownMenuItem onSelect={() => setTimeout(() => setEnviarReporteOpen(true), 0)}>
+                        <Mail /> Enviar reporte
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                       disabled={generandoExcel}
                       onSelect={e => {
@@ -353,6 +361,13 @@ export function ClienteDetalle() {
                   open={editarOpen}
                   onOpenChange={setEditarOpen}
                 />
+                {esReal && (
+                  <EnviarReporteDialog
+                    cliente={cliente}
+                    open={enviarReporteOpen}
+                    onOpenChange={setEnviarReporteOpen}
+                  />
+                )}
                 {esReal && (
                   <CambiarClaveDialog
                     cliente={cliente}

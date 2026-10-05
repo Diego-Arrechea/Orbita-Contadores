@@ -321,6 +321,10 @@ class ClienteOut(BaseModel):
     email_cliente: str | None = None
     telefono_cliente: str | None = None
     venc_avisos: bool | None = None
+    # Reporte al cliente: opciones propias (None = usa las generales del estudio) y último envío.
+    reporte_config: dict | None = None
+    reporte_enviado_en: str | None = None
+    reporte_enviado_a: str | None = None
     # ¿Tiene relación de dependencia (trabajo en blanco)? Efectivo = override manual del contador si
     # lo marcó, si no el auto-detectado. None = no se sabe. Relevante para justificar gastos.
     relacion_dependencia: bool | None = None
@@ -1775,6 +1779,25 @@ class PagoSuscripcionIn(BaseModel):
     periodo_hasta: str | None = None
     referencia: str | None = None
     notas: str | None = None
+
+
+
+class ReporteConfigIn(BaseModel):
+    """Opciones del reporte para UN cliente (forma de `ConfigReporte` del front). `config` None =
+    volver a las opciones generales del estudio."""
+
+    config: dict | None = None
+
+
+class ReporteEnvioIn(BaseModel):
+    """Envío del reporte por mail. El cuerpo lo arma el front con los mismos números que muestra la
+    pantalla (cálculo del lado del cliente); el backend lo envuelve, valida y manda."""
+
+    destino: EmailStr
+    copiaAMi: bool = True  # noqa: N815
+    asunto: str = Field(min_length=1, max_length=200)
+    html: str = Field(min_length=1, max_length=400_000)
+    texto: str = Field(default="", max_length=100_000)
 
 
 # Referencias adelantadas del Libro IVA (IvaLineaOut / IvaLibroOut usan modelos definidos después).

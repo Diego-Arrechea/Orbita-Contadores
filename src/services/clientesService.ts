@@ -2,6 +2,7 @@ import type {
   Cliente,
   Comprobante,
   CategoriaCodigo,
+  ConfigReporte,
   TipoActividad,
   Extraccion,
   Historico,
@@ -79,6 +80,9 @@ interface ClienteBackend {
   email_cliente?: string | null; // contacto del cliente final (recordatorio de vencimientos)
   telefono_cliente?: string | null;
   venc_avisos?: boolean | null; // false = excluido del recordatorio de vencimientos
+  reporte_config?: Partial<ConfigReporte> | null; // opciones del reporte propias del cliente
+  reporte_enviado_en?: string | null;
+  reporte_enviado_a?: string | null;
   responsable_id?: number | null; // responsable asignado (sólo para un titular con equipo)
   responsable?: string | null;
 }
@@ -230,6 +234,9 @@ function construirCliente(
     emailCliente: bk.email_cliente ?? undefined,
     telefonoCliente: bk.telefono_cliente ?? undefined,
     vencAvisos: bk.venc_avisos ?? undefined,
+    reporteConfig: bk.reporte_config ?? undefined,
+    reporteEnviadoEn: bk.reporte_enviado_en ?? undefined,
+    reporteEnviadoA: bk.reporte_enviado_a ?? undefined,
     causales: [],
     extracciones,
     fuente: 'arca',
@@ -413,4 +420,20 @@ export async function cambiarActivoCliente(cuit: string, activo: boolean): Promi
  *  Se trae en vivo, por eso puede tardar unos segundos. */
 export function getConstanciaBlob(cuit: string): Promise<Blob> {
   return apiGetBlob(`/clientes/${cuit.replace(/\D/g, '')}/constancia`);
+}
+
+/** Guarda las opciones del reporte para UN cliente (null = volver a las generales del estudio). */
+export function guardarReporteConfigCliente(
+  cuit: string,
+  config: Partial<ConfigReporte> | null,
+): Promise<{ ok: boolean }> {
+  return apiPut(`/clientes/${cuit}/reporte-config`, { config });
+}
+
+/** Envía el reporte del cliente por mail (cuerpo armado en el front con los mismos números de la pantalla). */
+export function enviarReporteCliente(
+  cuit: string,
+  envio: { destino: string; copiaAMi: boolean; asunto: string; html: string; texto: string },
+): Promise<{ ok: boolean; destino: string; enviadoEn: string }> {
+  return apiPost(`/clientes/${cuit}/reporte/enviar`, envio);
 }

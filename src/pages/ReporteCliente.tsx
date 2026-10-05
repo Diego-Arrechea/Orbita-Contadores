@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Printer, ArrowLeft, Building2, SlidersHorizontal, X } from 'lucide-react';
+import { Printer, ArrowLeft, Building2, SlidersHorizontal, X, Mail } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -12,16 +13,16 @@ import {
 } from '@/components/ui/select';
 import { getCliente } from '@/data/clientes';
 import { useClienteReal } from '@/lib/queries';
-import { calcularCliente, ventana12Meses } from '@/lib/monotributo';
-import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
-import { getCategoria } from '@/data/categorias';
+import { etiquetaRegimen } from '@/lib/regimen';
 import { cuentaActual } from '@/lib/cuenta';
 import { useConfig } from '@/context/ConfigContext';
-import { derivarAlertas, ordenarPorSeveridad, type Severidad } from '@/lib/alertas';
-import { accionesSugeridas, esPendienteRespaldo } from '@/lib/reporteCliente';
+import { type Severidad } from '@/lib/alertas';
+import { armarDatosReporte, opcionesReporte } from '@/lib/reporteDatos';
 import { getMovimientos } from '@/services/movimientosService';
-import type { ConfigReporte, MovimientoBancario } from '@/types';
-import { formatCurrency, formatCuit, formatDate, formatPercent } from '@/lib/utils';
+import { guardarReporteConfigCliente } from '@/services/clientesService';
+import { EnviarReporteDialog } from '@/components/cliente/EnviarReporteDialog';
+import type { Cliente, ConfigReporte, MovimientoBancario } from '@/types';
+import { formatCurrency, formatCuit, formatDate } from '@/lib/utils';
 
 // Secciones del reporte que el contador puede mostrar/ocultar (además de datos del cliente, que
 // siempre van). El label es el que se ve en el panel de personalización.
@@ -56,18 +57,35 @@ export function ReporteCliente() {
   // Observaciones del contador: son POR reporte (no se guardan en la cuenta); se tipean antes de imprimir.
   const [observaciones, setObservaciones] = useState('');
 
-  // Preferencias de reporte (globales, guardadas en la cuenta). El guardado es optimista.
-  const rep = config.reporte;
+  const qc = useQueryClient();
+  const [enviarOpen, setEnviarOpen] = useState(false);
+  const cliente = clienteMock ?? clienteReal ?? undefined;
+  const cuenta = cuentaActual();
+  const esReal = !clienteMock && !!clienteReal;
+
+  // Opciones del reporte: las PROPIAS del cliente si el contador las personalizó, si no las generales
+  // del estudio. Al tocarlas en un cliente real se guardan para ese cliente (optimista: se refleja ya
+  // en la cache y se persiste atrás). En el cliente de ejemplo se siguen guardando las generales.
+  const rep = opcionesReporte(config.reporte, cliente?.reporteConfig);
+  const tienePropias = !!cliente?.reporteConfig;
+  const guardarPropias = (nuevo: ConfigReporte | null) => {
+    if (!cliente) return;
+    qc.setQueryData<Cliente>(['cliente', cliente.cuit], c =>
+      c ? { ...c, reporteConfig: nuevo ?? undefined } : c,
+    );
+    void guardarReporteConfigCliente(cliente.cuit, nuevo).catch(() =>
+      qc.invalidateQueries({ queryKey: ['cliente', cliente.cuit] }),
+    );
+  };
   const setReporte = (patch: Partial<ConfigReporte>) => {
-    void guardarConfig({ reporte: { ...rep, ...patch } });
+    const nuevo = { ...rep, ...patch };
+    if (esReal) guardarPropias(nuevo);
+    else void guardarConfig({ reporte: nuevo });
   };
   const toggleSeccion = (k: keyof ConfigReporte['secciones']) =>
     setReporte({ secciones: { ...rep.secciones, [k]: !rep.secciones[k] } });
   const toggleMetrica = (k: keyof ConfigReporte['metricas']) =>
     setReporte({ metricas: { ...rep.metricas, [k]: !rep.metricas[k] } });
-
-  const cliente = clienteMock ?? clienteReal ?? undefined;
-  const cuenta = cuentaActual();
 
   // Movimientos para el bloque "pendientes de respaldo": para clientes reales se piden al backend;
   // para los mock (demo) se usan los embebidos.
@@ -94,50 +112,9 @@ export function ReporteCliente() {
     );
   }
 
-  const calc = calcularCliente(cliente, config.ventanas, inflacionEfectiva);
-  const noMono = !esMonotributista(cliente);
-  const cat = getCategoria(cliente.categoria);
-  const debeRecategorizar = !noMono && calc.categoriaCorresponde.codigo !== cliente.categoria;
-  const ultimos12 = ventana12Meses(cliente.historialMensual);
-  // Historial recortado a los últimos N meses que el contador eligió (de los hasta 12 disponibles).
-  const historial = ultimos12.slice(-rep.mesesHistorial);
-  const alertas = ordenarPorSeveridad(derivarAlertas(cliente, calc, config));
-  const pendientes = movimientos.filter(esPendienteRespaldo);
-  const acciones = accionesSugeridas(cliente, calc, alertas, pendientes.length);
-
-  // Cards de la sección "Situación de monotributo", data-driven para poder sacar/poner cada una.
-  // `valor` null = la métrica no aplica a este cliente (no se ofrece ni se muestra). Sólo mono.
-  const meses = cliente.mesesAdeudados ?? 0;
-  const metricas: { key: keyof ConfigReporte['metricas']; label: string; valor: string | null }[] = noMono
-    ? []
-    : [
-        { key: 'facturacion12m', label: 'Facturación últimos 12 meses', valor: formatCurrency(calc.facturacionUltimos12) },
-        { key: 'topeCategoria', label: 'Tope de la categoría', valor: formatCurrency(cat.topeAnual) },
-        { key: 'topeConsumido', label: 'Tope consumido', valor: formatPercent(calc.porcentajeTopeActual, 1) },
-        {
-          key: 'cuotaMes',
-          label: 'Cuota del mes',
-          valor: formatCurrency(
-            cliente.proxVencImporte ??
-              (cliente.tipoActividad === 'servicios' ? cat.cuotaServicios : cat.cuotaComercio),
-          ),
-        },
-        { key: 'estadoCuota', label: 'Estado de la cuota', valor: cliente.estadoCuotaMesActual === 'con-deuda' ? 'Con deuda' : 'Al día' },
-        { key: 'proximoVencimiento', label: 'Próximo vencimiento', valor: cliente.proxVencFecha ?? '—' },
-        { key: 'deudaCuota', label: 'Deuda de cuota', valor: formatCurrency(cliente.cuotaDeuda ?? 0) },
-        {
-          key: 'mesesAdeudados',
-          label: 'Meses adeudados',
-          valor: meses >= 1 ? `${meses} ${meses === 1 ? 'mes' : 'meses'} seguido${meses === 1 ? '' : 's'}` : null,
-        },
-        {
-          key: 'saldoFavor',
-          label: 'Saldo a favor',
-          valor: cliente.cuotaSaldoFavor && cliente.cuotaSaldoFavor > 0 ? formatCurrency(cliente.cuotaSaldoFavor) : null,
-        },
-      ];
-  // Métricas que aplican a este cliente (tienen valor): las que se pueden mostrar/ocultar.
-  const metricasDisponibles = metricas.filter(m => m.valor !== null);
+  // Mismos datos que el mail del reporte (lib/reporteDatos): lo que se ve es lo que le llega al cliente.
+  const { calc, noMono, debeRecategorizar, historial, alertas, pendientes, acciones, metricasDisponibles } =
+    armarDatosReporte(cliente, config, inflacionEfectiva, movimientos, rep);
 
   // Al "Guardar PDF", el navegador usa document.title como nombre del archivo. Lo seteamos con el
   // cliente y la fecha antes de imprimir, y lo restauramos al cerrar el diálogo.
@@ -164,9 +141,16 @@ export function ReporteCliente() {
               <ArrowLeft className="h-4 w-4" /> Volver a la ficha
             </Link>
           </Button>
-          <Button size="sm" onClick={imprimir}>
-            <Printer className="h-4 w-4" /> Imprimir / Guardar PDF
-          </Button>
+          <div className="flex items-center gap-2">
+            {esReal && (
+              <Button size="sm" variant="outline" onClick={() => setEnviarOpen(true)}>
+                <Mail className="h-4 w-4" /> Enviar por mail
+              </Button>
+            )}
+            <Button size="sm" onClick={imprimir}>
+              <Printer className="h-4 w-4" /> Imprimir / Guardar PDF
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -257,10 +241,30 @@ export function ReporteCliente() {
             </div>
           )}
 
-          <p className="mt-3 text-xs text-muted-foreground">
-            Las secciones, las cards y el historial quedan guardados para tus próximos reportes. Las
-            observaciones son sólo de este reporte.
-          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            <span>
+              {esReal
+                ? tienePropias
+                  ? 'Estas opciones son propias de este cliente.'
+                  : 'Usa las opciones generales del estudio; si las cambiás, quedan guardadas para este cliente.'
+                : 'Las secciones, las cards y el historial quedan guardados para tus próximos reportes.'}{' '}
+              Las observaciones son sólo de este reporte.
+            </span>
+            {esReal && tienePropias && (
+              <>
+                <button type="button" className="text-primary hover:underline" onClick={() => guardarPropias(null)}>
+                  Volver a las opciones generales
+                </button>
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() => void guardarConfig({ reporte: rep })}
+                >
+                  Usarlas como opciones generales
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -453,6 +457,15 @@ export function ReporteCliente() {
               ))}
             </ul>
           </>
+        )}
+
+        {esReal && (
+          <EnviarReporteDialog
+            cliente={cliente}
+            open={enviarOpen}
+            onOpenChange={setEnviarOpen}
+            mensajeInicial={observaciones}
+          />
         )}
 
         <footer className="mt-10 pt-5 border-t border-border/60 text-xs text-muted-foreground">

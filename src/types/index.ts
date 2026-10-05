@@ -294,6 +294,11 @@ export interface Cliente {
   emailCliente?: string;
   telefonoCliente?: string;
   vencAvisos?: boolean;
+  /** Opciones del reporte propias de este cliente (undefined = usa las generales del estudio). */
+  reporteConfig?: Partial<ConfigReporte>;
+  /** Último envío del reporte por mail: cuándo (ISO) y a quién. */
+  reporteEnviadoEn?: string;
+  reporteEnviadoA?: string;
   causales: EstadoCausalCliente[];
   extracciones: Extraccion[];
   /** 'arca' = los comprobantes se traen reales del backend (WSFEv1); 'mock'/undefined = datos de prueba. */

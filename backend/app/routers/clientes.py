@@ -36,6 +36,8 @@ from ..schemas import (
     LiquidacionesAgroOut,
     RemuneracionMesOut,
     RemuneracionOut,
+    ReporteConfigIn,
+    ReporteEnvioIn,
     clasificar_regimen,
     nombre_tipo,
     resolver_regimen,
@@ -45,11 +47,21 @@ from ..security import bloquear_si_demo, ids_cartera, requiere_permiso, usuario_
 from ..services import comunicaciones as comunicaciones_svc
 from ..services import demo as demo_svc
 from ..services import ipc
+from ..services import reporte_mail
 from ..services import sincronizacion
 from ..services.scheduler import estado_scheduler
 
 router = APIRouter(prefix="/api", tags=["clientes"])
 log = logging.getLogger("orbita.clientes")
+
+
+def _json_o_none(raw: str | None):
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return None
 
 
 def _iso_utc(d: dt.datetime) -> str:
@@ -371,6 +383,9 @@ def construir_cliente_out(
         email_cliente=c.email_cliente,
         telefono_cliente=c.telefono_cliente,
         venc_avisos=c.venc_avisos,
+        reporte_config=_json_o_none(c.reporte_config_json),
+        reporte_enviado_en=_iso_utc(c.reporte_enviado_en) if c.reporte_enviado_en else None,
+        reporte_enviado_a=c.reporte_enviado_a,
         # Relación de dependencia: el override manual del contador (True/False) gana; si no lo marcó
         # (None), cae al valor auto-detectado de la columna. None final = no se sabe.
         relacion_dependencia=(
@@ -526,6 +541,66 @@ def historico_cliente(
         primer_periodo=(min(por_mes) if por_mes else None),
         puntos_venta=sorted({pv for m in por_mes_pv.values() for pv in m}),
     )
+
+
+@router.put("/clientes/{cuit}/reporte-config")
+def guardar_reporte_config(
+    cuit: str,
+    datos: ReporteConfigIn,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_actual),
+):
+    """Guarda las opciones del reporte (secciones, cards, meses de historial) PARA ESTE CLIENTE.
+    `config` null = vuelve a las opciones generales del estudio."""
+    cliente = _cliente_propio(db, cuit, usuario)
+    if datos.config is None:
+        cliente.reporte_config_json = None
+    else:
+        raw = json.dumps(datos.config)
+        if len(raw) > 5000:  # es un objeto chico de booleanos: algo más grande no es una config
+            raise HTTPException(status_code=422, detail="Opciones de reporte inválidas.")
+        cliente.reporte_config_json = raw
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/clientes/{cuit}/reporte/enviar")
+def enviar_reporte(
+    cuit: str,
+    datos: ReporteEnvioIn,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_actual),
+):
+    """Manda el reporte del cliente por mail. El cuerpo lo arma el front (mismos números que la
+    pantalla); acá se valida, se envuelve con el pie del estudio y se envía con respuesta al contador.
+    Registra cuándo y a quién se mandó."""
+    cliente = _cliente_propio(db, cuit, usuario)
+    bloquear_si_demo(db, usuario, "Los reportes de clientes de ejemplo no se envían por mail.")
+    try:
+        enviado = reporte_mail.enviar(
+            usuario=usuario,
+            cliente=cliente,
+            destino=str(datos.destino),
+            copia_a_mi=datos.copiaAMi,
+            asunto=datos.asunto,
+            html=datos.html,
+            texto=datos.texto,
+        )
+    except reporte_mail.EnvioRechazado as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    if not enviado:
+        raise HTTPException(
+            status_code=502,
+            detail="No pudimos enviar el mail en este momento. Probá de nuevo en unos minutos.",
+        )
+    cliente.reporte_enviado_en = dt.datetime.now(dt.timezone.utc)
+    cliente.reporte_enviado_a = str(datos.destino)
+    db.commit()
+    return {
+        "ok": True,
+        "destino": cliente.reporte_enviado_a,
+        "enviadoEn": _iso_utc(cliente.reporte_enviado_en),
+    }
 
 
 @router.put("/clientes/{cuit}/edicion")
