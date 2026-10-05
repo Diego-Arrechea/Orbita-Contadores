@@ -474,6 +474,43 @@ class IvaAjuste(Base):
     )
 
 
+class IvaCorreccion(Base):
+    """Corrección MANUAL del contador sobre un comprobante del Libro IVA (alícuota mal aplicada, letra
+    A/B equivocada, percepciones lumpeadas en "otros", compra que no es del negocio). Vive APARTE del
+    comprobante a propósito: el sync reescribe `ComprobanteEmitido` en cada corrida, así que una
+    corrección guardada ahí se perdería. Se aplica al LEER (libro, posición, export LID, PDF) con
+    `services/iva_correcciones.efectivos()`. Clave natural = la del comprobante tal como lo trae el
+    sync (con su cbte_tipo ORIGINAL), así sobrevive aunque cambie el id de la fila.
+
+    Cada campo en NULL = "no se corrigió, usar el original"."""
+
+    __tablename__ = "iva_correcciones"
+    __table_args__ = (
+        UniqueConstraint(
+            "cuit", "direccion", "punto_venta", "cbte_tipo", "numero", name="uq_iva_correccion"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cuit: Mapped[str] = mapped_column(String(11), ForeignKey("clientes_arca.cuit"), index=True)
+    direccion: Mapped[str] = mapped_column(String(10))  # emitido | recibido
+    punto_venta: Mapped[int] = mapped_column(Integer)
+    cbte_tipo: Mapped[int] = mapped_column(Integer)  # el ORIGINAL (parte de la clave)
+    numero: Mapped[int] = mapped_column(Integer)
+    # --- valores corregidos (NULL = sin corregir) ---
+    cbte_tipo_nuevo: Mapped[int | None] = mapped_column(Integer, nullable=True)  # cambio de letra A↔B
+    alicuotas_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # [{alicuota, base, iva}]
+    imp_no_gravado: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    imp_exento: Mapped[float | None] = mapped_column(Numeric(15, 2), nullable=True)
+    percepciones_json: Mapped[str | None] = mapped_column(Text, nullable=True)  # mismo formato que el comprobante
+    excluido: Mapped[bool] = mapped_column(Boolean, default=False)  # no corresponde al negocio
+    nota: Mapped[str | None] = mapped_column(Text, nullable=True)
+    usuario_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actualizado_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class CuentaContable(Base):
     """Una cuenta del plan de cuentas de un cliente (apartado de Contabilidad).
 

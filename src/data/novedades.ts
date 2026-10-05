@@ -42,6 +42,34 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-10-05-iva-correcciones-pdf',
+    fecha: '2026-10-05',
+    titulo: 'Libro IVA: corregí comprobantes y descargalo en PDF',
+    resumen: 'Ajustá lo que vino mal antes de declarar, sin salir de Órbita.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En IVA → Libro IVA, tocá un comprobante para corregir la alícuota (el IVA se recalcula solo), pasarlo de B a A o al revés, ajustar no gravado y exento, o repartir «otros tributos» en percepción de IVA, Ingresos Brutos, impuestos internos y municipales. Los cambios se aplican a la posición y a los archivos del Libro IVA Digital, y podés volver al original cuando quieras.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Marcá un comprobante como «No corresponde al negocio» y deja de sumar al libro, la posición y los archivos (queda listado, con tu nota).',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Botón PDF: el Libro IVA de Ventas o Compras del período con cada comprobante por alícuota, percepciones separadas, resumen por alícuota y totales.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'El Libro IVA muestra las percepciones en columnas separadas y, al pie, el resumen por alícuota y el de percepciones.',
+      },
+    ],
+  },
+  {
     id: '2026-09-30-equipo-toda-la-cartera',
     fecha: '2026-09-30',
     titulo: 'Tu equipo puede ver toda la cartera',

@@ -2,7 +2,7 @@
  * Apartado de IVA (Libro IVA / posición). Sólo HTTP contra el backend, que además valida el gate
  * (allowlist IVA_EMAILS + admins) en cada endpoint: el front esconde el menú con puedeVerIVA().
  */
-import { apiGet, apiGetBlob, apiPatch, apiPost, BASE_URL } from './apiClient';
+import { apiDelete, apiGet, apiGetBlob, apiPatch, apiPost, apiPut, BASE_URL } from './apiClient';
 import { tokenActual } from '@/lib/cuenta';
 
 export interface IvaPeriodo {
@@ -33,6 +33,60 @@ export interface IvaLinea {
   /** true = el comprobante todavía no tiene el desglose de IVA capturado (se muestra el total como
    *  neto). Se completa a medida que el sync captura el neto/IVA discriminado. */
   sinDesglose: boolean;
+  /** id de la fila (para guardar la corrección del contador). */
+  compId: number;
+  corregido: boolean;
+  /** No corresponde al negocio: se lista pero no suma al libro, la posición ni los archivos. */
+  excluido: boolean;
+  nota: string | null;
+  alicuotas: IvaAlicuotaLinea[];
+  percepciones: IvaPercepciones | null;
+  /** Importes tal como vinieron (antes de corregir). */
+  original: IvaOriginal | null;
+  /** Tipo de la otra letra (A↔B) al que se puede pasar; null si no admite el cambio. */
+  cbteTipoAlternativo: number | null;
+  tipoAlternativo: string | null;
+}
+
+export interface IvaAlicuotaLinea {
+  alicuota: number; // 21, 10.5, ...
+  base: number;
+  iva: number;
+}
+
+/** Percepciones / tributos separados por tipo. */
+export interface IvaPercepciones {
+  iva: number;
+  iibb: number;
+  muni: number;
+  internos: number;
+  otros_nac: number;
+  otros: number;
+  no_categ: number;
+}
+
+export interface IvaOriginal {
+  tipo: string;
+  cbteTipo: number;
+  neto: number;
+  iva: number;
+  noGravado: number;
+  exento: number;
+  tributos: number;
+  total: number;
+  alicuotas: IvaAlicuotaLinea[];
+  percepciones: IvaPercepciones | null;
+}
+
+/** Corrección de un comprobante. Cada campo en null = sin corregir (usa el original). */
+export interface IvaCorreccion {
+  cbteTipo: number | null;
+  alicuotas: { alicuota: number; base: number }[] | null;
+  noGravado: number | null;
+  exento: number | null;
+  percepciones: IvaPercepciones | null;
+  excluido: boolean;
+  nota: string | null;
 }
 
 export interface IvaSubtotales {
@@ -50,7 +104,12 @@ export interface IvaLibro {
   periodo: string;
   direccion: DireccionIva;
   lineas: IvaLinea[];
+  /** Sin los excluidos. */
   subtotales: IvaSubtotales;
+  porAlicuota: IvaAlicuota[];
+  percepciones: IvaPercepciones;
+  excluidos: number;
+  corregidos: number;
 }
 
 export interface IvaAlicuota {
@@ -221,4 +280,39 @@ export function getLibroIva(
   return apiGet<IvaLibro>(
     `/iva/clientes/${cuit}/libro?periodo=${encodeURIComponent(periodo)}&direccion=${direccion}`
   );
+}
+
+/** Guarda la corrección del contador sobre un comprobante del Libro IVA (no toca el dato de origen:
+ *  se aplica al libro, la posición y los archivos). Todo en null y excluido=false = vuelve al original. */
+export function guardarCorreccionIva(
+  cuit: string,
+  compId: number,
+  correccion: IvaCorreccion
+): Promise<{ ok: boolean; corregido: boolean }> {
+  return apiPut(`/iva/clientes/${cuit}/comprobantes/${compId}/correccion`, correccion);
+}
+
+/** Descarta la corrección de un comprobante (vuelve a los valores originales). */
+export function borrarCorreccionIva(cuit: string, compId: number): Promise<{ ok: boolean }> {
+  return apiDelete(`/iva/clientes/${cuit}/comprobantes/${compId}/correccion`);
+}
+
+/** Descarga el Libro IVA del período en PDF (detalle por comprobante y alícuota + resúmenes). */
+export async function descargarLibroIvaPdf(
+  cuit: string,
+  periodo: string,
+  direccion: DireccionIva
+): Promise<void> {
+  const blob = await apiGetBlob(
+    `/iva/clientes/${cuit}/libro/pdf?periodo=${encodeURIComponent(periodo)}&direccion=${direccion}`
+  );
+  const cap = direccion === 'ventas' ? 'Ventas' : 'Compras';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `LibroIVA_${cap}_${periodo.replace('-', '')}_${cuit}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }

@@ -908,6 +908,67 @@ class IvaLineaOut(BaseModel):
     # True = el desglose (neto/iva) no está capturado para este comprobante (sincronizado antes de la
     # feature): se muestra el total como neto y el front puede señalarlo. Ver models.ComprobanteEmitido.
     sinDesglose: bool = False  # noqa: N815
+    # --- Correcciones del contador (IvaCorreccion) ---
+    compId: int = 0  # noqa: N815 — id de la fila, para guardar la corrección
+    corregido: bool = False
+    excluido: bool = False  # no corresponde al negocio: se lista pero no suma
+    nota: str | None = None
+    alicuotas: list["IvaAlicuotaLineaOut"] = []
+    percepciones: "IvaPercepcionesOut | None" = None
+    # Importes tal como vinieron (antes de corregir), para el panel de edición y "volver al original".
+    original: "IvaOriginalOut | None" = None
+    # Tipo de la otra letra (A↔B) al que se puede pasar el comprobante; None si no admite el cambio.
+    cbteTipoAlternativo: int | None = None  # noqa: N815
+    tipoAlternativo: str | None = None  # noqa: N815
+
+
+class IvaAlicuotaLineaOut(BaseModel):
+    alicuota: float
+    base: float
+    iva: float
+
+
+class IvaPercepcionesOut(BaseModel):
+    """Percepciones / tributos separados por tipo (en pesos)."""
+
+    iva: float = 0
+    iibb: float = 0
+    muni: float = 0
+    internos: float = 0
+    otros_nac: float = 0
+    otros: float = 0
+    no_categ: float = 0
+
+
+class IvaOriginalOut(BaseModel):
+    tipo: str
+    cbteTipo: int  # noqa: N815
+    neto: float
+    iva: float
+    noGravado: float  # noqa: N815
+    exento: float
+    tributos: float
+    total: float
+    alicuotas: list[IvaAlicuotaLineaOut] = []
+    percepciones: IvaPercepcionesOut | None = None
+
+
+class IvaAlicuotaCorreccionIn(BaseModel):
+    alicuota: float
+    base: float
+
+
+class IvaCorreccionIn(BaseModel):
+    """Corrección de un comprobante del Libro IVA. Cada campo en null = sin corregir (usa el original).
+    Mandar todo en null y excluido=false borra la corrección (vuelve al original)."""
+
+    cbteTipo: int | None = None  # noqa: N815
+    alicuotas: list[IvaAlicuotaCorreccionIn] | None = None
+    noGravado: float | None = None  # noqa: N815
+    exento: float | None = None
+    percepciones: IvaPercepcionesOut | None = None
+    excluido: bool = False
+    nota: str | None = Field(default=None, max_length=500)
 
 
 class IvaSubtotalesOut(BaseModel):
@@ -930,7 +991,11 @@ class IvaLibroOut(BaseModel):
     periodo: str  # aaaa-mm
     direccion: str  # 'ventas' | 'compras'
     lineas: list[IvaLineaOut]
-    subtotales: IvaSubtotalesOut
+    subtotales: IvaSubtotalesOut  # sin los excluidos
+    porAlicuota: list["IvaAlicuotaOut"] = []  # noqa: N815 — subtotales por alícuota (neteados)
+    percepciones: IvaPercepcionesOut = IvaPercepcionesOut()  # totales por tipo (neteados)
+    excluidos: int = 0  # cantidad de comprobantes excluidos (no suman)
+    corregidos: int = 0
 
 
 class IvaAlicuotaOut(BaseModel):
@@ -1710,3 +1775,8 @@ class PagoSuscripcionIn(BaseModel):
     periodo_hasta: str | None = None
     referencia: str | None = None
     notas: str | None = None
+
+
+# Referencias adelantadas del Libro IVA (IvaLineaOut / IvaLibroOut usan modelos definidos después).
+IvaLineaOut.model_rebuild()
+IvaLibroOut.model_rebuild()

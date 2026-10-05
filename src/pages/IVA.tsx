@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Percent, Loader2, FileText, Info, Scale, Download, Check, AlertTriangle, Upload, RefreshCw } from 'lucide-react';
+import { Percent, Loader2, FileText, Info, Scale, Download, Check, AlertTriangle, Upload, RefreshCw, Pencil, FileDown } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -33,8 +33,11 @@ import {
   importarPercepcionesAfip,
   importarBorradorIva,
   descargarLibroIvaDigital,
+  descargarLibroIvaPdf,
   type DireccionIva,
   type IvaLibro,
+  type IvaLinea,
+  type IvaPercepciones,
   type IvaSubtotales,
   type IvaPosicion,
   type IvaLado,
@@ -43,6 +46,7 @@ import {
 } from '@/services/ivaService';
 import { mensajeDeError } from '@/services/authService';
 import { formatCurrency, formatCuit, cn } from '@/lib/utils';
+import { CorreccionComprobanteDialog } from '@/components/iva/CorreccionComprobanteDialog';
 
 type VistaIva = 'libro' | 'posicion';
 
@@ -62,6 +66,8 @@ export function IVA() {
   const [periodo, setPeriodo] = useState<string>('');
   const [descargando, setDescargando] = useState<DireccionIva | null>(null);
   const [errorDescarga, setErrorDescarga] = useState<string | null>(null);
+  const [descargandoPdf, setDescargandoPdf] = useState(false);
+  const [editando, setEditando] = useState<IvaLinea | null>(null);
   // null = quieto · 'afip' = trayendo directo de AFIP · 'archivo' = subiendo un archivo
   const [importando, setImportando] = useState<null | 'afip' | 'archivo'>(null);
   const [avisoImport, setAvisoImport] = useState<string | null>(null);
@@ -153,6 +159,19 @@ export function IVA() {
       setAvisoImport(mensajeDeError(e));
     } finally {
       setImportando(null);
+    }
+  }
+
+  async function descargarPdf() {
+    if (!cuitActivo || !periodoActivo) return;
+    setDescargandoPdf(true);
+    setErrorDescarga(null);
+    try {
+      await descargarLibroIvaPdf(cuitActivo, periodoActivo, direccion);
+    } catch (e) {
+      setErrorDescarga(mensajeDeError(e));
+    } finally {
+      setDescargandoPdf(false);
     }
   }
 
@@ -251,6 +270,22 @@ export function IVA() {
                 <TabsTrigger value="compras">Compras</TabsTrigger>
               </TabsList>
             </Tabs>
+          )}
+          {vista === 'libro' && periodoActivo && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={descargarPdf}
+              disabled={descargandoPdf || !libro || libro.lineas.length === 0}
+              title={`Descarga el Libro IVA ${direccion === 'ventas' ? 'Ventas' : 'Compras'} del período en PDF`}
+            >
+              {descargandoPdf ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <FileDown className="mr-2 h-4 w-4" />
+              )}
+              PDF
+            </Button>
           )}
           {periodoActivo && (
             <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
@@ -353,8 +388,22 @@ export function IVA() {
           }
         />
       ) : (
-        <LibroTabla libro={libro} sub={sub!} hayIva={hayIva} direccion={direccion} />
+        <LibroTabla
+          libro={libro}
+          sub={sub!}
+          hayIva={hayIva}
+          direccion={direccion}
+          onEditar={setEditando}
+        />
       )}
+
+      <CorreccionComprobanteDialog
+        linea={editando}
+        cuit={cuitActivo}
+        direccion={direccion}
+        onClose={() => setEditando(null)}
+        onGuardado={refrescarTrasImport}
+      />
     </div>
   );
 }
@@ -430,8 +479,9 @@ function PosicionView({
         <span>
           El saldo a favor anterior y las retenciones los cargás abajo, o los completás de una con
           “Traer lo declarado” si el período ya está presentado. La percepción IVA sale del borrador
-          de AFIP que importes (botón “Importar de AFIP”); si no lo importaste, queda en 0. La
-          alícuota se estima por comprobante; los que combinan varias alícuotas aparecen en “Otras”.
+          de AFIP que importes (botón “Traer de AFIP”); si no lo importaste, queda en 0. Las
+          correcciones que hagas en el Libro IVA (alícuota, letra, percepciones, comprobantes
+          excluidos) ya están aplicadas acá.
         </span>
       </div>
     </div>
@@ -741,115 +791,275 @@ function EstadoVacio({ titulo, detalle }: { titulo: string; detalle: string }) {
   );
 }
 
+/** Percepciones de la línea agrupadas en las 4 columnas del libro (IVA, IIBB, internos, otros). */
+function percepCols(p: IvaPercepciones | null) {
+  const v = p ?? { iva: 0, iibb: 0, muni: 0, internos: 0, otros_nac: 0, otros: 0, no_categ: 0 };
+  return {
+    iva: v.iva,
+    iibb: v.iibb,
+    internos: v.internos,
+    otros: v.muni + v.otros_nac + v.otros + v.no_categ,
+  };
+}
+
 function LibroTabla({
   libro,
   sub,
   hayIva,
   direccion,
+  onEditar,
 }: {
   libro: IvaLibro;
   sub: IvaSubtotales;
   hayIva: boolean;
   direccion: DireccionIva;
+  onEditar: (l: IvaLinea) => void;
 }) {
   const contraparte = direccion === 'ventas' ? 'Cliente' : 'Proveedor';
-  return (
-    <Card className="overflow-hidden">
-      {/* Escritorio: tabla */}
-      <div className="hidden lg:block overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Fecha</TableHead>
-              <TableHead>Comprobante</TableHead>
-              <TableHead>{contraparte}</TableHead>
-              <TableHead className="text-right">Neto</TableHead>
-              <TableHead className={cn('text-right', !hayIva && 'text-muted-foreground/60')}>IVA</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {libro.lineas.map(l => (
-              <TableRow key={l.id} className={cn(l.esNotaCredito && 'text-danger')}>
-                <TableCell className="whitespace-nowrap tabular-nums">{fechaCorta(l.fecha)}</TableCell>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span>{l.tipo}</span>
-                    <span className="tabular-nums text-muted-foreground">
-                      {String(l.puntoVenta).padStart(5, '0')}-{l.numero}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="max-w-[22rem] truncate">{l.contraparteNombre}</div>
-                  {l.contraparteCuit && (
-                    <div className="text-xs text-muted-foreground tabular-nums">{l.contraparteCuit}</div>
-                  )}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">{signo(l.esNotaCredito, l.neto)}</TableCell>
-                <TableCell className={cn('text-right tabular-nums', !hayIva && 'text-muted-foreground/60')}>
-                  {signo(l.esNotaCredito, l.iva)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums font-medium">
-                  {signo(l.esNotaCredito, l.total)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-          <TableFooter>
-            <TableRow>
-              <TableCell colSpan={3} className="font-medium">
-                {sub.cantidad} comprobante{sub.cantidad === 1 ? '' : 's'}
-              </TableCell>
-              <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(sub.neto)}</TableCell>
-              <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(sub.iva)}</TableCell>
-              <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(sub.total)}</TableCell>
-            </TableRow>
-          </TableFooter>
-        </Table>
-      </div>
+  // Columnas que sólo aparecen si aportan algo (en compras las percepciones siempre).
+  const hayNoGravado = libro.lineas.some(l => l.noGravado !== 0);
+  const hayExento = libro.lineas.some(l => l.exento !== 0);
+  const hayPercep = direccion === 'compras' || libro.lineas.some(l => l.tributos !== 0);
+  const tp = percepCols(libro.percepciones);
+  const montoCls = (l: IvaLinea) => cn('text-right tabular-nums', l.excluido && 'line-through');
 
-      {/* Mobile: tarjetas (convención del proyecto tabla→tarjetas) */}
-      <div className="lg:hidden divide-y">
-        {libro.lineas.map(l => (
-          <div key={l.id} className="p-4 space-y-1">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <span className={cn(l.esNotaCredito && 'text-danger')}>{l.tipo}</span>
-                <span className="tabular-nums text-muted-foreground">
-                  {String(l.puntoVenta).padStart(5, '0')}-{l.numero}
+  return (
+    <div className="space-y-4">
+      <Card className="overflow-hidden">
+        {(libro.corregidos > 0 || libro.excluidos > 0) && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+            {libro.corregidos > 0 && (
+              <span>
+                {libro.corregidos} comprobante{libro.corregidos === 1 ? '' : 's'} corregido
+                {libro.corregidos === 1 ? '' : 's'}
+              </span>
+            )}
+            {libro.excluidos > 0 && (
+              <span>
+                {libro.excluidos} excluido{libro.excluidos === 1 ? '' : 's'} (no suman)
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Escritorio: tabla */}
+        <div className="hidden lg:block overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Fecha</TableHead>
+                <TableHead>Comprobante</TableHead>
+                <TableHead>{contraparte}</TableHead>
+                <TableHead className="text-right">Neto</TableHead>
+                <TableHead className={cn('text-right', !hayIva && 'text-muted-foreground/60')}>IVA</TableHead>
+                {hayNoGravado && <TableHead className="text-right">No grav.</TableHead>}
+                {hayExento && <TableHead className="text-right">Exento</TableHead>}
+                {hayPercep && (
+                  <>
+                    <TableHead className="text-right">Perc. IVA</TableHead>
+                    <TableHead className="text-right">Perc. IIBB</TableHead>
+                    <TableHead className="text-right">Imp. int.</TableHead>
+                    <TableHead className="text-right">Otros</TableHead>
+                  </>
+                )}
+                <TableHead className="text-right">Total</TableHead>
+                <TableHead className="w-8" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {libro.lineas.map(l => {
+                const pc = percepCols(l.percepciones);
+                return (
+                  <TableRow
+                    key={l.id}
+                    onClick={() => onEditar(l)}
+                    className={cn(
+                      'group cursor-pointer',
+                      l.esNotaCredito && 'text-danger',
+                      l.excluido && 'text-muted-foreground'
+                    )}
+                    title="Corregir comprobante"
+                  >
+                    <TableCell className="whitespace-nowrap tabular-nums">{fechaCorta(l.fecha)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="whitespace-nowrap">{l.tipo}</span>
+                        <span className="whitespace-nowrap tabular-nums text-muted-foreground">
+                          {String(l.puntoVenta).padStart(5, '0')}-{l.numero}
+                        </span>
+                        <MarcasLinea l={l} />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="max-w-[18rem] truncate">{l.contraparteNombre}</div>
+                      {l.contraparteCuit && (
+                        <div className="text-xs text-muted-foreground tabular-nums">{l.contraparteCuit}</div>
+                      )}
+                    </TableCell>
+                    <TableCell className={montoCls(l)}>{signo(l.esNotaCredito, l.neto)}</TableCell>
+                    <TableCell className={cn(montoCls(l), !hayIva && 'text-muted-foreground/60')}>
+                      {signo(l.esNotaCredito, l.iva)}
+                    </TableCell>
+                    {hayNoGravado && <TableCell className={montoCls(l)}>{signoVacio(l.esNotaCredito, l.noGravado)}</TableCell>}
+                    {hayExento && <TableCell className={montoCls(l)}>{signoVacio(l.esNotaCredito, l.exento)}</TableCell>}
+                    {hayPercep && (
+                      <>
+                        <TableCell className={montoCls(l)}>{signoVacio(l.esNotaCredito, pc.iva)}</TableCell>
+                        <TableCell className={montoCls(l)}>{signoVacio(l.esNotaCredito, pc.iibb)}</TableCell>
+                        <TableCell className={montoCls(l)}>{signoVacio(l.esNotaCredito, pc.internos)}</TableCell>
+                        <TableCell className={montoCls(l)}>{signoVacio(l.esNotaCredito, pc.otros)}</TableCell>
+                      </>
+                    )}
+                    <TableCell className={cn(montoCls(l), 'font-medium')}>
+                      {signo(l.esNotaCredito, l.total)}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      <Pencil className="h-3.5 w-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={3} className="font-medium">
+                  {sub.cantidad} comprobante{sub.cantidad === 1 ? '' : 's'}
+                </TableCell>
+                <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(sub.neto)}</TableCell>
+                <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(sub.iva)}</TableCell>
+                {hayNoGravado && (
+                  <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(sub.noGravado)}</TableCell>
+                )}
+                {hayExento && (
+                  <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(sub.exento)}</TableCell>
+                )}
+                {hayPercep && (
+                  <>
+                    <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(tp.iva)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(tp.iibb)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(tp.internos)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(tp.otros)}</TableCell>
+                  </>
+                )}
+                <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(sub.total)}</TableCell>
+                <TableCell />
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </div>
+
+        {/* Mobile: tarjetas (convención del proyecto tabla→tarjetas) */}
+        <div className="lg:hidden divide-y">
+          {libro.lineas.map(l => (
+            <button
+              key={l.id}
+              type="button"
+              onClick={() => onEditar(l)}
+              className={cn('block w-full p-4 text-left space-y-1', l.excluido && 'text-muted-foreground')}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                  <span className={cn(l.esNotaCredito && 'text-danger')}>{l.tipo}</span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {String(l.puntoVenta).padStart(5, '0')}-{l.numero}
+                  </span>
+                  <MarcasLinea l={l} />
+                </div>
+                <span className="text-xs text-muted-foreground tabular-nums">{fechaCorta(l.fecha)}</span>
+              </div>
+              <div className="truncate text-sm text-muted-foreground">{l.contraparteNombre}</div>
+              <div className={cn('flex justify-between text-sm tabular-nums', l.excluido && 'line-through')}>
+                <span className="text-muted-foreground">Neto {signo(l.esNotaCredito, l.neto)}</span>
+                <span className="text-muted-foreground">IVA {signo(l.esNotaCredito, l.iva)}</span>
+                <span className={cn('font-medium', l.esNotaCredito && 'text-danger')}>
+                  {signo(l.esNotaCredito, l.total)}
                 </span>
               </div>
-              <span className="text-xs text-muted-foreground tabular-nums">{fechaCorta(l.fecha)}</span>
-            </div>
-            <div className="truncate text-sm text-muted-foreground">{l.contraparteNombre}</div>
-            <div className="flex justify-between text-sm tabular-nums">
-              <span className="text-muted-foreground">Neto {signo(l.esNotaCredito, l.neto)}</span>
-              <span className="text-muted-foreground">IVA {signo(l.esNotaCredito, l.iva)}</span>
-              <span className={cn('font-medium', l.esNotaCredito && 'text-danger')}>
-                {signo(l.esNotaCredito, l.total)}
-              </span>
-            </div>
+              {l.tributos !== 0 && (
+                <div className="text-xs text-muted-foreground tabular-nums">
+                  Percepciones y otros tributos {signo(l.esNotaCredito, l.tributos)}
+                </div>
+              )}
+            </button>
+          ))}
+          <div className="flex items-center justify-between p-4 font-semibold">
+            <span>Total ({sub.cantidad})</span>
+            <span className="tabular-nums">{formatCurrency(sub.total)}</span>
           </div>
-        ))}
-        <div className="flex items-center justify-between p-4 font-semibold">
-          <span>Total ({sub.cantidad})</span>
-          <span className="tabular-nums">{formatCurrency(sub.total)}</span>
         </div>
-      </div>
 
-      {!hayIva && direccion === 'ventas' && (
         <div className="flex items-start gap-2 border-t bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            Este cliente no discrimina IVA en sus comprobantes (régimen de Monotributo): el neto
-            coincide con el total.
+            {!hayIva && direccion === 'ventas'
+              ? 'Este cliente no discrimina IVA en sus comprobantes (régimen de Monotributo): el neto coincide con el total. '
+              : ''}
+            Tocá un comprobante para corregir la alícuota, la letra o el reparto de percepciones, o para
+            excluirlo si no corresponde al negocio.
           </span>
         </div>
-      )}
-    </Card>
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <LadoCard
+          titulo="Resumen por alícuota"
+          lado={{ ...sub, tributos: 0, porAlicuota: libro.porAlicuota }}
+          montoLabel={direccion === 'ventas' ? 'Débito' : 'Crédito'}
+        />
+        <Card className="overflow-hidden">
+          <div className="border-b px-4 py-3 font-medium">Percepciones y otros tributos</div>
+          <Table>
+            <TableBody>
+              <FilaResumen label="Percepciones de IVA" valor={tp.iva} />
+              <FilaResumen label="Percepciones de Ingresos Brutos" valor={tp.iibb} />
+              <FilaResumen label="Impuestos internos" valor={tp.internos} />
+              <FilaResumen label="Otros (municipales y otros)" valor={tp.otros} />
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell className="font-medium">Total</TableCell>
+                <TableCell className="text-right tabular-nums font-semibold">
+                  {formatCurrency(tp.iva + tp.iibb + tp.internos + tp.otros)}
+                </TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </Card>
+      </div>
+    </div>
   );
+}
+
+function FilaResumen({ label, valor }: { label: string; valor: number }) {
+  return (
+    <TableRow className={cn(valor === 0 && 'text-muted-foreground')}>
+      <TableCell>{label}</TableCell>
+      <TableCell className="text-right tabular-nums">{formatCurrency(valor)}</TableCell>
+    </TableRow>
+  );
+}
+
+/** Etiquetas de estado de una línea del libro: corregida / excluida. */
+function MarcasLinea({ l }: { l: IvaLinea }) {
+  return (
+    <>
+      {l.corregido && (
+        <Badge variant="outline" className="shrink-0 border-primary/40 text-[10px] text-primary" title={l.nota ?? undefined}>
+          Corregido
+        </Badge>
+      )}
+      {l.excluido && (
+        <Badge variant="outline" className="shrink-0 text-[10px]" title={l.nota ?? undefined}>
+          Excluido
+        </Badge>
+      )}
+    </>
+  );
+}
+
+function signoVacio(esNc: boolean, valor: number): string {
+  return valor === 0 ? '' : signo(esNc, valor);
 }
 
 function signo(esNc: boolean, valor: number): string {

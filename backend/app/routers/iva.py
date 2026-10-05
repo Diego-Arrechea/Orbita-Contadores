@@ -22,17 +22,22 @@ from sqlalchemy.orm import Session
 from .. import models
 from ..arca.afip import LivaOcupadoError
 from ..db import get_db
-from ..services import iva_dj, lid_export, lid_import
+from ..services import iva_correcciones, iva_dj, libro_iva_pdf, lid_export, lid_import
+from ..services.iva_correcciones import PAR_LETRA, clave_comprobante
 from ..schemas import (
     TIPOS_MONOTRIBUTO,
     TIPOS_NOTA_CREDITO,
     IvaAjusteIn,
+    IvaAlicuotaLineaOut,
     IvaAlicuotaOut,
+    IvaCorreccionIn,
     IvaDjPresentadaOut,
     IvaInconsistenciaOut,
     IvaLadoOut,
     IvaLibroOut,
     IvaLineaOut,
+    IvaOriginalOut,
+    IvaPercepcionesOut,
     IvaPeriodoOut,
     IvaPosicionOut,
     IvaSubtotalesOut,
@@ -103,37 +108,51 @@ def periodos_cliente(
     ]
 
 
-@router.get("/clientes/{cuit}/libro", response_model=IvaLibroOut)
-def libro_iva(
-    cuit: str,
-    periodo: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="aaaa-mm"),
-    direccion: str = Query("ventas", pattern="^(ventas|compras)$"),
-    db: Session = Depends(get_db),
-    usuario: models.Usuario = Depends(usuario_iva),
-):
-    """Libro IVA del cliente para un período: renglón por comprobante + subtotales neteados (las
-    notas de crédito restan)."""
-    _cliente_propio(db, cuit, usuario)
-    columna = _DIR_A_COLUMNA.get(direccion)
-    if columna is None:  # el pattern del Query ya lo garantiza; defensa en profundidad
-        raise HTTPException(status_code=422, detail="Dirección inválida.")
+def _comps_periodo(
+    db: Session, cuit: str, periodo: str, columna: str
+) -> list[models.ComprobanteEmitido]:
+    """Comprobantes del cliente en el mes, de un lado ('emitido' = ventas, 'recibido' = compras)."""
     desde, hasta = _rango_mes(periodo)
-
     comp = models.ComprobanteEmitido
-    comps = db.scalars(
-        select(comp)
-        .where(
-            comp.cuit == cuit,
-            comp.direccion == columna,
-            comp.fecha >= desde,
-            comp.fecha < hasta,
-        )
-        .order_by(comp.fecha, comp.punto_venta, comp.numero)
-    ).all()
+    return list(
+        db.scalars(
+            select(comp)
+            .where(
+                comp.cuit == cuit,
+                comp.direccion == columna,
+                comp.fecha >= desde,
+                comp.fecha < hasta,
+            )
+            .order_by(comp.fecha, comp.punto_venta, comp.numero)
+        ).all()
+    )
+
+
+def _efectivos_periodo(
+    db: Session, cuit: str, periodo: str, columna: str, *, con_excluidos: bool = False
+):
+    """Comprobantes del mes con las correcciones del contador aplicadas. Por defecto sin los
+    excluidos (no corresponden al negocio): así los ven la posición, el export y las revisiones."""
+    efs = iva_correcciones.efectivos(db, _comps_periodo(db, cuit, periodo, columna))
+    return efs if con_excluidos else [e for e in efs if not e.excluido]
+
+
+def _percep_out(p: dict | None) -> IvaPercepcionesOut | None:
+    return IvaPercepcionesOut(**{k: round(v, 2) for k, v in p.items()}) if p is not None else None
+
+
+def _armar_libro(db: Session, cuit: str, periodo: str, direccion: str) -> IvaLibroOut:
+    """Libro IVA del período con las correcciones aplicadas. Los excluidos se listan (marcados) pero
+    no suman a los subtotales."""
+    columna = _DIR_A_COLUMNA[direccion]
+    crudos = _comps_periodo(db, cuit, periodo, columna)
+    efs = iva_correcciones.efectivos(db, crudos)
 
     lineas: list[IvaLineaOut] = []
     sub = IvaSubtotalesOut()
-    for c in comps:
+    percep_tot = {k: 0.0 for k in iva_correcciones.PERCEP_CAMPOS}
+    excluidos = corregidos = 0
+    for crudo, c in zip(crudos, efs):
         es_nc = c.cbte_tipo in TIPOS_NOTA_CREDITO
         signo = -1.0 if es_nc else 1.0
         total = float(c.imp_total)
@@ -147,10 +166,23 @@ def libro_iva(
             tributos = float(c.imp_trib or 0)
         else:
             neto, iva, no_gravado, exento, tributos = total, 0.0, 0.0, 0.0, 0.0
+        percep = iva_correcciones.percepciones_de(c)
 
+        # Valores de antes de corregir: el panel de edición parte de acá y "volver al original" los
+        # muestra. Se mandan siempre (son baratos) para que el panel abra igual en cualquier fila.
+        o = c.original
+        original = IvaOriginalOut(
+            tipo=nombre_tipo(c.cbte_tipo_original),
+            cbteTipo=c.cbte_tipo_original,
+            neto=o["neto"], iva=o["iva"], noGravado=o["noGravado"],
+            exento=o["exento"], tributos=o["tributos"], total=o["total"],
+            alicuotas=[IvaAlicuotaLineaOut(**a) for a in iva_correcciones.alicuotas_de(crudo)],
+            percepciones=_percep_out(iva_correcciones.percepciones_de(crudo)),
+        )
+        alt = PAR_LETRA.get(c.cbte_tipo_original)
         lineas.append(
             IvaLineaOut(
-                id=f"{c.cuit}-{c.direccion}-{c.punto_venta}-{c.cbte_tipo}-{c.numero}",
+                id=clave_comprobante(c),
                 fecha=c.fecha.isoformat(),
                 tipo=nombre_tipo(c.cbte_tipo),
                 cbteTipo=c.cbte_tipo,
@@ -166,8 +198,22 @@ def libro_iva(
                 total=total,
                 esNotaCredito=es_nc,
                 sinDesglose=not tiene_desglose,
+                compId=c.id,
+                corregido=c.corregido,
+                excluido=c.excluido,
+                nota=c.nota,
+                alicuotas=[IvaAlicuotaLineaOut(**a) for a in iva_correcciones.alicuotas_de(c)],
+                percepciones=_percep_out(percep),
+                original=original,
+                cbteTipoAlternativo=alt,
+                tipoAlternativo=nombre_tipo(alt) if alt else None,
             )
         )
+        if c.corregido:
+            corregidos += 1
+        if c.excluido:
+            excluidos += 1
+            continue
         sub.cantidad += 1
         sub.neto += signo * neto
         sub.iva += signo * iva
@@ -175,14 +221,124 @@ def libro_iva(
         sub.exento += signo * exento
         sub.tributos += signo * tributos
         sub.total += signo * total
+        for k, v in percep.items():
+            percep_tot[k] += signo * v
 
     # Redondeo a 2 decimales (evita el ruido de coma flotante en los subtotales).
     for campo in ("neto", "iva", "noGravado", "exento", "tributos", "total"):
         setattr(sub, campo, round(getattr(sub, campo), 2))
 
     return IvaLibroOut(
-        cuit=cuit, periodo=periodo, direccion=direccion, lineas=lineas, subtotales=sub
+        cuit=cuit,
+        periodo=periodo,
+        direccion=direccion,
+        lineas=lineas,
+        subtotales=sub,
+        porAlicuota=_agregar_lado([c for c in efs if not c.excluido]).porAlicuota,
+        percepciones=_percep_out(percep_tot),
+        excluidos=excluidos,
+        corregidos=corregidos,
     )
+
+
+@router.get("/clientes/{cuit}/libro", response_model=IvaLibroOut)
+def libro_iva(
+    cuit: str,
+    periodo: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="aaaa-mm"),
+    direccion: str = Query("ventas", pattern="^(ventas|compras)$"),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_iva),
+):
+    """Libro IVA del cliente para un período: renglón por comprobante (con las correcciones del
+    contador aplicadas) + subtotales neteados (las notas de crédito restan; los excluidos no suman)."""
+    _cliente_propio(db, cuit, usuario)
+    if direccion not in _DIR_A_COLUMNA:  # el pattern del Query ya lo garantiza; defensa en profundidad
+        raise HTTPException(status_code=422, detail="Dirección inválida.")
+    return _armar_libro(db, cuit, periodo, direccion)
+
+
+@router.get("/clientes/{cuit}/libro/pdf")
+def libro_iva_pdf_endpoint(
+    cuit: str,
+    periodo: str = Query(..., pattern=r"^\d{4}-\d{2}$", description="aaaa-mm"),
+    direccion: str = Query("ventas", pattern="^(ventas|compras)$"),
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_iva),
+):
+    """El Libro IVA del período en PDF (detalle por comprobante y alícuota, percepciones separadas,
+    resumen por alícuota y totales), para controlar contra el Portal IVA o archivar."""
+    cliente = _cliente_propio(db, cuit, usuario)
+    efs = _efectivos_periodo(db, cuit, periodo, _DIR_A_COLUMNA[direccion], con_excluidos=True)
+    pdf = libro_iva_pdf.generar(
+        efs,
+        cliente_nombre=cliente.nombre,
+        cuit=cuit,
+        periodo_label=_label_periodo(periodo),
+        direccion=direccion,
+        por_alicuota=_agregar_lado([e for e in efs if not e.excluido]).porAlicuota,
+    )
+    cap = "Ventas" if direccion == "ventas" else "Compras"
+    per = periodo.replace("-", "")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="LibroIVA_{cap}_{per}_{cuit}.pdf"'},
+    )
+
+
+def _comprobante_del_cliente(db: Session, cuit: str, comp_id: int) -> models.ComprobanteEmitido:
+    c = db.get(models.ComprobanteEmitido, comp_id)
+    if c is None or c.cuit != cuit:
+        raise HTTPException(status_code=404, detail="Comprobante no encontrado.")
+    return c
+
+
+@router.put("/clientes/{cuit}/comprobantes/{comp_id}/correccion")
+def guardar_correccion(
+    cuit: str,
+    comp_id: int,
+    datos: IvaCorreccionIn,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_iva),
+):
+    """Guarda la corrección del contador sobre un comprobante (alícuota, letra, no gravado/exento,
+    reparto de percepciones, exclusión). No toca el comprobante: se aplica al armar el libro, la
+    posición y los archivos. Todo en null y excluido=false = vuelve al original."""
+    _cliente_propio(db, cuit, usuario)
+    c = _comprobante_del_cliente(db, cuit, comp_id)
+    try:
+        corr = iva_correcciones.guardar(
+            db,
+            c,
+            cbte_tipo=datos.cbteTipo,
+            alicuotas=[a.model_dump() for a in datos.alicuotas] if datos.alicuotas is not None else None,
+            no_gravado=datos.noGravado,
+            exento=datos.exento,
+            percepciones=datos.percepciones.model_dump() if datos.percepciones is not None else None,
+            excluido=datos.excluido,
+            nota=datos.nota,
+            usuario_id=usuario.id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "corregido": corr is not None}
+
+
+@router.delete("/clientes/{cuit}/comprobantes/{comp_id}/correccion")
+def borrar_correccion(
+    cuit: str,
+    comp_id: int,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_iva),
+):
+    """Descarta la corrección del comprobante: vuelve a los valores originales."""
+    _cliente_propio(db, cuit, usuario)
+    c = _comprobante_del_cliente(db, cuit, comp_id)
+    corr = iva_correcciones.buscar(db, c)
+    if corr is not None:
+        db.delete(corr)
+        db.commit()
+    return {"ok": True}
 
 
 # Alícuotas oficiales de IVA (para inferir la alícuota de cada comprobante desde la relación IVA/neto).
@@ -269,21 +425,9 @@ def posicion_iva(
     """Posición de IVA del período (estilo F2002): débito (ventas) − crédito (compras) = saldo
     técnico; menos percepciones sufridas = saldo del impuesto (a pagar o a favor)."""
     _cliente_propio(db, cuit, usuario)
-    desde, hasta = _rango_mes(periodo)
-    comp = models.ComprobanteEmitido
-
-    def _comps(columna: str):
-        return db.scalars(
-            select(comp).where(
-                comp.cuit == cuit,
-                comp.direccion == columna,
-                comp.fecha >= desde,
-                comp.fecha < hasta,
-            )
-        ).all()
-
-    recibido_comps = _comps("recibido")
-    ventas = _agregar_lado(_comps("emitido"))
+    # Con las correcciones del contador aplicadas y sin los comprobantes excluidos.
+    recibido_comps = _efectivos_periodo(db, cuit, periodo, "recibido")
+    ventas = _agregar_lado(_efectivos_periodo(db, cuit, periodo, "emitido"))
     compras = _agregar_lado(recibido_comps)
     debito = ventas.iva
     credito = compras.iva
@@ -456,9 +600,7 @@ def _n_alicuotas(c: models.ComprobanteEmitido) -> int:
         return 1
 
 
-def _detectar_inconsistencias(
-    comps: list[models.ComprobanteEmitido], lado: str
-) -> list[IvaInconsistenciaOut]:
+def _detectar_inconsistencias(comps: list, lado: str) -> list[IvaInconsistenciaOut]:
     """Revisiones sugeridas sobre los comprobantes de un lado. No corrige: sólo marca."""
     out: list[IvaInconsistenciaOut] = []
     for c in comps:
@@ -469,7 +611,7 @@ def _detectar_inconsistencias(
         exento = float(c.imp_exento or 0)
         no_grav = float(c.imp_no_gravado or 0)
         es_c = c.cbte_tipo in TIPOS_MONOTRIBUTO  # clase C no discrimina IVA (no aplica)
-        cid = f"{c.cuit}-{c.direccion}-{c.punto_venta}-{c.cbte_tipo}-{c.numero}"
+        cid = clave_comprobante(c)
         etq = f"{nombre_tipo(c.cbte_tipo)} {str(c.punto_venta).zfill(5)}-{str(c.numero).zfill(8)}"
         cp = c.contraparte_nombre or "—"
 
@@ -525,20 +667,10 @@ def inconsistencias(
 ):
     """Revisiones sugeridas del período (posibles errores a chequear antes de declarar)."""
     _cliente_propio(db, cuit, usuario)
-    desde, hasta = _rango_mes(periodo)
-    comp = models.ComprobanteEmitido
-
-    def _comps(columna: str):
-        return db.scalars(
-            select(comp).where(
-                comp.cuit == cuit, comp.direccion == columna,
-                comp.fecha >= desde, comp.fecha < hasta,
-            ).order_by(comp.fecha, comp.punto_venta, comp.numero)
-        ).all()
-
-    return _detectar_inconsistencias(_comps("emitido"), "ventas") + _detectar_inconsistencias(
-        _comps("recibido"), "compras"
-    )
+    # Sobre los valores ya corregidos (lo que el contador arregló deja de marcarse) y sin excluidos.
+    return _detectar_inconsistencias(
+        _efectivos_periodo(db, cuit, periodo, "emitido"), "ventas"
+    ) + _detectar_inconsistencias(_efectivos_periodo(db, cuit, periodo, "recibido"), "compras")
 
 
 @router.get("/clientes/{cuit}/export/lid")
@@ -552,17 +684,9 @@ def export_lid(
     """Descarga el Libro IVA Digital de AFIP (ventas o compras) como ZIP con los dos TXT de ancho fijo
     (cabecera + alícuotas), listos para el portal Libro IVA Digital."""
     _cliente_propio(db, cuit, usuario)
-    desde, hasta = _rango_mes(periodo)
     columna = "emitido" if direccion == "ventas" else "recibido"
-    comp = models.ComprobanteEmitido
-    comps = db.scalars(
-        select(comp).where(
-            comp.cuit == cuit,
-            comp.direccion == columna,
-            comp.fecha >= desde,
-            comp.fecha < hasta,
-        )
-    ).all()
+    # Con las correcciones del contador aplicadas y sin los comprobantes excluidos.
+    comps = _efectivos_periodo(db, cuit, periodo, columna)
     if direccion == "ventas":
         archivos = lid_export.generar_lid_ventas(comps)
         etiqueta, cap = "Ventas", "Ventas"
