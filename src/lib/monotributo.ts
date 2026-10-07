@@ -95,8 +95,8 @@ export interface FacturadoVentana {
 /** Facturado NETO de los 12 meses calendario que cierran en `hasta`, tomado del historial mensual (que
  *  YA incluye la carga manual) + lo agropecuario, con la categoría que le correspondería, y su desglose
  *  por semestre. Sirve para evaluar la recategorización sobre un período ELEGIDO por el contador; el
- *  facturómetro OFICIAL de ARCA es sólo el rolling de 12 meses a hoy, así que para otras ventanas se
- *  usa el cálculo propio. */
+ *  facturómetro OFICIAL de ARCA mide sólo el período de la PRÓXIMA recategorización (ver
+ *  `periodoProximaRecat`), así que para otras ventanas se usa el cálculo propio. */
 export function facturadoEnVentana(cliente: Cliente, hasta: Date): FacturadoVentana {
   const meses = ventana12Meses(cliente.historialMensual, hasta);
   const finIdx = hasta.getFullYear() * 12 + hasta.getMonth();
@@ -127,6 +127,29 @@ export function facturadoEnVentana(cliente: Cliente, hasta: Date): FacturadoVent
       { desde: fecha(corteIdx), hasta: fecha(finIdx), facturado: facturadoSem2 },
     ],
   };
+}
+
+/**
+ * Los 12 meses que va a evaluar la PRÓXIMA recategorización (enero → ene–dic del año anterior; julio →
+ * jul–jun). Es también la ventana del facturómetro de ARCA, que NO son los 12 meses corridos a hoy:
+ * verificado el 7-oct-2026 con DURSO (23262519139), facturómetro $20.578.369,67 = ene–sep 2026 al
+ * peso (los 12 corridos daban $26.030.179,67). Se deduce de la fecha límite de la próxima ventana
+ * (la real de ARCA si la trajimos): feb → arrancó en enero del año anterior; ago → en julio.
+ * Sin ventana, el semestre calendario: hoy ene–jun → jul del año anterior; jul–dic → enero.
+ */
+export function periodoProximaRecat(
+  proximaVentana: VentanaRecategorizacion | undefined,
+  hoy: Date = HOY,
+): { desde: Date; hasta: Date } {
+  let desdeIdx: number;
+  if (proximaVentana) {
+    const [y, mo] = proximaVentana.fechaLimite.split('-').map(Number);
+    desdeIdx = y * 12 + (mo - 1) - 13;
+  } else {
+    desdeIdx = hoy.getMonth() < 6 ? (hoy.getFullYear() - 1) * 12 + 6 : hoy.getFullYear() * 12;
+  }
+  const fecha = (idx: number) => new Date(Math.floor(idx / 12), idx % 12, 1);
+  return { desde: fecha(desdeIdx), hasta: fecha(desdeIdx + 11) };
 }
 
 export interface CalculoCliente {

@@ -37,10 +37,12 @@ export const CONFIGURACION_INICIAL: Configuracion = {
   reporte: {
     secciones: { situacion: true, historial: true, alertas: true, movimientos: true, acciones: true },
     metricas: {
-      facturacion12m: true, topeCategoria: true, topeConsumido: true, cuotaMes: true,
+      facturacion12m: true, topeCategoria: true, topeConsumido: true, margenMensual: true, cuotaMes: true,
       estadoCuota: true, proximoVencimiento: true, deudaCuota: true, mesesAdeudados: true, saldoFavor: true,
     },
     mesesHistorial: 12,
+    periodoSituacion: 'recategorizacion',
+    mesesSituacion: [],
   },
   // Recordatorios de vencimiento al cliente final: envío automático APAGADO por defecto (opt-in).
   vencimientos: { activo: false },

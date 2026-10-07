@@ -18,6 +18,7 @@ import { cuentaActual } from '@/lib/cuenta';
 import { useConfig } from '@/context/ConfigContext';
 import { type Severidad } from '@/lib/alertas';
 import { armarDatosReporte, opcionesReporte } from '@/lib/reporteDatos';
+import { periodoProximaRecat } from '@/lib/monotributo';
 import { getMovimientos } from '@/services/movimientosService';
 import { guardarReporteConfigCliente } from '@/services/clientesService';
 import { EnviarReporteDialog } from '@/components/cliente/EnviarReporteDialog';
@@ -113,8 +114,34 @@ export function ReporteCliente() {
   }
 
   // Mismos datos que el mail del reporte (lib/reporteDatos): lo que se ve es lo que le llega al cliente.
-  const { calc, noMono, debeRecategorizar, historial, alertas, pendientes, acciones, metricasDisponibles } =
+  const { calc, situacion, noMono, debeRecategorizar, historial, alertas, pendientes, acciones, metricasDisponibles } =
     armarDatosReporte(cliente, config, inflacionEfectiva, movimientos, rep);
+
+  // Meses que se pueden elegir para la situación: los del historial (los últimos 24, el más nuevo
+  // primero). Al pasar a "Elegir meses" sin ninguno elegido, arranca con los del período de la
+  // recategorización que ya tienen datos, para tocar a partir de ahí.
+  const mesesElegibles = cliente.historialMensual
+    .map(m => m.mes)
+    .sort()
+    .reverse()
+    .slice(0, 24);
+  const elegidos = new Set(rep.mesesSituacion);
+  const mesesDelPeriodoRecat = () => {
+    const { desde, hasta } = periodoProximaRecat(calc.proximaVentana);
+    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return mesesElegibles.filter(m => m >= iso(desde) && m <= iso(hasta));
+  };
+  const cambiarPeriodo = (v: string) =>
+    v === 'meses'
+      ? setReporte({
+          periodoSituacion: 'meses',
+          mesesSituacion: rep.mesesSituacion.length ? rep.mesesSituacion : mesesDelPeriodoRecat(),
+        })
+      : setReporte({ periodoSituacion: 'recategorizacion' });
+  const toggleMesSituacion = (mes: string) =>
+    setReporte({
+      mesesSituacion: elegidos.has(mes) ? rep.mesesSituacion.filter(m => m !== mes) : [...rep.mesesSituacion, mes],
+    });
 
   // Al "Guardar PDF", el navegador usa document.title como nombre del archivo. Lo seteamos con el
   // cliente y la fecha antes de imprimir, y lo restauramos al cerrar el diálogo.
@@ -181,6 +208,65 @@ export function ReporteCliente() {
               </div>
             </div>
             <div className="space-y-4">
+              {!noMono && rep.secciones.situacion && (
+                <div>
+                  <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
+                    Período de la situación
+                  </div>
+                  <Select value={rep.periodoSituacion} onValueChange={cambiarPeriodo}>
+                    <SelectTrigger className="w-[260px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="recategorizacion">Desde la última recategorización</SelectItem>
+                      <SelectItem value="meses">Elegir meses</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {rep.periodoSituacion === 'meses' && (
+                    <div className="mt-2">
+                      <div className="flex flex-wrap gap-1.5">
+                        {mesesElegibles.map(m => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => toggleMesSituacion(m)}
+                            className={`rounded-full border px-2 py-0.5 text-xs tabular-nums transition-colors ${
+                              elegidos.has(m)
+                                ? 'border-primary/40 bg-primary/10 text-primary'
+                                : 'border-border bg-muted text-muted-foreground'
+                            }`}
+                          >
+                            {mesLegible(m)}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mt-1.5 flex gap-3 text-xs">
+                        <button
+                          type="button"
+                          className="text-primary hover:underline"
+                          onClick={() => setReporte({ mesesSituacion: mesesDelPeriodoRecat() })}
+                        >
+                          Período de recategorización
+                        </button>
+                        {elegidos.size > 0 && (
+                          <button
+                            type="button"
+                            className="text-primary hover:underline"
+                            onClick={() => setReporte({ mesesSituacion: [] })}
+                          >
+                            Limpiar
+                          </button>
+                        )}
+                      </div>
+                      {elegidos.size === 0 && (
+                        <p className="mt-1.5 text-xs text-muted-foreground">
+                          Sin meses elegidos se usa el período de la recategorización.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               <div>
                 <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">
                   Historial a mostrar
@@ -342,6 +428,7 @@ export function ReporteCliente() {
                   <Metrica key={m.key} label={m.label} valor={m.valor as string} onQuitar={() => toggleMetrica(m.key)} />
                 ))}
             </div>
+            <p className="mt-2 text-xs text-muted-foreground">{situacion.nota}</p>
 
             {debeRecategorizar && (
               <div className="mt-4 rounded-lg bg-warning/15 border border-warning/30 px-4 py-3 text-sm">

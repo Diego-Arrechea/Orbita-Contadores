@@ -12,6 +12,7 @@ import { getCategoria } from '@/data/categorias';
 import { esMonotributista, etiquetaRegimen } from '@/lib/regimen';
 import { formatCuit } from '@/lib/utils';
 import { accionesSugeridas, esPendienteRespaldo } from '@/lib/reporteCliente';
+import { situacionPeriodo } from '@/lib/reporteDatos';
 
 const SEV_LABEL: Record<Severidad, string> = {
   urgente: 'Urgente',
@@ -51,9 +52,15 @@ export function descargarReporteExcel(opts: {
   if (mono) {
     resumen.push(['Categoría actual', `Cat. ${cliente.categoria ?? '—'}`]);
     resumen.push([]);
-    resumen.push(['Facturación últimos 12 meses', calc.facturacionUltimos12]);
-    resumen.push(['Tope de la categoría', calc.topeReferencia]);
-    resumen.push(['Tope consumido', `${(calc.porcentajeTopeActual * 100).toFixed(1)}%`]);
+    // Mismo período que el reporte por defecto: el de la próxima recategorización.
+    const sit = situacionPeriodo(cliente, calc, 'recategorizacion');
+    resumen.push([`Facturado ${sit.etiqueta}`, sit.facturado]);
+    resumen.push(['Tope de la categoría', sit.tope]);
+    resumen.push(['Tope consumido', `${(sit.porcentaje * 100).toFixed(1)}%`]);
+    if (sit.porMes != null) {
+      resumen.push([`Puede facturar por mes (${sit.mesesRestantes} restantes)`, Math.round(sit.porMes * 100) / 100]);
+    }
+    resumen.push(['Período', sit.nota]);
     resumen.push(['Categoría que corresponde', `Cat. ${calc.categoriaCorresponde.codigo}`]);
     resumen.push(['Cuota del mes', cuota]);
     resumen.push(['Estado de la cuota', cliente.estadoCuotaMesActual === 'con-deuda' ? 'Con deuda' : 'Al día']);

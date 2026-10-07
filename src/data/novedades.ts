@@ -42,6 +42,29 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-10-07-reporte-periodo-recategorizacion',
+    fecha: '2026-10-07',
+    titulo: 'El reporte mide desde la última recategorización',
+    resumen: 'Facturado, tope consumido y cuánto puede facturar por mes, todo sobre el mismo período.',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'La situación de monotributo del reporte ahora toma lo facturado desde el inicio del período que evalúa la próxima recategorización (por ejemplo, desde enero), en vez de los últimos 12 meses corridos. Así el monto, el % del tope y la categoría hablan del mismo período.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Nueva card «Puede facturar por mes»: cuánto le queda facturar por mes al cliente hasta la recategorización sin pasarse del tope.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'En «Personalizá el reporte», en «Período de la situación», podés elegir «Elegir meses» y tildar los meses que quieras sumar, igual que en el histórico mensual.',
+      },
+    ],
+  },
+  {
     id: '2026-10-05-enviar-reporte-mail',
     fecha: '2026-10-05',
     titulo: 'Mandale el reporte a tu cliente por mail',

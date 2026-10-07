@@ -141,7 +141,8 @@ export function armarMailReporte({
           filas += `<tr>${celdas[i]}${celdas[i + 1] ?? '<td width="50%"></td>'}</tr>`;
         }
         partes.push(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 -6px;">${filas}</table>`);
-        texto.push('Situación de monotributo:', ...visibles.map(m => `- ${m.label}: ${m.valor}`), '');
+        partes.push(`<p style="margin:6px 0 0;font-size:12px;line-height:1.5;color:${C.suave};">${esc(datos.situacion.nota)}</p>`);
+        texto.push('Situación de monotributo:', ...visibles.map(m => `- ${m.label}: ${m.valor}`), datos.situacion.nota, '');
       }
       if (debeRecategorizar) {
         const msg = `Con la facturación actual, debería recategorizarse a Cat. ${calc.categoriaCorresponde.codigo} (tope ${formatCurrency(calc.categoriaCorresponde.topeAnual)}).`;

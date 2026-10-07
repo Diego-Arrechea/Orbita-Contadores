@@ -410,6 +410,7 @@ export interface ConfigReporte {
     facturacion12m: boolean;
     topeCategoria: boolean;
     topeConsumido: boolean;
+    margenMensual: boolean;
     cuotaMes: boolean;
     estadoCuota: boolean;
     proximoVencimiento: boolean;
@@ -419,4 +420,9 @@ export interface ConfigReporte {
   };
   /** Cuántos meses de historial mostrar (hay hasta 12 disponibles). */
   mesesHistorial: number;
+  /** Período de la situación de monotributo (facturado, % del tope, cuánto puede facturar por mes):
+   *  'recategorizacion' = los meses que evalúa la próxima recategorización (lo mismo que el
+   *  facturómetro); 'meses' = los que el contador eligió en `mesesSituacion` ('aaaa-mm'). */
+  periodoSituacion: 'recategorizacion' | 'meses';
+  mesesSituacion: string[];
 }
