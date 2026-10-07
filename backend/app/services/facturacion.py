@@ -11,6 +11,7 @@ import datetime as dt
 import json
 from collections.abc import Callable
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
@@ -163,6 +164,36 @@ def asegurar_punto_venta(db: Session, cuit: str, on_progress: ProgressCb | None 
     )
 
 
+_TZ_AR = ZoneInfo("America/Argentina/Buenos_Aires")
+# Días hacia atrás que ARCA admite en la fecha del comprobante (RG 4291): productos 5, servicios
+# (o productos y servicios) 10. Además, nunca antes del último comprobante del mismo PV y tipo.
+DIAS_ATRAS = {1: 5, 2: 10, 3: 10}
+
+
+def hoy_ar() -> dt.date:
+    return dt.datetime.now(_TZ_AR).date()
+
+
+def rango_fecha(db: Session, cuit: str, *, punto_venta: int, cbte_tipo: int, concepto: int) -> dict:
+    """Fechas de emisión que ARCA va a aceptar para (PV, tipo, concepto): desde el mayor entre
+    hoy − 5/10 días y la fecha del último comprobante del mismo PV y tipo, hasta hoy."""
+    if concepto not in DIAS_ATRAS:
+        raise ValueError("Concepto inválido (1 productos, 2 servicios, 3 ambos).")
+    hoy = hoy_ar()
+    desde = hoy - dt.timedelta(days=DIAS_ATRAS[concepto])
+    cert_bytes, key_bytes, cuit_emisor = _cert_y_emisor(db, cuit, None)
+    ult = wsfev1.ultimo_autorizado(cuit_emisor, cert_bytes, key_bytes, punto_venta, cbte_tipo)
+    if ult["fecha"] and ult["fecha"] > desde:
+        desde = min(ult["fecha"], hoy)
+    return {
+        "desde": desde.isoformat(),
+        "hasta": hoy.isoformat(),
+        "dias_atras": DIAS_ATRAS[concepto],
+        "ultimo_numero": ult["numero"],
+        "ultima_fecha": ult["fecha"].isoformat() if ult["fecha"] else None,
+    }
+
+
 def emitir(
     db: Session,
     cuit: str,
@@ -176,9 +207,10 @@ def emitir(
     condicion_iva_receptor: int = 5,
     comprobante_asociado: dict | None = None,
     items: list[dict] | None = None,
+    fecha: dt.date | None = None,  # None = hoy
     on_progress: ProgressCb | None = None,
 ) -> dict:
-    """Emite una Factura C (11) o Nota de Crédito C (13) a nombre del cliente y persiste el
+    """Emite una Factura C (11), Nota de Crédito C (13) o Recibo C (15) a nombre del cliente y persiste el
     comprobante (aparece en la lista de comprobantes y en Facturación 12m). Devuelve el CAE.
 
     `items` (opcional) es el detalle de renglones [{descripcion, cantidad, precio_unitario}]. Si
@@ -192,6 +224,19 @@ def emitir(
     if items:
         importe_total = round(
             sum(float(i["cantidad"]) * float(i["precio_unitario"]) for i in items), 2
+        )
+
+    # Fecha: hoy por defecto. Una anterior sólo dentro de la ventana de ARCA (el piso por el último
+    # comprobante del PV lo valida ARCA y vuelve como error legible).
+    hoy = hoy_ar()
+    fecha = fecha or hoy
+    if fecha > hoy:
+        raise ValueError("La fecha del comprobante no puede ser posterior a hoy.")
+    dias = DIAS_ATRAS.get(concepto, 5)
+    if fecha < hoy - dt.timedelta(days=dias):
+        raise ValueError(
+            f"La fecha del comprobante puede ser hasta {dias} días anterior a hoy "
+            f"({'productos' if concepto == 1 else 'servicios'})."
         )
 
     cert_bytes, key_bytes, cuit_emisor = _cert_y_emisor(db, cuit, on_progress)
@@ -224,6 +269,7 @@ def emitir(
         doc_nro=doc_nro,
         condicion_iva_receptor=condicion_iva_receptor,
         comprobante_asociado=comprobante_asociado,
+        fecha=fecha,
     )
 
     # Persistimos el comprobante recién emitido para que aparezca igual que los sincronizados.

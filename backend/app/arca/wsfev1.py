@@ -104,6 +104,10 @@ def listar_emitidos(
 CBTE_FACTURA_C = 11
 CBTE_NOTA_DEBITO_C = 12
 CBTE_NOTA_CREDITO_C = 13
+CBTE_RECIBO_C = 15
+# Los que se pueden emitir desde la app, y los que una NC C puede anular.
+CBTES_EMITIBLES = (CBTE_FACTURA_C, CBTE_NOTA_CREDITO_C, CBTE_RECIBO_C)
+CBTES_ANULABLES_POR_NC = (CBTE_FACTURA_C, CBTE_RECIBO_C)
 
 
 class FacturacionError(RuntimeError):
@@ -177,6 +181,28 @@ def proximo_numero(cuit_emisor, cert_bytes, key_bytes, punto_venta, cbte_tipo, h
     return (getattr(ult, "CbteNro", 0) or 0) + 1
 
 
+def ultimo_autorizado(cuit_emisor, cert_bytes, key_bytes, punto_venta, cbte_tipo, homo=None) -> dict:
+    """Último comprobante autorizado de (punto de venta, tipo): {numero, fecha}. `fecha` es la de
+    emisión (date) o None si todavía no emitió ninguno. Sirve para el piso de la fecha: ARCA no deja
+    emitir con fecha anterior al último comprobante del mismo PV y tipo."""
+    if homo is None:
+        homo = settings.arca_homo
+    token, sign = get_token_sign("wsfe", cert_bytes, key_bytes, cuit_emisor, homo)
+    wsdl = WSDL_HOMO if homo else WSDL_PROD
+    client = Client(wsdl, transport=Transport(session=make_session()))
+    auth = {"Token": token, "Sign": sign, "Cuit": int(cuit_emisor)}
+    ult = client.service.FECompUltimoAutorizado(Auth=auth, PtoVta=punto_venta, CbteTipo=cbte_tipo)
+    numero = getattr(ult, "CbteNro", 0) or 0
+    if not numero:
+        return {"numero": 0, "fecha": None}
+    res = client.service.FECompConsultar(
+        Auth=auth, FeCompConsReq={"CbteTipo": cbte_tipo, "CbteNro": numero, "PtoVta": punto_venta}
+    )
+    raw = str(getattr(getattr(res, "ResultGet", None), "CbteFch", "") or "")
+    fecha = dt.datetime.strptime(raw, "%Y%m%d").date() if len(raw) == 8 else None
+    return {"numero": int(numero), "fecha": fecha}
+
+
 def emitir_comprobante_c(
     cuit_emisor: str | int,
     cert_bytes: bytes,
@@ -197,14 +223,14 @@ def emitir_comprobante_c(
     comprobante_asociado: dict | None = None,  # NC: {"tipo":, "punto_venta":, "numero":}
     homo: bool | None = None,
 ) -> dict:
-    """Emite una Factura C (11) o Nota de Crédito C (13) por WSFEv1 (FECAESolicitar).
+    """Emite una Factura C (11), Nota de Crédito C (13) o Recibo C (15) por WSFEv1 (FECAESolicitar).
 
     Clase C (monotributo): no discrimina IVA → ImpNeto = ImpTotal, ImpIVA = 0, sin nodo Iva.
     Devuelve el comprobante autorizado (con CAE y su vencimiento). Lanza FacturacionError si ARCA
     rechaza. `homo=None` toma el entorno de `settings.arca_homo`.
     """
-    if cbte_tipo not in (CBTE_FACTURA_C, CBTE_NOTA_CREDITO_C):
-        raise ValueError("Sólo se admite Factura C (11) o Nota de Crédito C (13).")
+    if cbte_tipo not in CBTES_EMITIBLES:
+        raise ValueError("Sólo se admite Factura C (11), Nota de Crédito C (13) o Recibo C (15).")
     if concepto not in (1, 2, 3):
         raise ValueError("Concepto inválido (1 productos, 2 servicios, 3 ambos).")
     if homo is None:
@@ -248,6 +274,8 @@ def emitir_comprobante_c(
     if cbte_tipo == CBTE_NOTA_CREDITO_C:
         if not comprobante_asociado:
             raise ValueError("La Nota de Crédito C requiere el comprobante asociado.")
+        if int(comprobante_asociado["tipo"]) not in CBTES_ANULABLES_POR_NC:
+            raise ValueError("La Nota de Crédito C sólo puede asociarse a una Factura C o un Recibo C.")
         det["CbtesAsoc"] = {
             "CbteAsoc": [
                 {

@@ -5,12 +5,13 @@ Dos caminos:
   • PRUEBA en HOMOLOGACIÓN (admin): valida el motor WSAA→FECAESolicitar con un certificado de
     homologación configurado en el .env, sin generar comprobantes reales.
   • PRODUCCIÓN por cliente (contador dueño): genera el certificado del cliente on-demand (con la clave
-    del propio cliente) y emite a su nombre. Cubre Factura C (11) y Nota de Crédito C (13).
+    del propio cliente) y emite a su nombre. Cubre Factura C (11), Nota de Crédito C (13) y Recibo C (15).
 
 Ver memoria `credenciales-arca`: el certificado es por CLIENTE, con la clave del propio cliente.
 """
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import threading
 from pathlib import Path
@@ -149,7 +150,7 @@ def contexto_facturacion(
 
 
 class FacturarIn(BaseModel):
-    cbte_tipo: int = Field(11, description="11 = Factura C · 13 = Nota de Crédito C")
+    cbte_tipo: int = Field(11, description="11 = Factura C · 13 = Nota de Crédito C · 15 = Recibo C")
     importe_total: float = Field(..., gt=0)
     punto_venta: int | None = Field(None, description="None = auto-detectar el PV Web Service del cliente")
     concepto: int = Field(1, description="1 productos · 2 servicios · 3 ambos")
@@ -160,6 +161,34 @@ class FacturarIn(BaseModel):
     # Detalle opcional. Si viene, el importe total se calcula de los ítems (Σ cantidad × precio) e
     # ignora `importe_total`; sólo cambia la representación impresa (WSFEv1 va por total).
     items: list[ItemComprobante] | None = None
+    # Fecha del comprobante (None = hoy). ARCA admite hasta 5 días atrás en productos y 10 en
+    # servicios, y nunca antes del último comprobante del mismo PV y tipo (ver /facturacion/rango-fecha).
+    fecha: dt.date | None = None
+
+
+@router.get("/clientes/{cuit}/facturacion/rango-fecha")
+def rango_fecha_facturacion(
+    cuit: str,
+    punto_venta: int,
+    cbte_tipo: int,
+    concepto: int = 1,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_actual),
+):
+    """Fechas de emisión que se pueden elegir para ese PV, tipo y concepto (para el selector)."""
+    _exigir_habilitado(db, usuario)
+    _cliente_propio(db, cuit, usuario)
+    if cbte_tipo not in wsfev1.CBTES_EMITIBLES:
+        raise HTTPException(status_code=400, detail="Tipo de comprobante no admitido.")
+    try:
+        return facturacion_svc.rango_fecha(
+            db, cuit, punto_venta=punto_venta, cbte_tipo=cbte_tipo, concepto=concepto
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:  # noqa: BLE001 — WS de ARCA
+        log.warning("rango de fecha %s falló: %s", cuit, e)
+        raise HTTPException(status_code=502, detail="No se pudo consultar el último comprobante.")
 
 
 @router.post("/clientes/{cuit}/facturar")
@@ -189,6 +218,7 @@ def facturar(
             condicion_iva_receptor=body.condicion_iva_receptor,
             comprobante_asociado=asociado,
             items=items,
+            fecha=body.fecha,
         )
     except facturacion_svc.SinPuntoVenta:
         raise HTTPException(
@@ -218,7 +248,7 @@ def facturar(
 
 
 # ── PDF (representación impresa) de un comprobante emitido ────────────────────
-_NOMBRE_CBTE = {11: "Factura_C", 13: "Nota_Credito_C"}
+_NOMBRE_CBTE = {11: "Factura_C", 13: "Nota_Credito_C", 15: "Recibo_C"}
 
 
 @router.get("/clientes/{cuit}/comprobantes/{cbte_tipo}/{punto_venta}/{numero}/pdf")

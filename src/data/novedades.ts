@@ -42,6 +42,23 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-10-07-recibo-c-y-fecha-anterior',
+    fecha: '2026-10-07',
+    titulo: 'Recibo C y comprobantes con fecha anterior',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Al emitir un comprobante ahora podés elegir Recibo C, además de Factura C y Nota de Crédito C. La nota de crédito puede corregir una factura o un recibo.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Podés elegir la fecha del comprobante: hasta 5 días atrás en productos y 10 en servicios, y nunca antes del último comprobante del mismo punto de venta. El calendario sólo te deja elegir fechas válidas.',
+      },
+    ],
+  },
+  {
     id: '2026-10-07-reporte-periodo-recategorizacion',
     fecha: '2026-10-07',
     titulo: 'El reporte mide desde la última recategorización',

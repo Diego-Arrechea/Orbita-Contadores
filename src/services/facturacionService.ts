@@ -35,8 +35,10 @@ export interface ItemComprobante {
 }
 
 export interface FacturarPayload {
-  cbte_tipo: number; // 11 = Factura C · 13 = Nota de Crédito C
+  cbte_tipo: number; // 11 = Factura C · 13 = Nota de Crédito C · 15 = Recibo C
   importe_total: number;
+  /** 'aaaa-mm-dd'; null/omitido = hoy. */
+  fecha?: string | null;
   punto_venta?: number | null; // null/omitido = el backend auto-detecta el PV Web Service
   concepto: number; // 1 productos · 2 servicios · 3 ambos
   doc_tipo: number; // 80 CUIT · 96 DNI · 99 consumidor final
@@ -68,7 +70,26 @@ export function getContextoFacturacion(cuit: string): Promise<ContextoFacturacio
   return apiGet<ContextoFacturacion>(`/clientes/${soloDigitos(cuit)}/facturacion/contexto`);
 }
 
-/** Emite una Factura C / Nota de Crédito C a nombre del cliente. Devuelve el CAE. */
+/** Fechas de emisión que se pueden elegir (ISO 'aaaa-mm-dd'): hasta 5 días atrás en productos y 10
+ *  en servicios, nunca antes del último comprobante del mismo punto de venta y tipo. */
+export interface RangoFecha {
+  desde: string;
+  hasta: string;
+  dias_atras: number;
+  ultimo_numero: number;
+  ultima_fecha: string | null;
+}
+
+export function getRangoFecha(
+  cuit: string,
+  q: { punto_venta: number; cbte_tipo: number; concepto: number },
+): Promise<RangoFecha> {
+  return apiGet<RangoFecha>(
+    `/clientes/${soloDigitos(cuit)}/facturacion/rango-fecha?punto_venta=${q.punto_venta}&cbte_tipo=${q.cbte_tipo}&concepto=${q.concepto}`,
+  );
+}
+
+/** Emite una Factura C / Recibo C / Nota de Crédito C a nombre del cliente. Devuelve el CAE. */
 export function facturar(cuit: string, payload: FacturarPayload): Promise<ComprobanteEmitidoResp> {
   return apiPost<ComprobanteEmitidoResp>(`/clientes/${soloDigitos(cuit)}/facturar`, payload);
 }
@@ -85,7 +106,8 @@ export async function descargarComprobantePdf(
     `/clientes/${soloDigitos(cuit)}/comprobantes/${comp.cbte_tipo}/${comp.punto_venta}/${comp.numero}/pdf`,
   );
   const url = URL.createObjectURL(blob);
-  const nombre = `${comp.cbte_tipo === 13 ? 'NotaCredito_C' : 'Factura_C'}_${String(
+  const prefijo = comp.cbte_tipo === 13 ? 'NotaCredito_C' : comp.cbte_tipo === 15 ? 'Recibo_C' : 'Factura_C';
+  const nombre = `${prefijo}_${String(
     comp.punto_venta,
   ).padStart(5, '0')}-${String(comp.numero).padStart(8, '0')}.pdf`;
   const a = document.createElement('a');

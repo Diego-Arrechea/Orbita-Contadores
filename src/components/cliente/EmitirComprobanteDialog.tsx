@@ -28,7 +28,9 @@ import {
   mensajeErrorFacturacion,
   esErrorSinPuntoVenta,
   descargarComprobantePdf,
+  getRangoFecha,
   type FacturarPayload,
+  type RangoFecha,
   type ComprobanteEmitidoResp,
   type PuntoVenta,
 } from '@/services/facturacionService';
@@ -50,9 +52,28 @@ const CONCEPTOS = [
   { value: 3, label: 'Productos y servicios' },
 ];
 
+type TipoCbte = 'factura' | 'recibo' | 'nc';
+const CBTE: Record<TipoCbte, number> = { factura: 11, recibo: 15, nc: 13 };
+
 function nombreComprobante(cbteTipo: number): string {
-  return cbteTipo === 13 ? 'Nota de Crédito C' : 'Factura C';
+  return cbteTipo === 13 ? 'Nota de Crédito C' : cbteTipo === 15 ? 'Recibo C' : 'Factura C';
 }
+
+/** Fecha local 'aaaa-mm-dd' (sin pasar por UTC, que a la noche ya es mañana). */
+function isoLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+const hoyIso = () => isoLocal(new Date());
+/** Hoy menos N días, 'aaaa-mm-dd'. */
+function haceDias(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return isoLocal(d);
+}
+/** Días hacia atrás que admite la fecha del comprobante: productos 5, servicios (o ambos) 10. */
+const diasAtras = (concepto: number) => (concepto === 1 ? 5 : 10);
+/** 'aaaa-mm-dd' → 'dd/mm'. */
+const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
 /** Renglón del detalle, con los importes como texto (el usuario los tipea). */
 type ItemRow = { descripcion: string; cantidad: string; precio: string };
@@ -81,7 +102,10 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
   const [progreso, setProgreso] = useState(0);
   const [mensajePrep, setMensajePrep] = useState('');
 
-  const [tipo, setTipo] = useState<'factura' | 'nc'>('factura');
+  const [tipo, setTipo] = useState<TipoCbte>('factura');
+  const [fecha, setFecha] = useState(hoyIso());
+  const [rango, setRango] = useState<RangoFecha | null>(null);
+  const [ncTipo, setNcTipo] = useState<11 | 15>(11);
   const [concepto, setConcepto] = useState(1);
   const [condicion, setCondicion] = useState(5);
   const [cuitReceptor, setCuitReceptor] = useState('');
@@ -151,6 +175,9 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
     }
     // Reset de campos al abrir.
     setTipo('factura');
+    setFecha(hoyIso());
+    setRango(null);
+    setNcTipo(11);
     setConcepto(1);
     setCondicion(5);
     setCuitReceptor('');
@@ -168,6 +195,30 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
     return detenerPoll;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, cliente.cuit, prefill?.importe]);
+
+  // Rango de fechas que se puede elegir: lo pide al backend para el PV, tipo y concepto elegidos
+  // (el piso es el último comprobante de ese PV y tipo). Si no se pudo consultar, cae a la regla
+  // de días (5 productos / 10 servicios) y el resto lo valida la emisión.
+  const cbteTipo = CBTE[tipo];
+  useEffect(() => {
+    if (!open || paso !== 'form' || pvSel == null) return;
+    let vigente = true;
+    setRango(null);
+    getRangoFecha(cliente.cuit, { punto_venta: pvSel, cbte_tipo: cbteTipo, concepto })
+      .then(r => {
+        if (vigente) setRango(r);
+      })
+      .catch(() => {
+        if (vigente) setRango(null);
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [open, paso, pvSel, cbteTipo, concepto, cliente.cuit]);
+  const fechaMin = rango?.desde ?? haceDias(diasAtras(concepto));
+  const fechaMax = rango?.hasta ?? hoyIso();
+  const fechaOk = !!fecha && fecha >= fechaMin && fecha <= fechaMax;
+  const pisoPorUltimo = !!rango?.ultima_fecha && rango.ultima_fecha === rango.desde && rango.desde > haceDias(rango.dias_atras);
 
   const cond = CONDICIONES.find(c => c.value === condicion)!;
   // Detalle → cada renglón parseado a números (para total, validación y payload).
@@ -188,14 +239,15 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
   const formOk =
     (detallar ? itemsOk : importeNum > 0) &&
     (!cond.requiereCuit || cuitDigits.length === 11) &&
-    (tipo === 'factura' || Number(ncNumero) > 0);
+    (tipo !== 'nc' || Number(ncNumero) > 0) &&
+    fechaOk;
 
   // El precio unitario máximo sólo aplica a la venta de productos (concepto 1 o 3), no a servicios,
   // y no tiene sentido en una nota de crédito. Es un aviso NO bloqueante. Con detalle lo evaluamos
   // por renglón (P. unitario real); sin detalle, contra el importe total (no sabemos las unidades).
   const esVentaProductos = concepto === 1 || concepto === 3;
   const superaPrecioUnitario =
-    tipo === 'factura' &&
+    tipo !== 'nc' &&
     esVentaProductos &&
     (detallar
       ? itemsParsed.some(it => it.precio_unitario > TOPE_PRECIO_UNITARIO)
@@ -283,8 +335,9 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
     setPaso('emitiendo');
     setError('');
     const payload: FacturarPayload = {
-      cbte_tipo: tipo === 'factura' ? 11 : 13,
+      cbte_tipo: cbteTipo,
       importe_total: importeNum,
+      fecha,
       punto_venta: pvSel ?? undefined,
       concepto,
       doc_tipo: cond.docTipo,
@@ -292,7 +345,7 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
       condicion_iva_receptor: condicion,
       comprobante_asociado:
         tipo === 'nc'
-          ? { tipo: 11, punto_venta: Number(ncPv) || pvSel || 0, numero: Number(ncNumero) }
+          ? { tipo: ncTipo, punto_venta: Number(ncPv) || pvSel || 0, numero: Number(ncNumero) }
           : null,
       items: detallar ? itemsParsed : null,
     };
@@ -423,12 +476,13 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Tipo</Label>
-                  <Select value={tipo} onValueChange={v => setTipo(v as 'factura' | 'nc')}>
+                  <Select value={tipo} onValueChange={v => setTipo(v as TipoCbte)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="factura">Factura C</SelectItem>
+                      <SelectItem value="recibo">Recibo C</SelectItem>
                       <SelectItem value="nc">Nota de Crédito C</SelectItem>
                     </SelectContent>
                   </Select>
@@ -452,8 +506,17 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
 
               {tipo === 'nc' && (
                 <div className="space-y-1.5">
-                  <Label>Factura que corrige (Factura C)</Label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <Label>Comprobante que corrige</Label>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Select value={String(ncTipo)} onValueChange={v => setNcTipo(Number(v) as 11 | 15)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="11">Factura C</SelectItem>
+                        <SelectItem value="15">Recibo C</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <Input
                       inputMode="numeric"
                       placeholder={pvSel ? `Punto de venta (${pvSel})` : 'Punto de venta'}
@@ -469,6 +532,24 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
                   </div>
                 </div>
               )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="fc-fecha">Fecha</Label>
+                <Input
+                  id="fc-fecha"
+                  type="date"
+                  className="w-[180px]"
+                  min={fechaMin}
+                  max={fechaMax}
+                  value={fecha}
+                  onChange={e => setFecha(e.target.value)}
+                />
+                <p className={`text-xs ${fechaOk ? 'text-muted-foreground' : 'text-danger'}`}>
+                  {pisoPorUltimo
+                    ? `Desde el ${ddmm(fechaMin)}: es la fecha del último ${nombreComprobante(cbteTipo)} de este punto de venta.`
+                    : `Hasta ${diasAtras(concepto)} días atrás (${concepto === 1 ? 'productos' : 'servicios'}): desde el ${ddmm(fechaMin)}.`}
+                </p>
+              </div>
 
               <div className="space-y-1.5">
                 <Label>Condición del receptor</Label>
@@ -623,13 +704,14 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
             )}
 
             <div className="space-y-2 rounded-lg border border-border/60 bg-muted/30 p-4 text-sm">
-              <Fila k="Comprobante" v={nombreComprobante(tipo === 'factura' ? 11 : 13)} />
+              <Fila k="Comprobante" v={nombreComprobante(cbteTipo)} />
+              <Fila k="Fecha" v={formatDate(fecha, 'long')} />
               <Fila k="Emisor" v={cliente.nombre} />
               <Fila
                 k="Receptor"
                 v={cond.requiereCuit ? `${cond.label} · ${cuitReceptor}` : cond.label}
               />
-              {tipo === 'nc' && <Fila k="Corrige" v={`${ncPv || pvSel}-${ncNumero}`} />}
+              {tipo === 'nc' && <Fila k="Corrige" v={`${nombreComprobante(ncTipo)} ${ncPv || pvSel}-${ncNumero}`} />}
               <Fila k="Concepto" v={CONCEPTOS.find(c => c.value === concepto)?.label ?? ''} />
               {pvSel != null && <Fila k="Punto de venta" v={String(pvSel)} />}
               {detallar && (

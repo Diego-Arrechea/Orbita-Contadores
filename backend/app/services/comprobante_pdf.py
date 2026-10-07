@@ -5,7 +5,7 @@ WSFEv1 sólo devuelve el CAE: la representación impresa la genera el emisor (RG
 con el código QR oficial de ARCA en el pie. Este módulo arma ese PDF a partir del comprobante ya
 persistido (`ComprobanteEmitido`) + los datos del emisor (`ClienteARCA`), sin volver a llamar a ARCA.
 
-Sólo aplica a Factura C (11) y Nota de Crédito C (13) de monotributo (clase C, sin IVA discriminado).
+Sólo aplica a Factura C (11), Nota de Crédito C (13) y Recibo C (15) de monotributo (clase C, sin IVA discriminado).
 El layout replica el formato oficial de AFIP: caja con la letra del comprobante arriba al centro,
 bloque emisor (izquierda) / numeración (derecha), datos del receptor, detalle, total y pie con QR+CAE.
 """
@@ -31,6 +31,7 @@ QR_BASE_URL = "https://www.afip.gob.ar/fe/qr/?p="
 _TIPOS = {
     11: ("FACTURA", "C", "011"),
     13: ("NOTA DE CRÉDITO", "C", "013"),
+    15: ("RECIBO", "C", "015"),
 }
 
 # Condición frente al IVA (RG 5616) -> etiqueta para el comprobante impreso.
@@ -365,7 +366,7 @@ def generar(comp: models.ComprobanteEmitido, cliente: models.ClienteARCA) -> byt
     if comp.cbte_tipo == 13:
         _set(c, _MUTED)
         c.setFont("Helvetica-Oblique", 7.5)
-        c.drawString(xq, pie_y + 1 * mm, "Nota de crédito asociada a la factura del mismo punto de venta.")
+        c.drawString(xq, pie_y + 1 * mm, "Nota de crédito asociada a un comprobante del mismo punto de venta.")
 
     c.showPage()
     c.save()
