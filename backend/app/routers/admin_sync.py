@@ -15,6 +15,7 @@ from ..config import settings
 from ..db import get_db
 from ..schemas import MotorClienteOut, MotorEstadoOut
 from ..security import admin_actual
+from ..services import demo as demo_svc
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(admin_actual)])
 
@@ -80,6 +81,8 @@ def estado_motor(db: Session = Depends(get_db)):
     # panel no cuente como "pendiente/próximo" a un cliente que el worker NUNCA va a tomar (está
     # desactivado, o bloqueado hasta que el contador/cliente actúe). Esos ya se ven en "Clientes con
     # problemas" y en la ficha; acá sólo inflaban los pendientes y encabezaban "Próximos a sincronizar".
+    # Las cuentas de demostración tampoco: su cartera es de ejemplo y el worker nunca la toma.
+    ids_demo = demo_svc.ids_demo(db)
     elegibles = set(
         db.scalars(
             select(models.ClienteARCA.cuit).where(
@@ -88,6 +91,7 @@ def estado_motor(db: Session = Depends(get_db)):
                 models.ClienteARCA.clave_requiere_cambio.is_(False),
                 models.ClienteARCA.contribuyente_irregular.is_(False),
                 models.ClienteARCA.doble_factor.is_(False),
+                *([models.ClienteARCA.usuario_id.notin_(ids_demo)] if ids_demo else []),
             )
         ).all()
     )
