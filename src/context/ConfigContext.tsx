@@ -42,7 +42,7 @@ const ConfigContext = createContext<ConfigContextValue | null>(null);
  * devuelve null en lo que el contador nunca tocó). Las ventanas se recalculan a hoy salvo que el
  * contador las haya editado a mano (misma regla que la vieja cargarConfiguracion()).
  */
-function combinar(guardado: Partial<Configuracion> | null | undefined): Configuracion {
+export function combinar(guardado: Partial<Configuracion> | null | undefined): Configuracion {
   // `guardado` puede traer la forma NUEVA (alertas{}) o la VIEJA (umbral* sueltos + notificaciones.tipos).
   const g = (guardado ?? {}) as Record<string, unknown>;
   const limpio: Record<string, unknown> = {};

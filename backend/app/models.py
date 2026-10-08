@@ -966,3 +966,34 @@ class PagoSuscripcion(Base):
     creado_en: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class ReporteProgramado(Base):
+    """Envío programado del reporte por mail a uno o varios clientes: una vez (fecha y hora) o
+    repetido (todos los meses un día, o todas las semanas un día, a una hora). El worker lo manda a
+    la hora pactada y el reporte se arma en ese momento (services/reporte_auto.py), con los datos del
+    día del envío. `proximo_envio` NULL = ya no tiene más envíos (el único ya salió)."""
+
+    __tablename__ = "reportes_programados"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    usuario_id: Mapped[int] = mapped_column(Integer, ForeignKey("usuarios.id"), index=True)
+    frecuencia: Mapped[str] = mapped_column(String(10))  # unica | mensual | semanal
+    fecha: Mapped[str | None] = mapped_column(String(10), nullable=True)  # aaaa-mm-dd (unica)
+    hora: Mapped[str] = mapped_column(String(5))  # HH:MM, hora de Argentina
+    dia_mes: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1..31 (31 = último día)
+    dia_semana: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 0 lunes … 6 domingo
+    # [{"cuit": "...", "destino": "mail@..."}]: a cada cliente le llega SU reporte a su mail.
+    destinos_json: Mapped[str] = mapped_column(Text)
+    mensaje: Mapped[str] = mapped_column(Text, default="")
+    copia_a_mi: Mapped[bool] = mapped_column(Boolean, default=True)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    proximo_envio: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    ultimo_envio_en: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # [{"cuit", "nombre", "destino", "ok", "error"}] del último envío.
+    ultimo_resultado_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    creado_en: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

@@ -353,6 +353,30 @@ def _quizas_escala() -> None:
         logger.warning("no se pudo actualizar la escala del monotributo", exc_info=True)
 
 
+_ultimo_reportes = 0.0
+
+
+def _quizas_reportes() -> None:
+    """Envíos programados del reporte por mail: cada minuto manda los que ya llegaron a su hora
+    (services/reportes_programados). Va después de _quizas_escala: el reporte usa la escala vigente."""
+    global _ultimo_reportes
+    if time.monotonic() - _ultimo_reportes < 50:
+        return
+    _ultimo_reportes = time.monotonic()
+    db = SessionLocal()
+    try:
+        from ..services.reportes_programados import procesar_pendientes
+
+        res = procesar_pendientes(db)
+        if res["programaciones"]:
+            logger.info("reportes programados: %s", res)
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        logger.warning("reportes programados falló", exc_info=True)
+    finally:
+        db.close()
+
+
 def _quizas_janitor() -> None:
     global _ultimo_janitor
     if time.monotonic() - _ultimo_janitor < 3600:  # 1 vez por hora
@@ -407,6 +431,7 @@ def main() -> None:
         _quizas_aviso_suscripcion()
         _quizas_janitor()
         _quizas_escala()
+        _quizas_reportes()
         _stop.wait(settings.sync_poll_segundos)
 
     logger.info("motor de sync detenido")

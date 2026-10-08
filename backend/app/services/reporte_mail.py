@@ -74,13 +74,17 @@ def enviar(
     asunto: str,
     html: str,
     texto: str,
+    limitar: bool = True,
 ) -> bool:
     """Valida y manda el reporte. Lanza EnvioRechazado con copy de dominio si algo no corresponde;
-    devuelve False si el servidor de correo no lo aceptó."""
+    devuelve False si el servidor de correo no lo aceptó. `limitar=False` para los envíos
+    programados: el cuerpo lo arma el backend (no viene del navegador) y cada envío tiene su propio
+    tope de clientes, así que el límite por hora no aplica."""
     if _PELIGROSO.search(html):
         raise EnvioRechazado("El contenido del reporte no es válido.")
     asunto = " ".join(asunto.split())  # sin saltos de línea (no se inyectan cabeceras)
-    _registrar_envio(usuario.id)
+    if limitar:
+        _registrar_envio(usuario.id)
     cuerpo = envolver(html, estudio=usuario.estudio, contador=f"{usuario.nombre} {usuario.apellido}".strip())
     return email_svc.enviar_email(
         destino,

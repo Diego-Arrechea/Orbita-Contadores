@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Check, Loader2, Mail, SlidersHorizontal } from 'lucide-react';
+import { CalendarClock, Check, Loader2, Mail, SlidersHorizontal } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,8 @@ import { getMovimientos } from '@/services/movimientosService';
 import { mensajeDeError } from '@/services/authService';
 import { formatDate } from '@/lib/utils';
 import type { Cliente, MovimientoBancario } from '@/types';
+import { ProgramarReporte } from '@/components/cliente/ProgramarReporte';
+import { describirProgramacion, fechaHoraAR, type ReporteProgramado } from '@/services/reportesProgramadosService';
 
 const SECCIONES: { key: 'situacion' | 'historial' | 'alertas' | 'movimientos' | 'acciones'; label: string }[] = [
   { key: 'situacion', label: 'situación' },
@@ -67,6 +69,9 @@ export function EnviarReporteDialog({
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviadoA, setEnviadoA] = useState<string | null>(null);
+  // "Enviar ahora" (arma el mail acá) o "Programar" (lo arma el backend a la hora del envío).
+  const [modo, setModo] = useState<'ahora' | 'programar'>('ahora');
+  const [programado, setProgramado] = useState<ReporteProgramado | null>(null);
 
   // Al abrir: precarga destino/mensaje y trae los movimientos (para la sección de pendientes).
   useEffect(() => {
@@ -77,6 +82,8 @@ export function EnviarReporteDialog({
     setMensaje(mensajeInicial);
     setError(null);
     setEnviadoA(null);
+    setModo('ahora');
+    setProgramado(null);
     setAsunto('');
     if (cliente.fuente === 'arca') {
       setMovimientos(null);
@@ -146,7 +153,52 @@ export function EnviarReporteDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {enviadoA ? (
+        {!enviadoA && !programado && cliente.fuente === 'arca' && (
+          <div className="inline-flex self-start rounded-lg border border-border/60 p-0.5 text-sm">
+            {(['ahora', 'programar'] as const).map(m => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setModo(m)}
+                className={`rounded-md px-3 py-1 transition-colors ${
+                  modo === m ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {m === 'ahora' ? 'Enviar ahora' : 'Programar'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {programado ? (
+          <div className="flex flex-col items-center gap-2 py-6 text-center">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-success/15 text-success">
+              <CalendarClock className="h-5 w-5" />
+            </div>
+            <div className="font-medium">Envío programado</div>
+            <div className="text-sm text-muted-foreground">
+              {describirProgramacion(programado)}, a {programado.destinos.length === 1 ? programado.destinos[0].destino : `${programado.destinos.length} clientes`}.
+              {programado.proximo_envio ? ` El próximo sale el ${fechaHoraAR(programado.proximo_envio)}.` : ''}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Button variant="outline" asChild>
+                <Link to="/reportes-programados" onClick={() => onOpenChange(false)}>
+                  Ver envíos programados
+                </Link>
+              </Button>
+              <Button onClick={() => onOpenChange(false)}>Listo</Button>
+            </div>
+          </div>
+        ) : modo === 'programar' ? (
+          <ProgramarReporte
+            inicial={[{ cuit: cliente.cuit, nombre: cliente.nombre, emailCliente: cliente.emailCliente }]}
+            onCancelar={() => onOpenChange(false)}
+            onGuardado={p => {
+              setProgramado(p);
+              void qc.invalidateQueries({ queryKey: ['clientes'] });
+            }}
+          />
+        ) : enviadoA ? (
           <div className="flex flex-col items-center gap-2 py-6 text-center">
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-success/15 text-success">
               <Check className="h-5 w-5" />

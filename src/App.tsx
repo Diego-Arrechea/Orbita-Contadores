@@ -90,6 +90,7 @@ import { IVA } from '@/pages/IVA';
 import { Contabilidad } from '@/pages/Contabilidad';
 import { Configuracion } from '@/pages/Configuracion';
 import { Novedades } from '@/pages/Novedades';
+import { ReportesProgramados } from '@/pages/ReportesProgramados';
 import { Admin } from '@/pages/Admin';
 import { GestionUsuarios } from '@/pages/GestionUsuarios';
 
@@ -142,6 +143,7 @@ export default function App() {
       >
         <Route path="/" element={<Dashboard />} />
         <Route path="/alertas" element={<Alertas />} />
+        <Route path="/reportes-programados" element={<ReportesProgramados />} />
         <Route
           path="/conciliacion"
           element={

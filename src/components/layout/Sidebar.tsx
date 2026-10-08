@@ -3,6 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   Bell,
+  CalendarClock,
   Landmark,
   Percent,
   BookOpen,
@@ -39,6 +40,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 const nav = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/alertas', label: 'Alertas', icon: Bell },
+  { to: '/reportes-programados', label: 'Envíos programados', icon: CalendarClock },
   { to: '/conciliacion', label: 'Conciliación', icon: Landmark, funcion: 'conciliacion' as const },
   { to: '/clientes/nuevo', label: 'Nuevo cliente', icon: UserPlus },
   { to: '/iva', label: 'IVA', icon: Percent },

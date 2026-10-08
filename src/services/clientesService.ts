@@ -101,7 +101,7 @@ function inferirCategoria(facturacion12: number): CategoriaCodigo {
  * `comprobantes` puede venir vacío cuando se arma la cartera del dashboard: en ese caso usamos
  * `bk.historial_mensual` (agregado server-side) para no bajar el detalle por cliente. La ficha
  * del cliente sigue pasando comprobantes completos y derivando el historial localmente. */
-function construirCliente(
+export function construirCliente(
   bk: ClienteBackend,
   comprobantes: Comprobante[],
   extracciones: Extraccion[] = [],

@@ -25,6 +25,7 @@ from .routers import (
     movimientos,
     notificaciones,
     onboarding,
+    reportes_programados,
     suscripciones,
     vencimientos,
 )
@@ -88,6 +89,7 @@ app.include_router(iva.router)
 app.include_router(movimientos.router)
 app.include_router(notificaciones.router)
 app.include_router(onboarding.router)
+app.include_router(reportes_programados.router)
 app.include_router(suscripciones.router)
 app.include_router(suscripciones.router_admin)
 app.include_router(vencimientos.router)

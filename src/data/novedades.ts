@@ -42,6 +42,29 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-10-08-envios-programados',
+    fecha: '2026-10-08',
+    titulo: 'Programá el envío del reporte',
+    resumen: 'Que le llegue solo al cliente, el día y la hora que elijas.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En «Enviar reporte» elegí «Programar»: una vez (fecha y hora) o repetido, todos los meses un día o todas las semanas. El reporte se arma con los datos del día del envío.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'En el mismo envío podés sumar varios clientes: a cada uno le llega su reporte, a su mail.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'En el menú, «Envíos programados» muestra cuándo sale cada uno, a quién y cómo salió el último. Desde ahí los pausás, editás o borrás.',
+      },
+    ],
+  },
+  {
     id: '2026-10-08-cartera-recuadro-seleccionado',
     fecha: '2026-10-08',
     titulo: 'Se ve qué recuadro de la cartera está elegido',
