@@ -42,6 +42,18 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-10-08-cartera-recuadro-seleccionado',
+    fecha: '2026-10-08',
+    titulo: 'Se ve qué recuadro de la cartera está elegido',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'En «Mi cartera», el recuadro que estás usando para filtrar (Acción urgente, Sin datos, Total clientes, etc.) ahora se marca con una barra abajo, en modo claro y oscuro.',
+      },
+    ],
+  },
+  {
     id: '2026-10-08-reporte-periodo-por-semestre',
     fecha: '2026-10-08',
     titulo: 'Reporte: elegí desde qué semestre medir',

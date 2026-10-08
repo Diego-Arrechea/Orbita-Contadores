@@ -915,10 +915,14 @@ function ResumenCard({ label, value, icon, tint, onClick, active }: ResumenCardP
   return (
     <button
       onClick={onClick}
-      className={`text-left bg-card border ${
-        active ? 'border-primary/40 shadow-card-lg' : 'border-border/60 shadow-card'
+      aria-pressed={active}
+      className={`relative overflow-hidden text-left bg-card border ${
+        active ? 'border-foreground/30 shadow-card-lg' : 'border-border/60 shadow-card'
       } rounded-xl p-4 transition-all hover:border-primary/40 hover:shadow-card-lg`}
     >
+      {/* Barra del recuadro seleccionado: el borde solo no se notaba (pedido de un contador). Usa el
+          color del texto para contrastar en los dos modos: blanca en oscuro, casi negra en claro. */}
+      {active && <span aria-hidden className="absolute inset-x-0 bottom-0 h-1 bg-foreground" />}
       <div className="flex items-center justify-between mb-2">
         <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">
           {label}
