@@ -422,7 +422,8 @@ export interface ConfigReporte {
   mesesHistorial: number;
   /** Período de la situación de monotributo (facturado, % del tope, cuánto puede facturar por mes):
    *  'recategorizacion' = los meses que evalúa la próxima recategorización (lo mismo que el
-   *  facturómetro); 'meses' = los que el contador eligió en `mesesSituacion` ('aaaa-mm'). */
-  periodoSituacion: 'recategorizacion' | 'meses';
+   *  facturómetro); 'siguiente' = el período que arranca 6 meses después (el de la recategorización
+   *  siguiente); 'meses' = los que el contador eligió en `mesesSituacion` ('aaaa-mm'). */
+  periodoSituacion: 'recategorizacion' | 'siguiente' | 'meses';
   mesesSituacion: string[];
 }

@@ -42,6 +42,18 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-10-08-reporte-periodo-por-semestre',
+    fecha: '2026-10-08',
+    titulo: 'Reporte: elegí desde qué semestre medir',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'En «Período de la situación» del reporte ahora elegís el mes de arranque: por ejemplo «Desde ene 2026» (lo que se evalúa en la recategorización de enero 2027) o «Desde jul 2026» (la de julio 2027). Las opciones se corren solas cada semestre, y sigue estando «Elegir meses».',
+      },
+    ],
+  },
+  {
     id: '2026-10-07-recibo-c-y-fecha-anterior',
     fecha: '2026-10-07',
     titulo: 'Recibo C y comprobantes con fecha anterior',

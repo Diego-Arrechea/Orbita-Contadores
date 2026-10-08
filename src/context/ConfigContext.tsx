@@ -84,7 +84,8 @@ function combinar(guardado: Partial<Configuracion> | null | undefined): Configur
     secciones: { ...R.secciones, ...(rg.secciones ?? {}) },
     metricas: { ...R.metricas, ...(rg.metricas ?? {}) },
     mesesHistorial: num(rg.mesesHistorial, R.mesesHistorial),
-    periodoSituacion: rg.periodoSituacion === 'meses' ? 'meses' : R.periodoSituacion,
+    periodoSituacion:
+      rg.periodoSituacion === 'meses' || rg.periodoSituacion === 'siguiente' ? rg.periodoSituacion : R.periodoSituacion,
     mesesSituacion: Array.isArray(rg.mesesSituacion) ? rg.mesesSituacion.filter(m => typeof m === 'string') : [],
   };
 

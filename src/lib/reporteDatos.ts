@@ -56,6 +56,25 @@ function idxCorte(corte?: string): number | null {
   return m ? Number(m[3]) * 12 + Number(m[2]) - 1 : null;
 }
 
+/** Los dos períodos de 12 meses abiertos, para el selector del reporte: el que evalúa la próxima
+ *  recategorización (ej. ene–dic 2026 → enero 2027) y el que arranca 6 meses después (jul 2026 –
+ *  jun 2027 → julio 2027). Se corren solos cada semestre. El contador los pidió por mes de arranque
+ *  ("desde 01/2026", "desde 07/2026"): "desde la última recategorización" se leía como julio. */
+export function ventanasAbiertas(
+  calc: CalculoCliente,
+  hoy: Date = HOY,
+): { modo: 'recategorizacion' | 'siguiente'; desdeIdx: number; etiqueta: string }[] {
+  const base = idxFecha(periodoProximaRecat(calc.proximaVentana, hoy).desde);
+  return ([['recategorizacion', base], ['siguiente', base + 6]] as const).map(([modo, desdeIdx]) => {
+    const recat = desdeIdx + 12;
+    return {
+      modo,
+      desdeIdx,
+      etiqueta: `Desde ${mesCorto(desdeIdx)} (recategorización de ${MESES_LARGOS[recat % 12]} ${Math.floor(recat / 12)})`,
+    };
+  });
+}
+
 export function situacionPeriodo(
   cliente: Cliente,
   calc: CalculoCliente,
@@ -90,16 +109,22 @@ export function situacionPeriodo(
     };
   }
 
-  // Período de la próxima recategorización. El facturómetro mide exactamente este período: si su
-  // fecha de corte cae dentro, manda (ya trae lo que los comprobantes no muestran, p. ej. el agro);
-  // si es de antes (de un período anterior) o no está, se suman los comprobantes del período.
-  const { desde, hasta } = periodoProximaRecat(calc.proximaVentana, hoy);
-  const desdeIdx = idxFecha(desde);
-  const hastaIdx = idxFecha(hasta);
+  // Uno de los dos períodos de 12 meses abiertos: el de la próxima recategorización o el que arranca
+  // 6 meses después (el de la recategorización siguiente). El facturómetro mide sólo el primero: si
+  // su fecha de corte cae dentro, manda (ya trae lo que los comprobantes no muestran, p. ej. el agro);
+  // si es de antes (de un período anterior), no está, o es el período siguiente, se suman los
+  // comprobantes del período.
+  const ventana = ventanasAbiertas(calc, hoy).find(v => v.modo === modo) ?? ventanasAbiertas(calc, hoy)[0];
+  const desdeIdx = ventana.desdeIdx;
+  const hastaIdx = desdeIdx + 11;
   const hoyIdx = idxFecha(hoy);
   const corte = idxCorte(cliente.facturometroActualizado);
   const oficialDelPeriodo =
-    (cliente.facturacion12mOficial ?? 0) > 0 && corte != null && corte >= desdeIdx && corte <= hastaIdx;
+    ventana.modo === 'recategorizacion' &&
+    (cliente.facturacion12mOficial ?? 0) > 0 &&
+    corte != null &&
+    corte >= desdeIdx &&
+    corte <= hastaIdx;
   const facturado = oficialDelPeriodo
     ? calc.nivelTope
     : cliente.historialMensual
@@ -108,7 +133,7 @@ export function situacionPeriodo(
   const restantes = Math.max(0, Math.min(12, hastaIdx - hoyIdx + 1));
   const recat = hastaIdx + 1; // mes en que se recategoriza (el siguiente al cierre del período)
   return {
-    modo: 'recategorizacion',
+    modo: ventana.modo,
     etiqueta: `desde ${mesCorto(desdeIdx)}`,
     facturado,
     tope,

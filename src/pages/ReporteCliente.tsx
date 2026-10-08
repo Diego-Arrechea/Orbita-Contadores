@@ -17,7 +17,7 @@ import { etiquetaRegimen } from '@/lib/regimen';
 import { cuentaActual } from '@/lib/cuenta';
 import { useConfig } from '@/context/ConfigContext';
 import { type Severidad } from '@/lib/alertas';
-import { armarDatosReporte, opcionesReporte } from '@/lib/reporteDatos';
+import { armarDatosReporte, opcionesReporte, ventanasAbiertas } from '@/lib/reporteDatos';
 import { periodoProximaRecat } from '@/lib/monotributo';
 import { getMovimientos } from '@/services/movimientosService';
 import { guardarReporteConfigCliente } from '@/services/clientesService';
@@ -137,7 +137,7 @@ export function ReporteCliente() {
           periodoSituacion: 'meses',
           mesesSituacion: rep.mesesSituacion.length ? rep.mesesSituacion : mesesDelPeriodoRecat(),
         })
-      : setReporte({ periodoSituacion: 'recategorizacion' });
+      : setReporte({ periodoSituacion: v === 'siguiente' ? 'siguiente' : 'recategorizacion' });
   const toggleMesSituacion = (mes: string) =>
     setReporte({
       mesesSituacion: elegidos.has(mes) ? rep.mesesSituacion.filter(m => m !== mes) : [...rep.mesesSituacion, mes],
@@ -214,11 +214,15 @@ export function ReporteCliente() {
                     Período de la situación
                   </div>
                   <Select value={rep.periodoSituacion} onValueChange={cambiarPeriodo}>
-                    <SelectTrigger className="w-[260px]">
+                    <SelectTrigger className="w-[340px] max-w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="recategorizacion">Desde la última recategorización</SelectItem>
+                      {ventanasAbiertas(calc).map(v => (
+                        <SelectItem key={v.modo} value={v.modo}>
+                          {v.etiqueta}
+                        </SelectItem>
+                      ))}
                       <SelectItem value="meses">Elegir meses</SelectItem>
                     </SelectContent>
                   </Select>
