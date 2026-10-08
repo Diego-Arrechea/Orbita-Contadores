@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
 import {
   ChevronLeft,
@@ -108,6 +108,13 @@ export function ClienteDetalle() {
     () => clienteMock ?? clienteReal ?? undefined,
     [clienteMock, clienteReal],
   );
+  // En celular la barra de solapas scrollea de costado: traemos la abierta a la vista para que no
+  // quede cortada en el borde (pasa al entrar con ?tab= o al tocar una a medio asomar).
+  const solapasRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const activa = solapasRef.current?.querySelector<HTMLElement>('[data-state="active"]');
+    activa?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  }, [tab, cliente?.id]);
 
   const esReal = cliente?.fuente === 'arca';
   const facturarHabilitado = esReal && puedeFacturar();
@@ -223,9 +230,11 @@ export function ClienteDetalle() {
                   'linear-gradient(90deg, transparent, hsl(var(--primary) / 0.5), transparent)',
               }}
             />
-            <div className="flex items-start justify-between gap-3">
+            {/* En celular las acciones bajan a su propia fila: al lado del nombre le comían el ancho
+                y los datos quedaban de a una palabra por renglón. */}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
               <div className="flex items-start gap-3 sm:gap-5 min-w-0">
-                <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground text-base sm:text-xl font-semibold shrink-0 shadow-md">
+                <div className="flex h-11 w-11 sm:h-16 sm:w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground text-base sm:text-xl font-semibold shrink-0 shadow-md">
                   {cliente.nombre
                     .split(' ')
                     .map(p => p[0])
@@ -234,8 +243,11 @@ export function ClienteDetalle() {
                     .toUpperCase()}
                 </div>
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <h1 className="text-lg sm:text-2xl font-semibold tracking-tight">{cliente.nombre}</h1>
+                  <div className="flex items-center gap-1.5 sm:gap-2.5 flex-wrap">
+                    {/* En celular el nombre ocupa su renglón y las etiquetas van debajo */}
+                    <h1 className="w-full sm:w-auto mb-0.5 sm:mb-0 text-lg leading-snug sm:text-2xl font-semibold tracking-tight break-words">
+                      {cliente.nombre}
+                    </h1>
                     <Badge variant="outline" className="font-semibold bg-card/70">
                       {esMonotributista(cliente)
                         ? `Cat. ${cliente.categoria}`
@@ -251,15 +263,15 @@ export function ClienteDetalle() {
                       </Badge>
                     )}
                   </div>
-                  <div className="mt-2.5 flex items-center gap-x-5 gap-y-1.5 text-sm text-muted-foreground flex-wrap">
-                    <span className="tabular-nums">CUIT {formatCuit(cliente.cuit)}</span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Calendar className="h-3.5 w-3.5" />
+                  <div className="mt-2.5 flex items-center gap-x-5 gap-y-1 text-[13px] sm:text-sm text-muted-foreground flex-wrap">
+                    <span className="tabular-nums whitespace-nowrap">CUIT {formatCuit(cliente.cuit)}</span>
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                      <Calendar className="h-3.5 w-3.5 shrink-0" />
                       Datos desde {formatDate(cliente.fechaInicio, 'long')}
                     </span>
                     {cliente.ultimaExtraccion && (
-                      <span className="inline-flex items-center gap-1.5">
-                        <RefreshCcw className="h-3.5 w-3.5" />
+                      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                        <RefreshCcw className="h-3.5 w-3.5 shrink-0" />
                         Última sync {formatDate(cliente.ultimaExtraccion)}
                       </span>
                     )}
@@ -267,12 +279,12 @@ export function ClienteDetalle() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center justify-end gap-2 sm:shrink-0">
                 {facturarHabilitado && (
                   <Button
                     size="sm"
                     onClick={() => setFacturarOpen(true)}
-                    className="shrink-0"
+                    className="flex-1 sm:flex-none"
                   >
                     <FilePlus2 className="h-4 w-4" />
                     {cliente.tieneFacturacion ? 'Emitir comprobante' : 'Habilitar facturación'}
@@ -412,7 +424,7 @@ export function ClienteDetalle() {
           </div>
 
           <div className="border-t border-hairline bg-card/70 px-4 sm:px-7">
-            <TabsList className={tabsListClass}>
+            <TabsList ref={solapasRef} className={tabsListClass}>
               <TabsTrigger value="situacion" className={tabTriggerClass}>Situación actual</TabsTrigger>
               <TabsTrigger value="estado-cuenta" className={tabTriggerClass}>Estado de cuenta</TabsTrigger>
               {!!cliente.facilidades?.length && (
