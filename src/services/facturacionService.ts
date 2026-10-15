@@ -47,6 +47,13 @@ export interface FacturarPayload {
   comprobante_asociado?: ComprobanteAsociado | null;
   /** Detalle opcional. Si viene, el backend recalcula importe_total como Σ cantidad × precio. */
   items?: ItemComprobante[] | null;
+  /** Servicios (concepto 2/3), 'aaaa-mm-dd': período facturado y vencimiento del pago. */
+  fch_serv_desde?: string | null;
+  fch_serv_hasta?: string | null;
+  fch_vto_pago?: string | null;
+  /** Si viene, al emitir se le manda el comprobante (PDF) a este mail. */
+  email?: string | null;
+  copia_a_mi?: boolean;
 }
 
 export interface ComprobanteEmitidoResp {
@@ -61,6 +68,10 @@ export interface ComprobanteEmitidoResp {
   doc_nro: string;
   observaciones: string[];
   homologacion: boolean;
+  /** Mail al que se mandó el comprobante al emitir (si se pidió y salió). */
+  email_enviado_a?: string;
+  /** Si se pidió mandarlo y no salió: el motivo (el comprobante igual quedó emitido). */
+  email_error?: string;
 }
 
 const soloDigitos = (cuit: string) => cuit.replace(/\D/g, '');
@@ -117,6 +128,23 @@ export async function descargarComprobantePdf(
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+/** Manda por mail (PDF adjunto) un comprobante emitido desde la app. */
+export function enviarComprobante(
+  cuit: string,
+  comp: { cbte_tipo: number; punto_venta: number; numero: number },
+  body: { email: string; copia_a_mi?: boolean },
+): Promise<{ ok: boolean; email_enviado_a: string; email_enviado_en: string | null }> {
+  return apiPost(
+    `/clientes/${soloDigitos(cuit)}/comprobantes/${comp.cbte_tipo}/${comp.punto_venta}/${comp.numero}/enviar`,
+    body,
+  );
+}
+
+/** Último mail al que se le mandó un comprobante de este cliente al receptor con ese CUIT. */
+export function getEmailSugerido(cuit: string, docNro: string): Promise<{ email: string | null }> {
+  return apiGet(`/clientes/${soloDigitos(cuit)}/facturacion/email-sugerido?doc_nro=${soloDigitos(docNro)}`);
 }
 
 /** Arranca (en segundo plano) la generación del certificado del cliente. Devuelve el job_id. */

@@ -18,7 +18,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from .. import models
@@ -34,7 +34,7 @@ from ..security import (
     usuario_actual,
     usuario_puede_facturar,
 )
-from ..services import comprobante_pdf
+from ..services import comprobante_mail, comprobante_pdf
 from ..services import facturacion as facturacion_svc
 from .clientes import _cliente_propio
 
@@ -164,6 +164,27 @@ class FacturarIn(BaseModel):
     # Fecha del comprobante (None = hoy). ARCA admite hasta 5 días atrás en productos y 10 en
     # servicios, y nunca antes del último comprobante del mismo PV y tipo (ver /facturacion/rango-fecha).
     fecha: dt.date | None = None
+    # Servicios (concepto 2/3): período facturado y vencimiento del pago. None = la fecha del comprobante.
+    fch_serv_desde: dt.date | None = None
+    fch_serv_hasta: dt.date | None = None
+    fch_vto_pago: dt.date | None = None
+    # Si viene, al emitir se le manda el comprobante (PDF) a este mail. Un fallo del mail no anula la
+    # emisión: vuelve en `email_error` y se puede reenviar desde la lista.
+    email: EmailStr | None = None
+    copia_a_mi: bool = False
+
+
+@router.get("/clientes/{cuit}/facturacion/email-sugerido")
+def email_sugerido(
+    cuit: str,
+    doc_nro: str,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(usuario_actual),
+):
+    """Último mail al que se le mandó un comprobante de este cliente al receptor con ese CUIT."""
+    _exigir_habilitado(db, usuario)
+    _cliente_propio(db, cuit, usuario)
+    return {"email": comprobante_mail.email_sugerido(db, cuit, doc_nro)}
 
 
 @router.get("/clientes/{cuit}/facturacion/rango-fecha")
@@ -202,11 +223,11 @@ def facturar(
     Genera el certificado del cliente la primera vez (puede tardar ~1 min)."""
     _exigir_habilitado(db, usuario)
     bloquear_si_demo(db, usuario, "Los clientes de ejemplo no emiten comprobantes.")
-    _cliente_propio(db, cuit, usuario)
+    cliente = _cliente_propio(db, cuit, usuario)
     asociado = body.comprobante_asociado.model_dump() if body.comprobante_asociado else None
     items = [i.model_dump() for i in body.items] if body.items else None
     try:
-        return facturacion_svc.emitir(
+        resultado = facturacion_svc.emitir(
             db,
             cuit,
             cbte_tipo=body.cbte_tipo,
@@ -219,6 +240,9 @@ def facturar(
             comprobante_asociado=asociado,
             items=items,
             fecha=body.fecha,
+            fch_serv_desde=body.fch_serv_desde,
+            fch_serv_hasta=body.fch_serv_hasta,
+            fch_vto_pago=body.fch_vto_pago,
         )
     except facturacion_svc.SinPuntoVenta:
         raise HTTPException(
@@ -246,6 +270,80 @@ def facturar(
     except Exception as e:  # noqa: BLE001 — bootstrap del cert o WS de ARCA
         raise HTTPException(status_code=502, detail=f"No se pudo emitir el comprobante: {e}")
 
+    # Ya hay CAE: el mail es aparte y nunca hace fallar la respuesta de la emisión.
+    if body.email:
+        comp = _comprobante_app(
+            db, cuit, resultado["cbte_tipo"], resultado["punto_venta"], resultado["numero"]
+        )
+        try:
+            if comp is None:
+                raise comprobante_mail.EnvioRechazado("No se encontró el comprobante.", 404)
+            comprobante_mail.enviar(
+                db, usuario=usuario, cliente=cliente, comp=comp,
+                destino=str(body.email), copia_a_mi=body.copia_a_mi,
+            )
+            resultado["email_enviado_a"] = str(body.email)
+        except comprobante_mail.EnvioRechazado as e:
+            resultado["email_error"] = str(e)
+        except Exception as e:  # noqa: BLE001 — PDF/SMTP: se informa y se puede reenviar
+            log.warning("mail del comprobante %s falló: %s", cuit, e)
+            resultado["email_error"] = "No pudimos enviar el mail. Podés reenviarlo desde la lista de comprobantes."
+    return resultado
+
+
+def _comprobante_app(db: Session, cuit: str, cbte_tipo: int, punto_venta: int, numero: int):
+    """Comprobante emitido DESDE la app (tiene CAE y vto: tiene representación impresa propia)."""
+    comp = (
+        db.query(models.ComprobanteEmitido)
+        .filter_by(
+            cuit=cuit,
+            direccion="emitido",
+            cbte_tipo=cbte_tipo,
+            punto_venta=punto_venta,
+            numero=numero,
+        )
+        .one_or_none()
+    )
+    if comp is None or not comp.cae or not comp.cae_vto:
+        return None
+    return comp
+
+
+class EnviarComprobanteIn(BaseModel):
+    email: EmailStr
+    copia_a_mi: bool = False
+
+
+@router.post("/clientes/{cuit}/comprobantes/{cbte_tipo}/{punto_venta}/{numero}/enviar")
+def enviar_comprobante(
+    cuit: str,
+    cbte_tipo: int,
+    punto_venta: int,
+    numero: int,
+    body: EnviarComprobanteIn,
+    db: Session = Depends(get_db),
+    usuario: models.Usuario = Depends(requiere_permiso("facturar")),
+):
+    """Manda por mail (PDF adjunto) un comprobante emitido desde la app."""
+    _exigir_habilitado(db, usuario)
+    bloquear_si_demo(db, usuario, "Los comprobantes de clientes de ejemplo no se envían por mail.")
+    cliente = _cliente_propio(db, cuit, usuario)
+    comp = _comprobante_app(db, cuit, cbte_tipo, punto_venta, numero)
+    if comp is None:
+        raise HTTPException(status_code=404, detail="No se encontró el comprobante.")
+    try:
+        comprobante_mail.enviar(
+            db, usuario=usuario, cliente=cliente, comp=comp,
+            destino=str(body.email), copia_a_mi=body.copia_a_mi,
+        )
+    except comprobante_mail.EnvioRechazado as e:
+        raise HTTPException(status_code=e.status, detail=str(e))
+    return {
+        "ok": True,
+        "email_enviado_a": comp.email_enviado_a,
+        "email_enviado_en": comp.email_enviado_en.isoformat() if comp.email_enviado_en else None,
+    }
+
 
 # ── PDF (representación impresa) de un comprobante emitido ────────────────────
 _NOMBRE_CBTE = {11: "Factura_C", 13: "Nota_Credito_C", 15: "Recibo_C"}
@@ -263,20 +361,10 @@ def comprobante_pdf_endpoint(
     """Devuelve el PDF (representación impresa) de un comprobante emitido desde la app."""
     _exigir_habilitado(db, usuario)
     _cliente_propio(db, cuit, usuario)
-    comp = (
-        db.query(models.ComprobanteEmitido)
-        .filter_by(
-            cuit=cuit,
-            direccion="emitido",
-            cbte_tipo=cbte_tipo,
-            punto_venta=punto_venta,
-            numero=numero,
-        )
-        .one_or_none()
-    )
     # Sólo los emitidos DESDE la app (tienen cae_vto) tienen representación impresa propia. Para los
     # traídos de Mis Comprobantes el PDF oficial vive en ARCA: no lo reconstruimos.
-    if comp is None or not comp.cae or not comp.cae_vto:
+    comp = _comprobante_app(db, cuit, cbte_tipo, punto_venta, numero)
+    if comp is None:
         raise HTTPException(status_code=404, detail="No se encontró el comprobante.")
     cliente = db.get(models.ClienteARCA, cuit)
     pdf = comprobante_pdf.generar(comp, cliente)

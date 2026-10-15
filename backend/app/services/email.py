@@ -35,9 +35,11 @@ def enviar_email(
     *,
     responder_a: str | None = None,
     copia: str | None = None,
+    adjuntos: list[tuple[str, bytes, str]] | None = None,
 ) -> bool:
     """Manda un email best-effort. Devuelve True si se entregó al servidor SMTP, False si no.
-    Si SMTP no está configurado, loguea el cuerpo y devuelve False sin lanzar."""
+    Si SMTP no está configurado, loguea el cuerpo y devuelve False sin lanzar.
+    `adjuntos`: [(nombre_archivo, contenido, mime 'tipo/subtipo')]."""
     if not _configurado():
         logger.warning(
             "SMTP sin configurar: no se envió el email a %s. Asunto: %s\n%s",
@@ -57,6 +59,9 @@ def enviar_email(
         msg["Cc"] = copia
     msg.set_content(cuerpo_texto or "Abrí este correo en un cliente que soporte HTML.")
     msg.add_alternative(cuerpo_html, subtype="html")
+    for nombre, contenido, mime in adjuntos or []:
+        maintype, _, subtype = mime.partition("/")
+        msg.add_attachment(contenido, maintype=maintype, subtype=subtype or "octet-stream", filename=nombre)
 
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=TIMEOUT) as smtp:

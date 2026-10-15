@@ -208,6 +208,9 @@ def emitir(
     comprobante_asociado: dict | None = None,
     items: list[dict] | None = None,
     fecha: dt.date | None = None,  # None = hoy
+    fch_serv_desde: dt.date | None = None,  # servicios: período facturado (None = la fecha)
+    fch_serv_hasta: dt.date | None = None,
+    fch_vto_pago: dt.date | None = None,  # servicios: vencimiento del pago (None = la fecha)
     on_progress: ProgressCb | None = None,
 ) -> dict:
     """Emite una Factura C (11), Nota de Crédito C (13) o Recibo C (15) a nombre del cliente y persiste el
@@ -238,6 +241,19 @@ def emitir(
             f"La fecha del comprobante puede ser hasta {dias} días anterior a hoy "
             f"({'productos' if concepto == 1 else 'servicios'})."
         )
+
+    # Servicios (o ambos): ARCA exige período facturado y vencimiento del pago. Sin dato, la fecha
+    # del comprobante (lo que se mandaba antes de que se pudieran elegir).
+    if concepto in (2, 3):
+        fch_serv_desde = fch_serv_desde or fecha
+        fch_serv_hasta = fch_serv_hasta or fecha
+        fch_vto_pago = fch_vto_pago or fecha
+        if fch_serv_desde > fch_serv_hasta:
+            raise ValueError("El inicio del período no puede ser posterior al fin.")
+        if fch_vto_pago < fecha:
+            raise ValueError("El vencimiento del pago no puede ser anterior a la fecha del comprobante.")
+    else:
+        fch_serv_desde = fch_serv_hasta = fch_vto_pago = None
 
     cert_bytes, key_bytes, cuit_emisor = _cert_y_emisor(db, cuit, on_progress)
 
@@ -270,6 +286,9 @@ def emitir(
         condicion_iva_receptor=condicion_iva_receptor,
         comprobante_asociado=comprobante_asociado,
         fecha=fecha,
+        fch_serv_desde=fch_serv_desde,
+        fch_serv_hasta=fch_serv_hasta,
+        fch_vto_pago=fch_vto_pago,
     )
 
     # Persistimos el comprobante recién emitido para que aparezca igual que los sincronizados.
@@ -291,6 +310,9 @@ def emitir(
             cae_vto=resultado.get("cae_vto", ""),
             condicion_iva_receptor=condicion_iva_receptor,
             items_json=json.dumps(items, ensure_ascii=False) if items else None,
+            fch_serv_desde=fch_serv_desde,
+            fch_serv_hasta=fch_serv_hasta,
+            fch_vto_pago=fch_vto_pago,
         )
     )
     db.commit()

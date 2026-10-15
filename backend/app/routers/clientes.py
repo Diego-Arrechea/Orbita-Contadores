@@ -940,6 +940,7 @@ def _comprobante_out(c: models.ComprobanteEmitido) -> ComprobanteOut:
         contraparteNombre=c.contraparte_nombre or "—",
         contraparteCuit=c.doc_nro,
         tienePdf=bool(c.cae_vto),  # emitido desde la app → tiene representación impresa
+        emailEnviadoA=c.email_enviado_a,
         origen=c.origen or "arca",
     )
 

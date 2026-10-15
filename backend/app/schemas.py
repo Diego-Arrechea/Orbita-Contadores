@@ -96,6 +96,8 @@ class ComprobanteOut(BaseModel):
     # True sólo para los comprobantes EMITIDOS desde la app (tienen cae_vto): se les puede generar la
     # representación impresa (PDF). Los traídos de Mis Comprobantes no — su PDF oficial vive en ARCA.
     tienePdf: bool = False  # noqa: N815
+    # Último mail al que se mandó desde la app (sólo emitidos desde la app). None = nunca se mandó.
+    emailEnviadoA: str | None = None  # noqa: N815
     # 'arca' (traído de Mis Comprobantes o emitido por la app) | 'manual' (lo cargó el contador a mano).
     origen: str = "arca"
 

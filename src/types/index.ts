@@ -122,6 +122,7 @@ export interface Comprobante {
   contraparteCuit: string;
   esBienPatrimonial?: boolean;
   tienePdf?: boolean;      // emitido desde la app → se puede descargar su representación impresa (PDF)
+  emailEnviadoA?: string | null; // último mail al que se mandó desde la app
   pdfUrl?: string;
   origen?: 'arca' | 'manual'; // 'manual' = lo cargó el contador a mano (talonario, ticket); default 'arca'
 }

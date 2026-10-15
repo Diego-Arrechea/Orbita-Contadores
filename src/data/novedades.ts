@@ -42,6 +42,29 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-10-15-comprobante-periodo-mail',
+    fecha: '2026-10-15',
+    titulo: 'Período facturado y envío del comprobante por mail',
+    resumen: 'Al facturar servicios elegís el período, y el comprobante le llega al cliente por mail.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'En «Emitir comprobante», con concepto Servicios, podés elegir el período facturado (desde y hasta) y el vencimiento del pago. Por defecto es el mes de la fecha del comprobante, y salen impresos en el PDF.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Cargá el mail del cliente al emitir y le mandamos el comprobante en PDF. Si ya le mandaste uno a ese CUIT, el mail se completa solo.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'En la lista de comprobantes, los emitidos desde Órbita tienen un botón para enviarlos (o reenviarlos) por mail a quien quieras.',
+      },
+    ],
+  },
+  {
     id: '2026-10-08-envios-programados',
     fecha: '2026-10-08',
     titulo: 'Programá el envío del reporte',

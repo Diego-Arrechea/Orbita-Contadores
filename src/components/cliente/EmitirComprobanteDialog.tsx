@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Loader2, CheckCircle2, AlertTriangle, ArrowRight, FileKey2, Store, Download, Plus, Trash2 } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertTriangle, ArrowRight, FileKey2, Store, Download, Plus, Trash2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,12 +29,19 @@ import {
   esErrorSinPuntoVenta,
   descargarComprobantePdf,
   getRangoFecha,
+  getEmailSugerido,
   type FacturarPayload,
   type RangoFecha,
   type ComprobanteEmitidoResp,
   type PuntoVenta,
 } from '@/services/facturacionService';
 import { usePreparaciones } from '@/context/PreparacionesContext';
+import {
+  CopiaAMi,
+  EMAIL_RE,
+  EnviarComprobanteForm,
+  nombreComprobante,
+} from '@/components/cliente/EnviarComprobanteDialog';
 import { TOPE_PRECIO_UNITARIO } from '@/data/categorias';
 import type { Cliente } from '@/types';
 
@@ -55,10 +62,6 @@ const CONCEPTOS = [
 type TipoCbte = 'factura' | 'recibo' | 'nc';
 const CBTE: Record<TipoCbte, number> = { factura: 11, recibo: 15, nc: 13 };
 
-function nombreComprobante(cbteTipo: number): string {
-  return cbteTipo === 13 ? 'Nota de Crédito C' : cbteTipo === 15 ? 'Recibo C' : 'Factura C';
-}
-
 /** Fecha local 'aaaa-mm-dd' (sin pasar por UTC, que a la noche ya es mañana). */
 function isoLocal(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -72,6 +75,11 @@ function haceDias(n: number): string {
 }
 /** Días hacia atrás que admite la fecha del comprobante: productos 5, servicios (o ambos) 10. */
 const diasAtras = (concepto: number) => (concepto === 1 ? 5 : 10);
+/** Primer y último día del mes de una fecha 'aaaa-mm-dd' (período por defecto de un servicio). */
+function mesDe(iso: string): { desde: string; hasta: string } {
+  const [y, m] = iso.split('-').map(Number);
+  return { desde: isoLocal(new Date(y, m - 1, 1)), hasta: isoLocal(new Date(y, m, 0)) };
+}
 /** 'aaaa-mm-dd' → 'dd/mm'. */
 const ddmm = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 
@@ -114,6 +122,16 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
   const [items, setItems] = useState<ItemRow[]>([nuevoItem()]);
   const [ncPv, setNcPv] = useState('');
   const [ncNumero, setNcNumero] = useState('');
+  // Servicios: período facturado y vencimiento del pago. Siguen a la fecha hasta que el usuario los toca.
+  const [servDesde, setServDesde] = useState('');
+  const [servHasta, setServHasta] = useState('');
+  const [vtoPago, setVtoPago] = useState('');
+  const [periodoTocado, setPeriodoTocado] = useState(false);
+  const [vtoTocado, setVtoTocado] = useState(false);
+  // Mail del receptor (opcional): si está, al emitir se le manda el comprobante.
+  const [email, setEmail] = useState('');
+  const [emailTocado, setEmailTocado] = useState(false);
+  const [copiaAMi, setCopiaAMi] = useState(false);
   const [error, setError] = useState('');
   const [resultado, setResultado] = useState<ComprobanteEmitidoResp | null>(null);
   const [descargando, setDescargando] = useState(false);
@@ -186,6 +204,11 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
     setItems([nuevoItem()]);
     setNcPv('');
     setNcNumero('');
+    setPeriodoTocado(false);
+    setVtoTocado(false);
+    setEmail('');
+    setEmailTocado(false);
+    setCopiaAMi(false);
     setError('');
     setResultado(null);
     setProgreso(0);
@@ -220,6 +243,27 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
   const fechaOk = !!fecha && fecha >= fechaMin && fecha <= fechaMax;
   const pisoPorUltimo = !!rango?.ultima_fecha && rango.ultima_fecha === rango.desde && rango.desde > haceDias(rango.dias_atras);
 
+  // Período del servicio: por defecto el mes de la fecha del comprobante; el vto del pago, la fecha.
+  const esServicio = concepto === 2 || concepto === 3;
+  useEffect(() => {
+    if (!fecha) return;
+    if (!periodoTocado) {
+      const m = mesDe(fecha);
+      setServDesde(m.desde);
+      setServHasta(m.hasta);
+    }
+    if (!vtoTocado) setVtoPago(fecha);
+  }, [fecha, periodoTocado, vtoTocado]);
+  const periodoOk =
+    !esServicio || (!!servDesde && !!servHasta && servDesde <= servHasta && !!vtoPago && vtoPago >= fecha);
+  const mensajePeriodo = !esServicio
+    ? ''
+    : servDesde && servHasta && servDesde > servHasta
+      ? 'El inicio del período no puede ser posterior al fin.'
+      : vtoPago && vtoPago < fecha
+        ? 'El vencimiento del pago no puede ser anterior a la fecha del comprobante.'
+        : '';
+
   const cond = CONDICIONES.find(c => c.value === condicion)!;
   // Detalle → cada renglón parseado a números (para total, validación y payload).
   const itemsParsed = items.map(it => ({
@@ -236,11 +280,30 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
     itemsParsed.every(it => it.descripcion.length > 0 && it.cantidad > 0 && it.precio_unitario >= 0) &&
     totalItems > 0;
   const cuitDigits = cuitReceptor.replace(/\D/g, '');
+  const emailLimpio = email.trim();
+  const emailOk = !emailLimpio || EMAIL_RE.test(emailLimpio);
   const formOk =
     (detallar ? itemsOk : importeNum > 0) &&
     (!cond.requiereCuit || cuitDigits.length === 11) &&
     (tipo !== 'nc' || Number(ncNumero) > 0) &&
-    fechaOk;
+    fechaOk &&
+    periodoOk &&
+    emailOk;
+
+  // Si ya se le mandó un comprobante a este CUIT, proponemos ese mail (sin pisar lo que se escribió).
+  const cuitParaSugerir = cond.requiereCuit && cuitDigits.length === 11 ? cuitDigits : '';
+  useEffect(() => {
+    if (!open || !cuitParaSugerir || emailTocado) return;
+    let vigente = true;
+    getEmailSugerido(cliente.cuit, cuitParaSugerir)
+      .then(r => {
+        if (vigente && r.email) setEmail(r.email);
+      })
+      .catch(() => {});
+    return () => {
+      vigente = false;
+    };
+  }, [open, cuitParaSugerir, emailTocado, cliente.cuit]);
 
   // El precio unitario máximo sólo aplica a la venta de productos (concepto 1 o 3), no a servicios,
   // y no tiene sentido en una nota de crédito. Es un aviso NO bloqueante. Con detalle lo evaluamos
@@ -348,6 +411,11 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
           ? { tipo: ncTipo, punto_venta: Number(ncPv) || pvSel || 0, numero: Number(ncNumero) }
           : null,
       items: detallar ? itemsParsed : null,
+      fch_serv_desde: esServicio ? servDesde : null,
+      fch_serv_hasta: esServicio ? servHasta : null,
+      fch_vto_pago: esServicio ? vtoPago : null,
+      email: emailLimpio || null,
+      copia_a_mi: !!emailLimpio && copiaAMi,
     };
     try {
       const res = await facturar(cliente.cuit, payload);
@@ -551,6 +619,52 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
                 </p>
               </div>
 
+              {esServicio && (
+                <div className="space-y-1.5">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="fc-desde">Período desde</Label>
+                      <Input
+                        id="fc-desde"
+                        type="date"
+                        value={servDesde}
+                        onChange={e => {
+                          setPeriodoTocado(true);
+                          setServDesde(e.target.value);
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="fc-hasta">Período hasta</Label>
+                      <Input
+                        id="fc-hasta"
+                        type="date"
+                        min={servDesde || undefined}
+                        value={servHasta}
+                        onChange={e => {
+                          setPeriodoTocado(true);
+                          setServHasta(e.target.value);
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="fc-vto">Vencimiento del pago</Label>
+                      <Input
+                        id="fc-vto"
+                        type="date"
+                        min={fecha || undefined}
+                        value={vtoPago}
+                        onChange={e => {
+                          setVtoTocado(true);
+                          setVtoPago(e.target.value);
+                        }}
+                      />
+                    </div>
+                  </div>
+                  {mensajePeriodo && <p className="text-xs text-danger">{mensajePeriodo}</p>}
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <Label>Condición del receptor</Label>
                 <Select value={String(condicion)} onValueChange={v => setCondicion(Number(v))}>
@@ -579,6 +693,24 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
                   />
                 </div>
               )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="fc-email">
+                  Mail del cliente <span className="font-normal text-muted-foreground">(opcional)</span>
+                </Label>
+                <Input
+                  id="fc-email"
+                  type="email"
+                  placeholder="Para mandarle el comprobante al emitirlo"
+                  value={email}
+                  onChange={e => {
+                    setEmailTocado(true);
+                    setEmail(e.target.value);
+                  }}
+                />
+                {!emailOk && <p className="text-xs text-danger">Revisá el mail: no parece válido.</p>}
+                {emailLimpio && emailOk && <CopiaAMi checked={copiaAMi} onChange={setCopiaAMi} />}
+              </div>
 
               <div className="flex items-center justify-between">
                 <Label>{detallar ? 'Detalle' : 'Importe'}</Label>
@@ -713,6 +845,13 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
               />
               {tipo === 'nc' && <Fila k="Corrige" v={`${nombreComprobante(ncTipo)} ${ncPv || pvSel}-${ncNumero}`} />}
               <Fila k="Concepto" v={CONCEPTOS.find(c => c.value === concepto)?.label ?? ''} />
+              {esServicio && (
+                <>
+                  <Fila k="Período" v={`${formatDate(servDesde)} al ${formatDate(servHasta)}`} />
+                  <Fila k="Vencimiento del pago" v={formatDate(vtoPago)} />
+                </>
+              )}
+              {emailLimpio && <Fila k="Se envía a" v={emailLimpio} />}
               {pvSel != null && <Fila k="Punto de venta" v={String(pvSel)} />}
               {detallar && (
                 <div className="space-y-1 border-t border-border/50 pt-2">
@@ -780,6 +919,32 @@ export function EmitirComprobanteDialog({ cliente, open, onOpenChange, prefill, 
               <Fila k="Vencimiento del CAE" v={formatVto(resultado.cae_vto)} />
               <Fila k="Fecha" v={formatDate(resultado.fecha, 'long')} />
             </div>
+
+            {resultado.email_enviado_a ? (
+              <div className="flex items-center gap-2 rounded-lg bg-success/10 border border-success/30 px-3 py-2.5 text-sm">
+                <Check className="h-4 w-4 text-success shrink-0" />
+                <span>
+                  Enviado a <strong>{resultado.email_enviado_a}</strong>.
+                </span>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {resultado.email_error ? (
+                  <div className="flex items-start gap-2 rounded-lg bg-warning/15 border border-warning/30 px-3 py-2.5 text-sm text-warning-foreground">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>El comprobante quedó emitido, pero el mail no salió. {resultado.email_error}</span>
+                  </div>
+                ) : (
+                  <Label className="text-muted-foreground text-xs">Enviárselo por mail</Label>
+                )}
+                <EnviarComprobanteForm
+                  cuit={cliente.cuit}
+                  comp={resultado}
+                  emailInicial={emailLimpio}
+                  onEnviado={() => onEmitido?.()}
+                />
+              </div>
+            )}
 
             {error && (
               <div className="flex items-start gap-2 rounded-lg bg-danger/10 border border-danger/30 px-3 py-2.5 text-sm">

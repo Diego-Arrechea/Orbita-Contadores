@@ -393,6 +393,15 @@ def _migrar_comprobantes_emitidos(conn) -> None:
     # Percepciones/tributos separados por tipo (JSON), del import del borrador de AFIP. TEXT portable.
     if "percepciones_json" not in cols:
         conn.execute(text("ALTER TABLE comprobantes_emitidos ADD COLUMN percepciones_json TEXT"))
+    # Período facturado / vto del pago (servicios) y último envío por mail al receptor.
+    for col in ("fch_serv_desde", "fch_serv_hasta", "fch_vto_pago"):
+        if col not in cols:
+            conn.execute(text(f"ALTER TABLE comprobantes_emitidos ADD COLUMN {col} DATE"))
+    if "email_enviado_a" not in cols:
+        conn.execute(text("ALTER TABLE comprobantes_emitidos ADD COLUMN email_enviado_a VARCHAR(200)"))
+    if "email_enviado_en" not in cols:
+        tipo = "TIMESTAMP" if settings.database_url.startswith("sqlite") else "TIMESTAMP WITH TIME ZONE"
+        conn.execute(text(f"ALTER TABLE comprobantes_emitidos ADD COLUMN email_enviado_en {tipo}"))
 
 
 def _migrar_movimientos_bancarios(conn) -> None:

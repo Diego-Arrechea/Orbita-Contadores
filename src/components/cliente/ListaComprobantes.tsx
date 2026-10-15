@@ -11,10 +11,13 @@ import {
   Plus,
   Trash2,
   Calculator,
+  Mail,
+  MailCheck,
 } from 'lucide-react';
 import { descargarComprobantePdf, mensajeErrorFacturacion } from '@/services/facturacionService';
 import { eliminarComprobanteManual } from '@/services/comprobantesService';
 import { CargarComprobanteDialog } from '@/components/cliente/CargarComprobanteDialog';
+import { EnviarComprobanteDialog } from '@/components/cliente/EnviarComprobanteDialog';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -245,7 +248,50 @@ function BotonEliminarManual({
   );
 }
 
-/** Acción a la derecha de cada fila: borrar (si es manual) o descargar PDF (si se emitió desde la app). */
+/** Mandar por mail (PDF adjunto) un comprobante emitido desde la app. */
+function BotonMail({
+  c,
+  cuit,
+  onEnviado,
+}: {
+  c: Cliente['comprobantes'][number];
+  cuit: string;
+  onEnviado?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!c.tienePdf || !c.cbteTipo) return null;
+  const comp = { cbte_tipo: c.cbteTipo, punto_venta: c.puntoVenta, numero: Number(c.numero) };
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => setOpen(true)}
+            aria-label="Enviar por mail"
+            className={c.emailEnviadoA ? 'text-success' : undefined}
+          >
+            {c.emailEnviadoA ? <MailCheck className="h-3.5 w-3.5" /> : <Mail className="h-3.5 w-3.5" />}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {c.emailEnviadoA ? `Enviado a ${c.emailEnviadoA}. Reenviar` : 'Enviar por mail'}
+        </TooltipContent>
+      </Tooltip>
+      <EnviarComprobanteDialog
+        cuit={cuit}
+        comp={comp}
+        emailInicial={c.emailEnviadoA}
+        open={open}
+        onOpenChange={setOpen}
+        onEnviado={() => onEnviado?.()}
+      />
+    </>
+  );
+}
+
+/** Acción a la derecha de cada fila: borrar (si es manual) o descargar PDF y mandar por mail (si se emitió desde la app). */
 function AccionComprobante({
   c,
   cuit,
@@ -258,7 +304,12 @@ function AccionComprobante({
   if (c.origen === 'manual') {
     return <BotonEliminarManual c={c} cuit={cuit} onEliminado={() => onCambio?.()} />;
   }
-  return <BotonPdf c={c} cuit={cuit} />;
+  return (
+    <div className="inline-flex">
+      <BotonMail c={c} cuit={cuit} onEnviado={onCambio} />
+      <BotonPdf c={c} cuit={cuit} />
+    </div>
+  );
 }
 
 export function ListaComprobantes({ cliente, onCambio }: Props) {
@@ -540,7 +591,8 @@ export function ListaComprobantes({ cliente, onCambio }: Props) {
                 ) : (
                   c.tienePdf &&
                   c.cbteTipo && (
-                    <div className="ml-auto">
+                    <div className="ml-auto inline-flex">
+                      <BotonMail c={c} cuit={cliente.cuit} onEnviado={onCambio} />
                       <BotonPdf c={c} cuit={cliente.cuit} />
                     </div>
                   )

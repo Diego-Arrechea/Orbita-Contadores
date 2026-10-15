@@ -450,6 +450,15 @@ class ComprobanteEmitido(Base):
     # WSFEv1 (clase C) NO transmite líneas a ARCA —el comprobante ante ARCA es sólo el total—; este
     # detalle es exclusivamente para la representación impresa (PDF).
     items_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Período facturado y vencimiento del pago (servicios, concepto 2/3): van a ARCA y se imprimen.
+    # NULL = productos o comprobante previo a estas columnas.
+    fch_serv_desde: Mapped[dt.date | None] = mapped_column(nullable=True)
+    fch_serv_hasta: Mapped[dt.date | None] = mapped_column(nullable=True)
+    fch_vto_pago: Mapped[dt.date | None] = mapped_column(nullable=True)
+    # Último envío del comprobante por mail al receptor (desde la app): a quién y cuándo. También
+    # sirve para sugerir el mail la próxima vez que se le factura al mismo CUIT.
+    email_enviado_a: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    email_enviado_en: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Origen del dato: 'arca' (traído de Mis Comprobantes o emitido por WSFEv1) | 'manual' (cargado a
     # mano por el contador: factura de talonario en papel, ticket de gasto que no figura en ARCA). El
     # sync PROTEGE los manuales (no los pisa ni los borra) y sólo se eliminan desde la app.

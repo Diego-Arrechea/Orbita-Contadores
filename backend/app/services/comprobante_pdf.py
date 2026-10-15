@@ -233,9 +233,24 @@ def generar(comp: models.ComprobanteEmitido, cliente: models.ClienteARCA) -> byt
     _etiqueta_valor(c, xd, y, "Fecha de Emisión:", _fecha_ddmmyyyy(comp.fecha), size=9)
 
     # ════════════════════════════════════════════════════════════════════════
-    # RECEPTOR
+    # PERÍODO FACTURADO (servicios) — franja entre el encabezado y el receptor
     # ════════════════════════════════════════════════════════════════════════
     rec_top = enc_bot - 5 * mm
+    if comp.fch_serv_desde and comp.fch_serv_hasta:
+        per_h = 8 * mm
+        c.setLineWidth(0.6)
+        c.setStrokeColorRGB(*_LINE)
+        c.rect(M, rec_top - per_h, der - M, per_h)
+        py = rec_top - per_h + 2.8 * mm
+        _etiqueta_valor(c, M + 4 * mm, py, "Período Facturado Desde:", _fecha_ddmmyyyy(comp.fch_serv_desde))
+        _etiqueta_valor(c, M + 68 * mm, py, "Hasta:", _fecha_ddmmyyyy(comp.fch_serv_hasta))
+        if comp.fch_vto_pago:
+            _etiqueta_valor(c, M + 104 * mm, py, "Fecha de Vto. para el pago:", _fecha_ddmmyyyy(comp.fch_vto_pago))
+        rec_top -= per_h + 3 * mm
+
+    # ════════════════════════════════════════════════════════════════════════
+    # RECEPTOR
+    # ════════════════════════════════════════════════════════════════════════
     rec_h = 13 * mm
     c.setLineWidth(0.6)
     _set(c, _LINE)
