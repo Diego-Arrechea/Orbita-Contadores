@@ -276,6 +276,16 @@ MCMP_COLS = {
 # moneda y cotización viven en índices DISTINTOS según la dirección: la grilla de
 # recibidos intercala 2 columnas extra. (idx_cotizacion, idx_moneda):
 MCMP_MONEDA = {"E": (13, 14), "R": (16, 17)}
+# Columnas por alícuota, como offsets hacia atrás desde el total: (alícuota, off IVA, off neto).
+# 0% no tiene IVA (off 0 = sin columna). Ver _parse_fila.
+_MCMP_ALICUOTAS = (
+    (0.0, 0, 32),
+    (2.5, 30, 28),
+    (5.0, 26, 24),
+    (10.5, 22, 20),
+    (21.0, 18, 16),
+    (27.0, 14, 12),
+)
 # imp_total NO tiene índice fijo: el desglose de IVA se expande por comprobante y
 # corre la posición del total -> se toma el ÚLTIMO valor no nulo de la fila.
 
@@ -1059,17 +1069,16 @@ class AFIP:
         d["imp_exento"] = _cel(6)
         d["imp_trib"] = _cel(4)
         d["imp_iva"] = _cel(2)
-        # Detalle por alícuota: en el bloque ANTERIOR al neto total (offset -10) hay un par (iva, base)
-        # por cada alícuota del comprobante. Recolectamos los candidatos crudos (string/None); la
-        # alícuota se deriva en _map_comprobante de la relación iva/base (no de un offset fijo), así
-        # cubre todas las tasas. Validado: los pares reconstruyen exacto el neto/IVA total.
-        pares = []
-        if i_total is not None:
-            for j in range(max(0, i_total - 24), i_total - 10):
-                iva_j = row[j] if j < len(row) else None
-                base_j = row[j + 2] if j + 2 < len(row) else None
-                pares.append((iva_j, base_j))
-        d["_alic_pares"] = pares
+        # Detalle por alícuota: el bloque ANTERIOR al neto total tiene las columnas FIJAS de la grilla
+        # (encabezados en data/explora/emitidos_1.html; cada columna ocupa 2 celdas, de ahí el paso
+        # de 2): Neto 0% · IVA 2,5% · Neto 2,5% · IVA 5% · Neto 5% · IVA 10,5% · Neto 10,5% · IVA 21% ·
+        # Neto 21% · IVA 27% · Neto 27% · Neto Gravado Total. El 0% no tiene columna de IVA. Antes se
+        # barría una ventana corrida y se deducía la tasa de iva/base: así el 0/2,5/5% nunca entraban
+        # (quedaban fuera de la ventana) y salían pares cruzados (base de una tasa con IVA de otra).
+        d["_alicuotas"] = [
+            (alic, _cel(off_iva) if off_iva else None, _cel(off_base))
+            for alic, off_iva, off_base in _MCMP_ALICUOTAS
+        ]
         d["_raw"] = row
         return d
 

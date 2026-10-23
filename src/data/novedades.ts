@@ -42,6 +42,18 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-10-23-libro-iva-alicuota-0',
+    fecha: '2026-10-23',
+    titulo: 'Libro IVA: comprobantes con neto gravado al 0%',
+    items: [
+      {
+        tipo: 'arreglo',
+        texto:
+          'En los comprobantes con más de una alícuota, la parte gravada al 0% (y al 2,5% o 5%) no figuraba en el detalle por alícuota, y en el libro el neto más el IVA no daba el total. Ya está corregido en el libro, el PDF, la posición y la exportación.',
+      },
+    ],
+  },
+  {
     id: '2026-10-15-comprobante-periodo-mail',
     fecha: '2026-10-15',
     titulo: 'Período facturado y envío del comprobante por mail',
