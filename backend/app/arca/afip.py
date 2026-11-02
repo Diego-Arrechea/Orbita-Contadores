@@ -2992,11 +2992,13 @@ class AFIP:
                     (c for c in cells if re.search(r"[A-Za-z]{4}", c) and c != "Saldo"),
                     None,
                 )
-                codigo = next(
-                    (c for c in cells[1:] if re.fullmatch(r"\d{3}", c)), None
-                )
+                # Códigos de 3 dígitos en orden: impuesto (020/021/024…), concepto, subconcepto
+                # (019 = obligación/pago de capital, 051/052 = intereses).
+                codigos = [c for c in cells[1:] if re.fullmatch(r"\d{3}", c)]
+                codigo = codigos[0] if codigos else None
                 out.append({
                     "tipo": "movimiento", "periodo": periodo, "codigo": codigo,
+                    "subconcepto": codigos[2] if len(codigos) >= 3 else None,
                     "descripcion": desc, "fecha": fecha,
                     "importe": cls._ccam_num(cells[-1]), "_raw": cells,
                 })
@@ -3208,19 +3210,66 @@ class AFIP:
             venc += _dt.timedelta(days=1)
         return (hoy or _dt.date.today()) > venc
 
+    # Impuestos del monotributo en la cuenta corriente: 020 impositivo, 021 jubilación, 024 obra social.
+    _IMPUESTOS_MONOTRIBUTO = ("020", "021", "024")
+    # Debajo de esto el capital del período se toma como pagado (redondeos de la cuenta corriente).
+    _TOLERANCIA_CAPITAL = 1.0
+
     @classmethod
-    def _contar_meses_deudor(cls, filas: list[dict], hoy: _dt.date | None = None) -> int:
-        """Meses de MONOTRIBUTO en estado DEUDOR SEGUIDOS desde el período más reciente YA VENCIDO.
-        Corta en el primer mes SALDADO/ACREEDOR. 0 si el más reciente no es deudor (hoy el cliente
-        no adeuda). Los períodos todavía no vencidos (la cuota en curso) no cuentan como deuda."""
+    def _capital_por_periodo(cls, movs: list[dict]) -> dict[str, float | None]:
+        """Capital del monotributo que queda IMPAGO por período, de la cuenta corriente (sábana).
+
+        Sólo cuentan los movimientos de capital (subconcepto 019) de los impuestos 020/021/024: la
+        obligación y los débitos suman; los pagos y créditos (reimputaciones) restan. Los intereses
+        (051/052) no cuentan. Da lo mismo que la pantalla de obligaciones impagas de la CCMA.
+        None = el período trae un movimiento de capital que no sabemos signar (no se puede decir)."""
+        out: dict[str, float | None] = {}
+        for m in movs:
+            if m.get("tipo") != "movimiento" or m.get("codigo") not in cls._IMPUESTOS_MONOTRIBUTO:
+                continue
+            if m.get("subconcepto") != "019":
+                continue
+            per = m["periodo"]
+            desc = (m.get("descripcion") or "").lower()
+            if out.get(per, 0.0) is None:
+                continue
+            if desc.startswith(("obligaci", "débito", "debito")):
+                signo = 1.0
+            elif desc.startswith(("pago", "crédito", "credito")):
+                signo = -1.0
+            else:
+                out[per] = None
+                continue
+            out[per] = out.get(per, 0.0) + signo * float(m.get("importe") or 0)
+        return {p: (round(v, 2) if v is not None else None) for p, v in out.items()}
+
+    @classmethod
+    def _contar_meses_deudor(
+        cls,
+        filas: list[dict],
+        hoy: _dt.date | None = None,
+        capital: dict[str, float | None] | None = None,
+    ) -> int:
+        """Meses de MONOTRIBUTO adeudados SEGUIDOS desde el período más reciente YA VENCIDO. Corta en
+        el primer mes SALDADO/ACREEDOR. 0 si el más reciente no es deudor (hoy el cliente no adeuda).
+        Los períodos todavía no vencidos (la cuota en curso) no cuentan como deuda.
+
+        Con `capital` (de `_capital_por_periodo`) sólo cuenta los meses con CAPITAL impago: un mes que
+        debe únicamente intereses corta la racha. Es lo que mira ARCA para la baja automática (10
+        meses seguidos de capital impago); un contador que paga el capital de los meses viejos deja
+        intereses colgados y P05 los seguía marcando DEUDOR (caso CELESTRE 20319405616: 11 → 8).
+        Un período sin dato de capital (fuera de rango o con movimientos raros) cuenta como antes."""
         racha = 0
         for f in (x for x in filas if x["tipo"] == "MONOTRIBUTO"):  # sólo deudas de monotributo
             if not cls._periodo_exigible(f["periodo"], hoy):
                 continue  # la cuota del período en curso todavía no venció: no es deuda
-            if f["estado"] == "DEUDOR":
-                racha += 1
-            else:
+            if f["estado"] != "DEUDOR":
                 break
+            if capital is not None:
+                cap = capital.get(f["periodo"])
+                if cap is not None and cap <= cls._TOLERANCIA_CAPITAL:
+                    break  # debe sólo intereses de este mes
+            racha += 1
         return racha
 
     def saldos_ccma(self, *, asegurar_calculo: bool = True) -> list[dict]:
@@ -3240,10 +3289,19 @@ class AFIP:
             raise AFIPError("CCMA: Consulta de Saldos (P05) sin resultado (sesión caducada).")
         return self._parse_saldos_p05(r.text)
 
+    def capital_impago(self, *, meses: int = 24) -> dict[str, float | None]:
+        """Capital impago por período de los últimos `meses` (ver `_capital_por_periodo`). +1 request
+        (la sábana de la cuenta corriente); no toca el estado del Cálculo de Deuda."""
+        hoy = _dt.date.today()
+        idx = hoy.year * 12 + hoy.month - 1 - meses
+        desde = f"{idx % 12 + 1:02d}/{idx // 12}"
+        return self._capital_por_periodo(self.cuenta_corriente(desde=desde))
+
     def meses_adeudados(self, *, asegurar_calculo: bool = True) -> int:
-        """Cuántos meses SEGUIDOS de monotributo adeuda el cliente hoy (de la Consulta de Saldos P05).
-        0 si hoy no adeuda. Ver saldos_ccma() para el costo/estado de sesión."""
-        return self._contar_meses_deudor(self.saldos_ccma(asegurar_calculo=asegurar_calculo))
+        """Cuántos meses SEGUIDOS de capital del monotributo adeuda el cliente hoy (Consulta de Saldos
+        P05 + capital de la cuenta corriente). 0 si hoy no adeuda. Ver saldos_ccma() para el costo."""
+        filas = self.saldos_ccma(asegurar_calculo=asegurar_calculo)
+        return self._contar_meses_deudor(filas, capital=self.capital_impago())
 
     # --- Domicilio Fiscal Electrónico / e-ventanilla (notificaciones) -------
     # Servicio e-ventanilla en ve.cloud.afip.gob.ar (API REST JSON).

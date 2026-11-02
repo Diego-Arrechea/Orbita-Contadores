@@ -42,6 +42,18 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-11-02-meses-adeudados-capital',
+    fecha: '2026-11-02',
+    titulo: 'Meses adeudados: sólo cuenta el capital',
+    items: [
+      {
+        tipo: 'arreglo',
+        texto:
+          'Los meses adeudados del monotributo ahora cuentan sólo los meses con capital impago (impositivo, jubilación y obra social). Un mes al que le quedan únicamente intereses ya no suma, igual que para la baja automática por 10 meses seguidos. Algunos clientes pueden bajar su cantidad de meses en la próxima actualización.',
+      },
+    ],
+  },
+  {
     id: '2026-11-02-libro-iva-carga-manual',
     fecha: '2026-11-02',
     titulo: 'Libro IVA: agregar comprobantes a mano',
