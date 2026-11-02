@@ -502,6 +502,7 @@ export function ListaComprobantes({ cliente, onCambio }: Props) {
                   </TableCell>
                   <TableCell className="text-sm tabular-nums whitespace-nowrap">
                     {c.puntoVenta.toString().padStart(5, '0')}-{c.numero}
+                    {c.numeroHasta && ` a ${c.numeroHasta}`}
                   </TableCell>
                   <TableCell>
                     <div className="text-sm">{c.contraparteNombre}</div>
@@ -573,6 +574,7 @@ export function ListaComprobantes({ cliente, onCambio }: Props) {
                 <span>{formatDate(c.fechaEmision)}</span>
                 <span>
                   {c.puntoVenta.toString().padStart(5, '0')}-{c.numero}
+                  {c.numeroHasta && ` a ${c.numeroHasta}`}
                 </span>
                 <span>{formatCuit(c.contraparteCuit)}</span>
                 {periodoDiferente && (

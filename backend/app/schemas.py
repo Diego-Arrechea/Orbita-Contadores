@@ -29,7 +29,14 @@ TIPO_COMPROBANTE: dict[int, str] = {
     111: "Tique Factura C",
     112: "Tique Nota Crédito A", 113: "Tique Nota Crédito B", 114: "Tique Nota Crédito C",
     115: "Tique Nota Débito A", 116: "Tique Nota Débito B", 117: "Tique Nota Débito C",
+    # Sin clase: comprobantes que no cumplen la RG 1415 (los usa el contador en la carga manual del
+    # libro, p. ej. para declarar ventas sin factura). No dicen nada del régimen del emisor.
+    90: "Nota Crédito Otro Comprobante (no RG 1415)",
+    99: "Otro Comprobante (no RG 1415)",
 }
+
+# Tipos sin clase (A/B/C/M/E): no cuentan para inferir el régimen por lo que emite el cliente.
+TIPOS_SIN_CLASE: set[int] = {90, 99}
 
 
 def nombre_tipo(cbte_tipo: int) -> str:
@@ -45,12 +52,13 @@ TIPOS_MONOTRIBUTO: set[int] = {11, 12, 13, 15, 211, 212, 213, 109, 110, 111, 114
 
 # cbte_tipos de Notas de Crédito (todas las clases + FCE + tiques): se RESTAN al netear el mes,
 # igual que hace derivarHistorial en el front (que usa el nombre 'Nota Crédito' para detectarlas).
-TIPOS_NOTA_CREDITO: set[int] = {3, 8, 13, 21, 53, 110, 112, 113, 114, 203, 208, 213}
+TIPOS_NOTA_CREDITO: set[int] = {3, 8, 13, 21, 53, 90, 110, 112, 113, 114, 203, 208, 213}
 
 
 def clasificar_regimen(cbte_tipos_emitidos: set[int]) -> str | None:
     """Deduce el régimen por lo que el contribuyente EMITE: sólo clase C → 'monotributo'; alguna
     otra clase → 'responsable_inscripto'. Sin comprobantes emitidos → None (no hay evidencia)."""
+    cbte_tipos_emitidos = cbte_tipos_emitidos - TIPOS_SIN_CLASE
     if not cbte_tipos_emitidos:
         return None
     return "monotributo" if cbte_tipos_emitidos <= TIPOS_MONOTRIBUTO else "responsable_inscripto"
@@ -100,6 +108,8 @@ class ComprobanteOut(BaseModel):
     emailEnviadoA: str | None = None  # noqa: N815
     # 'arca' (traído de Mis Comprobantes o emitido por la app) | 'manual' (lo cargó el contador a mano).
     origen: str = "arca"
+    # Último número de un rango (carga manual "múltiple", p. ej. los tiques del día). None = uno solo.
+    numeroHasta: str | None = None  # noqa: N815
 
 
 # cbte_tipos habilitados en la CARGA MANUAL: cualquier tipo REGISTRADO (el catálogo completo), para
@@ -107,19 +117,59 @@ class ComprobanteOut(BaseModel):
 # M, exportación E, FCE, tiques), así que no se restringe por dirección.
 CBTE_TIPOS_MANUAL: set[int] = set(TIPO_COMPROBANTE)
 
+ALICUOTAS_IVA: tuple[float, ...] = (0.0, 2.5, 5.0, 10.5, 21.0, 27.0)
+
+
+class ComprobanteManualAlicuotaIn(BaseModel):
+    """Una alícuota del desglose de la carga manual: la base (neto gravado); el IVA lo calcula el back."""
+
+    alicuota: float
+    base: float
+
+    @field_validator("alicuota")
+    @classmethod
+    def _alicuota_valida(cls, v: float) -> float:
+        if v not in ALICUOTAS_IVA:
+            raise ValueError("Alícuota de IVA inválida.")
+        return v
+
+    @field_validator("base")
+    @classmethod
+    def _base_positiva(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("La base no puede ser negativa.")
+        return round(v, 2)
+
 
 class ComprobanteManualIn(BaseModel):
     """Alta MANUAL de un comprobante que no figura en Mis Comprobantes (factura de talonario en papel,
-    ticket de gasto). `direccion='emitido'` es una venta (suma al facturado); 'recibido' una compra/gasto."""
+    ticket de gasto, un 099 para declarar ventas sin factura). `direccion='emitido'` es una venta
+    (suma al facturado); 'recibido' una compra/gasto.
+
+    Desglose de IVA (Libro IVA de un RI): `alicuotas` (base por tasa) + no gravado + exento. Sin
+    `alicuotas` (None) el comprobante queda como hasta ahora, sólo con el total (el libro lo toma como
+    neto). Con desglose, la suma (bases + IVA + no gravado + exento) tiene que dar el total.
+    `numero_hasta`: último número de un rango ("múltiple"), p. ej. los tiques de un día."""
 
     direccion: str
     cbte_tipo: int
     fecha: dt.date
     punto_venta: int = 0
     numero: int
+    numero_hasta: int | None = None
     importe_total: float  # en pesos (canónico)
     contraparte_nombre: str = ""
     contraparte_cuit: str = ""
+    alicuotas: list[ComprobanteManualAlicuotaIn] | None = None
+    imp_no_gravado: float = 0
+    imp_exento: float = 0
+
+    @field_validator("imp_no_gravado", "imp_exento")
+    @classmethod
+    def _importe_no_negativo(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("El no gravado y el exento no pueden ser negativos.")
+        return round(v, 2)
 
     @field_validator("direccion")
     @classmethod
@@ -151,7 +201,22 @@ class ComprobanteManualIn(BaseModel):
     def _tipo_registrado(self) -> "ComprobanteManualIn":
         if self.cbte_tipo not in CBTE_TIPOS_MANUAL:
             raise ValueError("El tipo de comprobante no está registrado.")
+        if self.numero_hasta is not None:
+            if self.numero_hasta == self.numero:
+                self.numero_hasta = None
+            elif self.numero_hasta < self.numero:
+                raise ValueError("El número hasta no puede ser menor que el número desde.")
+        if self.alicuotas is not None:
+            suma = sum(a.base + self.iva_de(a) for a in self.alicuotas)
+            suma += self.imp_no_gravado + self.imp_exento
+            # Tolerancia de redondeo: el IVA se calcula por alícuota a 2 decimales.
+            if abs(round(suma, 2) - self.importe_total) > 0.05:
+                raise ValueError("El neto, el IVA, el no gravado y el exento no suman el total.")
         return self
+
+    @staticmethod
+    def iva_de(a: ComprobanteManualAlicuotaIn) -> float:
+        return round(a.base * a.alicuota / 100, 2)
 
 
 class LiquidacionAgroOut(BaseModel):
@@ -926,6 +991,9 @@ class IvaLineaOut(BaseModel):
     # Tipo de la otra letra (A↔B) al que se puede pasar el comprobante; None si no admite el cambio.
     cbteTipoAlternativo: int | None = None  # noqa: N815
     tipoAlternativo: str | None = None  # noqa: N815
+    # Carga manual del contador ('manual') o traído/emitido ('arca'); y el fin del rango, si es múltiple.
+    origen: str = "arca"
+    numeroHasta: str | None = None  # noqa: N815
 
 
 class IvaAlicuotaLineaOut(BaseModel):

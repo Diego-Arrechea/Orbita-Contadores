@@ -56,8 +56,17 @@ def _abrev(cbte_tipo: int) -> str:
         "Factura": "FC", "Nota Débito": "ND", "Nota Crédito": "NC", "Recibo": "RC",
         "Factura FCE": "FCE", "Nota Débito FCE": "NDE", "Nota Crédito FCE": "NCE",
         "Tique Factura": "TF", "Tique": "TQ", "Tique Nota Crédito": "TNC", "Tique Nota Débito": "TND",
+        "Otro Comprobante (no RG 1415)": "OTRO",
+        "Nota Crédito Otro Comprobante (no RG 1415)": "NC OTRO",
     }
     return f"{tabla.get(base, base[:4])} {letra}".strip()
+
+
+def _nro(c) -> str:
+    """'00005-00000010', o '00005-00000010/50' si es un rango (carga manual múltiple)."""
+    txt = f"{str(c.punto_venta).zfill(5)}-{str(c.numero).zfill(8)}"
+    hasta = getattr(c, "numero_hasta", None)
+    return f"{txt}/{hasta}" if hasta else txt
 
 
 def _alic(a: float) -> str:
@@ -162,7 +171,7 @@ def generar(
         marca = " *" if c.corregido else ""
         hubo_corregidos = hubo_corregidos or c.corregido
         comp_txt = (
-            f"{_abrev(c.cbte_tipo)} {str(c.punto_venta).zfill(5)}-{str(c.numero).zfill(8)}{marca}"
+            f"{_abrev(c.cbte_tipo)} {_nro(c)}{marca}"
         )
         inicio = len(filas)
         for i, a in enumerate(alics):
@@ -302,7 +311,7 @@ def generar(
         for c in excluidos:
             filas_ex.append([
                 c.fecha.strftime("%d/%m/%Y"),
-                f"{_abrev(c.cbte_tipo)} {str(c.punto_venta).zfill(5)}-{str(c.numero).zfill(8)}",
+                f"{_abrev(c.cbte_tipo)} {_nro(c)}",
                 _trunc(c.contraparte_nombre or "—", 34),
                 _cuit(c.doc_nro),
                 _num0(float(c.imp_total or 0)),

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Percent, Loader2, FileText, Info, Scale, Download, Check, AlertTriangle, Upload, RefreshCw, Pencil, FileDown } from 'lucide-react';
+import { Percent, Loader2, FileText, Info, Scale, Download, Check, AlertTriangle, Upload, RefreshCw, Pencil, FileDown, FilePlus2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -47,6 +47,7 @@ import {
 import { mensajeDeError } from '@/services/authService';
 import { formatCurrency, formatCuit, cn } from '@/lib/utils';
 import { CorreccionComprobanteDialog } from '@/components/iva/CorreccionComprobanteDialog';
+import { CargarComprobanteDialog } from '@/components/cliente/CargarComprobanteDialog';
 
 type VistaIva = 'libro' | 'posicion';
 
@@ -68,6 +69,7 @@ export function IVA() {
   const [errorDescarga, setErrorDescarga] = useState<string | null>(null);
   const [descargandoPdf, setDescargandoPdf] = useState(false);
   const [editando, setEditando] = useState<IvaLinea | null>(null);
+  const [cargarOpen, setCargarOpen] = useState(false);
   // null = quieto · 'afip' = trayendo directo de AFIP · 'archivo' = subiendo un archivo
   const [importando, setImportando] = useState<null | 'afip' | 'archivo'>(null);
   const [avisoImport, setAvisoImport] = useState<string | null>(null);
@@ -130,6 +132,23 @@ export function IVA() {
     qc.invalidateQueries({ queryKey: ['iva', 'libro', cuitActivo] });
     qc.invalidateQueries({ queryKey: ['iva', 'inconsistencias', cuitActivo] });
   }
+
+  /** Tras cargar o borrar un comprobante a mano: además del libro, puede aparecer o irse un período. */
+  function refrescarTrasCarga(fecha?: string) {
+    refrescarTrasImport();
+    qc.invalidateQueries({ queryKey: ['iva', 'periodos', cuitActivo] });
+    if (fecha) setPeriodo(fecha.slice(0, 7));
+  }
+
+  // Fecha con la que abre la carga manual: hoy si se está viendo el mes en curso (o ninguno), si no el
+  // último día del período elegido.
+  const fechaCarga = useMemo(() => {
+    const hoy = new Date();
+    const mesHoy = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+    if (!periodoActivo || periodoActivo >= mesHoy) return undefined;
+    const [a, m] = periodoActivo.split('-').map(Number);
+    return `${periodoActivo}-${String(new Date(a, m, 0).getDate()).padStart(2, '0')}`;
+  }, [periodoActivo]);
 
   /** Trae el detalle del período directo de AFIP (sin archivos). Tarda un ratito: spinner largo. */
   async function importarDeAfip() {
@@ -287,6 +306,17 @@ export function IVA() {
               PDF
             </Button>
           )}
+          {vista === 'libro' && clienteActivo && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCargarOpen(true)}
+              title="Carga a mano un comprobante que no figura en el libro (por ejemplo un 099 o un rango de tiques)"
+            >
+              <FilePlus2 className="mr-2 h-4 w-4" />
+              Agregar comprobante
+            </Button>
+          )}
           {periodoActivo && (
             <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
               <span className="hidden text-xs text-muted-foreground sm:inline">Libro IVA Digital:</span>
@@ -402,8 +432,20 @@ export function IVA() {
         cuit={cuitActivo}
         direccion={direccion}
         onClose={() => setEditando(null)}
-        onGuardado={refrescarTrasImport}
+        onGuardado={() => refrescarTrasCarga()}
       />
+
+      {clienteActivo && (
+        <CargarComprobanteDialog
+          cliente={clienteActivo}
+          open={cargarOpen}
+          onOpenChange={setCargarOpen}
+          onGuardado={refrescarTrasCarga}
+          direccionInicial={direccion === 'ventas' ? 'emitido' : 'recibido'}
+          tipoInicial={direccion === 'ventas' ? 99 : 1}
+          fechaInicial={fechaCarga}
+        />
+      )}
     </div>
   );
 }
@@ -886,7 +928,7 @@ function LibroTabla({
                         <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                         <span className="whitespace-nowrap">{l.tipo}</span>
                         <span className="whitespace-nowrap tabular-nums text-muted-foreground">
-                          {String(l.puntoVenta).padStart(5, '0')}-{l.numero}
+                          {numeroLinea(l)}
                         </span>
                         <MarcasLinea l={l} />
                       </div>
@@ -961,9 +1003,7 @@ function LibroTabla({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
                   <span className={cn(l.esNotaCredito && 'text-danger')}>{l.tipo}</span>
-                  <span className="tabular-nums text-muted-foreground">
-                    {String(l.puntoVenta).padStart(5, '0')}-{l.numero}
-                  </span>
+                  <span className="tabular-nums text-muted-foreground">{numeroLinea(l)}</span>
                   <MarcasLinea l={l} />
                 </div>
                 <span className="text-xs text-muted-foreground tabular-nums">{fechaCorta(l.fecha)}</span>
@@ -1040,10 +1080,21 @@ function FilaResumen({ label, valor }: { label: string; valor: number }) {
   );
 }
 
-/** Etiquetas de estado de una línea del libro: corregida / excluida. */
+/** '00005-00000010', o '00005-00000010 a 00000050' si se cargó como rango. */
+function numeroLinea(l: IvaLinea): string {
+  const desde = `${String(l.puntoVenta).padStart(5, '0')}-${l.numero}`;
+  return l.numeroHasta ? `${desde} a ${l.numeroHasta}` : desde;
+}
+
+/** Etiquetas de estado de una línea del libro: carga manual / corregida / excluida. */
 function MarcasLinea({ l }: { l: IvaLinea }) {
   return (
     <>
+      {l.origen === 'manual' && (
+        <Badge variant="outline" className="shrink-0 text-[10px] text-muted-foreground">
+          Carga manual
+        </Badge>
+      )}
       {l.corregido && (
         <Badge variant="outline" className="shrink-0 border-primary/40 text-[10px] text-primary" title={l.nota ?? undefined}>
           Corregido

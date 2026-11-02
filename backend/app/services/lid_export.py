@@ -127,7 +127,7 @@ def _fila_cabecera(c: models.ComprobanteEmitido) -> str:
         _ent(c.cbte_tipo, 3),                                         # 20 Tipo cbte (3)
         _ent(c.punto_venta, 5),                                       # 30 Punto de venta (5)
         _ent(c.numero, 20),                                           # 40 Número (20)
-        _ent(c.numero, 20),                                           # 50 Número hasta (20)
+        _ent(getattr(c, "numero_hasta", None) or c.numero, 20),       # 50 Número hasta (20)
         _ent(cod_doc, 2),                                             # 60 Cód doc comprador (2)
         _ent(num_doc, 20),                                            # 70 N° doc comprador (20)
         _txt(c.contraparte_nombre, 30),                              # 80 Razón social (30)

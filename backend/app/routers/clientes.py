@@ -942,6 +942,7 @@ def _comprobante_out(c: models.ComprobanteEmitido) -> ComprobanteOut:
         tienePdf=bool(c.cae_vto),  # emitido desde la app → tiene representación impresa
         emailEnviadoA=c.email_enviado_a,
         origen=c.origen or "arca",
+        numeroHasta=str(c.numero_hasta).zfill(8) if c.numero_hasta else None,
     )
 
 
@@ -969,14 +970,34 @@ def crear_comprobante_manual(
 ):
     """Carga MANUAL de un comprobante que no figura en Mis Comprobantes: una venta con talonario en
     papel o una compra/gasto (p. ej. un ticket) que no llegó por los canales electrónicos. Queda
-    marcado `origen='manual'` para distinguirlo, protegerlo del re-sync y poder borrarlo."""
+    marcado `origen='manual'` para distinguirlo, protegerlo del re-sync y poder borrarlo.
+
+    Con desglose (`alicuotas`) guarda neto/IVA/no gravado/exento y el detalle por alícuota en los
+    mismos campos que llena la sincronización: así el Libro IVA, la posición, el PDF y el Libro IVA
+    Digital lo toman sin distinguirlo de uno traído."""
     _cliente_propio(db, cuit, usuario)
+    desglose: dict = {}
+    if datos.alicuotas is not None:
+        alics = [
+            {"alicuota": a.alicuota, "base": a.base, "iva": ComprobanteManualIn.iva_de(a)}
+            for a in datos.alicuotas
+            if a.base
+        ]
+        desglose = {
+            "imp_neto": round(sum(a["base"] for a in alics), 2),
+            "imp_iva": round(sum(a["iva"] for a in alics), 2),
+            "imp_no_gravado": datos.imp_no_gravado,
+            "imp_exento": datos.imp_exento,
+            "imp_trib": 0,
+            "alicuotas_json": json.dumps(alics) if alics else None,
+        }
     comp = models.ComprobanteEmitido(
         cuit=cuit,
         direccion=datos.direccion,
         cbte_tipo=datos.cbte_tipo,
         punto_venta=datos.punto_venta,
         numero=datos.numero,
+        numero_hasta=datos.numero_hasta,
         fecha=datos.fecha,
         imp_total=datos.importe_total,
         imp_total_origen=datos.importe_total,
@@ -985,6 +1006,7 @@ def crear_comprobante_manual(
         doc_nro=datos.contraparte_cuit,
         contraparte_nombre=datos.contraparte_nombre,
         origen="manual",
+        **desglose,
     )
     db.add(comp)
     try:
@@ -1023,6 +1045,17 @@ def eliminar_comprobante_manual(
     )
     if comp is None or comp.origen != "manual":
         raise HTTPException(status_code=404, detail="No se encontró un comprobante manual para borrar.")
+    # La corrección del Libro IVA va por la misma clave: sin esto quedaría huérfana y se le aplicaría
+    # a otro comprobante que se cargue después con el mismo número.
+    db.execute(
+        delete(models.IvaCorreccion).where(
+            models.IvaCorreccion.cuit == cuit,
+            models.IvaCorreccion.direccion == direccion,
+            models.IvaCorreccion.punto_venta == punto_venta,
+            models.IvaCorreccion.cbte_tipo == cbte_tipo,
+            models.IvaCorreccion.numero == numero,
+        )
+    )
     db.delete(comp)
     db.commit()
     return {"ok": True}

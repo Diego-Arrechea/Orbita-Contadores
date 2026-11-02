@@ -207,6 +207,8 @@ def _armar_libro(db: Session, cuit: str, periodo: str, direccion: str) -> IvaLib
                 original=original,
                 cbteTipoAlternativo=alt,
                 tipoAlternativo=nombre_tipo(alt) if alt else None,
+                origen=c.origen or "arca",
+                numeroHasta=str(c.numero_hasta).zfill(8) if c.numero_hasta else None,
             )
         )
         if c.corregido:

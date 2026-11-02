@@ -26,6 +26,7 @@ import {
   type IvaLinea,
   type IvaPercepciones,
 } from '@/services/ivaService';
+import { eliminarComprobanteManual } from '@/services/comprobantesService';
 import { mensajeDeError } from '@/services/authService';
 import { formatCurrency, cn } from '@/lib/utils';
 
@@ -106,7 +107,8 @@ export function CorreccionComprobanteDialog({
   );
   const [excluido, setExcluido] = useState(false);
   const [nota, setNota] = useState('');
-  const [guardando, setGuardando] = useState<null | 'guardar' | 'original'>(null);
+  const [guardando, setGuardando] = useState<null | 'guardar' | 'original' | 'borrar'>(null);
+  const [confirmarBorrado, setConfirmarBorrado] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Parte de los valores vigentes del comprobante (con la corrección que ya tenga).
@@ -124,6 +126,7 @@ export function CorreccionComprobanteDialog({
     );
     setExcluido(linea.excluido);
     setNota(linea.nota ?? '');
+    setConfirmarBorrado(false);
     setError(null);
   }, [linea]);
 
@@ -173,6 +176,30 @@ export function CorreccionComprobanteDialog({
         percepciones: calc.percepIguales ? null : calc.percepNum,
         excluido,
         nota: nota.trim() || null,
+      });
+      onGuardado();
+      onClose();
+    } catch (e) {
+      setError(mensajeDeError(e));
+    } finally {
+      setGuardando(null);
+    }
+  }
+
+  async function borrarManual() {
+    if (!linea || !o) return;
+    if (!confirmarBorrado) {
+      setConfirmarBorrado(true);
+      return;
+    }
+    setGuardando('borrar');
+    setError(null);
+    try {
+      await eliminarComprobanteManual(cuit, {
+        direccion: direccion === 'ventas' ? 'emitido' : 'recibido',
+        puntoVenta: linea.puntoVenta,
+        cbteTipo: o.cbteTipo,
+        numero: linea.numero,
       });
       onGuardado();
       onClose();
@@ -391,6 +418,21 @@ export function CorreccionComprobanteDialog({
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
+          {linea.origen === 'manual' && (
+            <Button
+              variant="ghost"
+              onClick={borrarManual}
+              disabled={guardando !== null}
+              className={cn('text-danger hover:text-danger', !tieneCorreccion && 'sm:mr-auto')}
+            >
+              {guardando === 'borrar' ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              {confirmarBorrado ? '¿Borrarlo? Confirmá' : 'Borrar comprobante'}
+            </Button>
+          )}
           {tieneCorreccion && (
             <Button
               variant="ghost"

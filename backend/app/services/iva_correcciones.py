@@ -35,7 +35,7 @@ PAR_LETRA: dict[int, int] = {**_PARES_AB, **{b: a for a, b in _PARES_AB.items()}
 _ATRIBUTOS = (
     "id", "cuit", "direccion", "cbte_tipo", "punto_venta", "numero", "fecha", "imp_total",
     "moneda", "cotizacion", "imp_neto", "imp_iva", "imp_no_gravado", "imp_exento", "imp_trib",
-    "alicuotas_json", "percepciones_json", "doc_nro", "contraparte_nombre",
+    "alicuotas_json", "percepciones_json", "doc_nro", "contraparte_nombre", "numero_hasta", "origen",
 )
 
 

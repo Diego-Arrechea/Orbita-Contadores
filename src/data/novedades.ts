@@ -42,6 +42,34 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-11-02-libro-iva-carga-manual',
+    fecha: '2026-11-02',
+    titulo: 'Libro IVA: agregar comprobantes a mano',
+    resumen: 'Sumá al libro cualquier tipo de comprobante, con su IVA discriminado.',
+    items: [
+      {
+        tipo: 'nuevo',
+        texto:
+          'Botón «Agregar comprobante» en el Libro IVA de Ventas y Compras. Están todos los tipos, incluido el 099 (otro comprobante que no cumple la RG 1415) y su nota de crédito 090.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Para los Responsables Inscriptos elegís la alícuota (o exento / no gravado) y el neto y el IVA se calculan solos; si el comprobante tiene varias alícuotas, las cargás una por una. Suma al débito o crédito fiscal, al PDF y al Libro IVA Digital.',
+      },
+      {
+        tipo: 'nuevo',
+        texto:
+          'Carga múltiple: un rango de comprobantes (por ejemplo los tiques del día) en un solo renglón, con número desde y hasta.',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'Los comprobantes cargados a mano se ven marcados en el libro y se pueden borrar desde el mismo panel de corrección.',
+      },
+    ],
+  },
+  {
     id: '2026-10-23-libro-iva-alicuota-0',
     fecha: '2026-10-23',
     titulo: 'Libro IVA: comprobantes con neto gravado al 0%',

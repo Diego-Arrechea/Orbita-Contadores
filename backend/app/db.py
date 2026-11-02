@@ -397,6 +397,9 @@ def _migrar_comprobantes_emitidos(conn) -> None:
     for col in ("fch_serv_desde", "fch_serv_hasta", "fch_vto_pago"):
         if col not in cols:
             conn.execute(text(f"ALTER TABLE comprobantes_emitidos ADD COLUMN {col} DATE"))
+    # Fin del rango de la carga manual "múltiple" (NULL = un solo comprobante).
+    if "numero_hasta" not in cols:
+        conn.execute(text("ALTER TABLE comprobantes_emitidos ADD COLUMN numero_hasta INTEGER"))
     if "email_enviado_a" not in cols:
         conn.execute(text("ALTER TABLE comprobantes_emitidos ADD COLUMN email_enviado_a VARCHAR(200)"))
     if "email_enviado_en" not in cols:

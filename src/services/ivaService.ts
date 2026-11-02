@@ -46,6 +46,10 @@ export interface IvaLinea {
   /** Tipo de la otra letra (A↔B) al que se puede pasar; null si no admite el cambio. */
   cbteTipoAlternativo: number | null;
   tipoAlternativo: string | null;
+  /** 'manual' = lo cargó el contador a mano. */
+  origen: 'arca' | 'manual';
+  /** Último número del rango, si se cargó como "múltiple". */
+  numeroHasta: string | null;
 }
 
 export interface IvaAlicuotaLinea {

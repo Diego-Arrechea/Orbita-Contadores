@@ -406,6 +406,9 @@ class ComprobanteEmitido(Base):
     cbte_tipo: Mapped[int] = mapped_column(Integer)
     punto_venta: Mapped[int] = mapped_column(Integer)
     numero: Mapped[int] = mapped_column(Integer)
+    # Último número de un rango (carga manual "múltiple": p. ej. los tiques de un día en un renglón).
+    # NULL = un solo comprobante. Va en el campo "número hasta" del Libro IVA Digital.
+    numero_hasta: Mapped[int | None] = mapped_column(Integer, nullable=True)
     fecha: Mapped[dt.date] = mapped_column()
     imp_total: Mapped[float] = mapped_column(Numeric(15, 2))  # SIEMPRE en pesos (canónico)
     moneda: Mapped[str] = mapped_column(String(8), default="ARS")

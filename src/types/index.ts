@@ -125,6 +125,7 @@ export interface Comprobante {
   emailEnviadoA?: string | null; // último mail al que se mandó desde la app
   pdfUrl?: string;
   origen?: 'arca' | 'manual'; // 'manual' = lo cargó el contador a mano (talonario, ticket); default 'arca'
+  numeroHasta?: string | null; // último número de un rango cargado a mano ("múltiple")
 }
 
 export type ModoCausal = 'auto' | 'manual' | 'parcial';
