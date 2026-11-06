@@ -42,6 +42,23 @@ export const TIPO_NOVEDAD_META: Record<
 /** Más reciente primero. Al hacer un deploy, agregá la nueva entrada acá arriba. */
 export const NOVEDADES: Novedad[] = [
   {
+    id: '2026-11-06-totales-ventas-compras',
+    fecha: '2026-11-06',
+    titulo: 'Totales de ventas y compras del período',
+    items: [
+      {
+        tipo: 'mejora',
+        texto:
+          'El histórico mensual de cada cliente suma al pie las ventas y las compras del período que estás mirando (12 o 24 meses, 5 años o todo).',
+      },
+      {
+        tipo: 'mejora',
+        texto:
+          'El reporte de situación de monotributo, su mail y su Excel cierran el historial con una fila de totales de ventas y de compras.',
+      },
+    ],
+  },
+  {
     id: '2026-11-02-meses-adeudados-capital',
     fecha: '2026-11-02',
     titulo: 'Meses adeudados: sólo cuenta el capital',

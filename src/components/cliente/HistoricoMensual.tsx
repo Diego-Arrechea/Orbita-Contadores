@@ -213,7 +213,11 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
     (rango === 60 || rango >= 900) && hist?.primerPeriodo
       ? ` · desde ${formatMesLargo(hist.primerPeriodo)}`
       : '';
-  const totalMostrado = filas.reduce((s, f) => s + (vistaEf === 'recibidas' ? f.recib : f.emit), 0);
+  // Totales del rango visible (pedido de los contadores: totalizar ventas y compras del período).
+  const totalEmit = filas.reduce((s, f) => s + f.emit, 0);
+  const totalIng = filas.reduce((s, f) => s + f.ing, 0);
+  const totalRecib = filas.reduce((s, f) => s + f.recib, 0);
+  const totalMostrado = vistaEf === 'recibidas' ? totalRecib : totalEmit;
 
   // Sólo se suman meses (en la vista por año no aplica). Lo tildado que ya no está en el rango
   // visible (cambió el rango) simplemente no cuenta.
@@ -373,7 +377,11 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span>
-          {vistaEf === 'recibidas' ? 'Compras' : 'Facturado'} acumulado: {formatMonto(totalMostrado)}
+          {vistaEf === 'recibidas'
+            ? `Compras del período: ${formatMonto(totalRecib)}`
+            : vistaEf === 'ambos'
+              ? `Ventas del período: ${formatMonto(totalEmit)} · Compras: ${formatMonto(totalRecib)}`
+              : `Ventas del período: ${formatMonto(totalEmit)}`}
         </span>
         {real && (
           <span>
@@ -521,6 +529,23 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
                   <TableCell className="text-right tabular-nums">{formatMonto(f.recib)}</TableCell>
                 </TableRow>
               ))}
+              {filas.length > 0 && (
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  {conCasillas && <TableCell className="w-10" />}
+                  <TableCell className="whitespace-nowrap font-semibold">Total del período</TableCell>
+                  <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">
+                    {formatMonto(totalEmit)}
+                  </TableCell>
+                  {hayIngresos && (
+                    <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">
+                      {formatMonto(totalIng)}
+                    </TableCell>
+                  )}
+                  <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">
+                    {formatMonto(totalRecib)}
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         )}
@@ -528,6 +553,27 @@ export function HistoricoMensual({ cliente, real = true }: Props) {
 
       {/* Mobile: en la vista por punto de venta, una tarjeta por período con el detalle de cada punto. */}
       <div className="mt-5 space-y-3 lg:hidden">
+        {filas.length > 0 && (
+          <div className="rounded-xl border border-border/60 bg-muted/40 p-3">
+            <div className="font-semibold">Total del período</div>
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Ventas</span>
+                <span className="tabular-nums font-semibold">{formatMonto(totalEmit)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Compras</span>
+                <span className="tabular-nums font-semibold">{formatMonto(totalRecib)}</span>
+              </div>
+              {hayIngresos && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Ing. no fact.</span>
+                  <span className="tabular-nums font-semibold">{formatMonto(totalIng)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {vistaEf === 'pv' &&
           [...filas].reverse().map(f => (
             <div key={f.periodo} className="rounded-xl border border-border/60 p-3">

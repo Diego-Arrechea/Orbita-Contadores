@@ -793,14 +793,23 @@ def armar_mail(cliente, datos: Datos, rep: dict, observaciones: str, estudio: st
     hist = datos.historial
     if rep["secciones"].get("historial") and hist:
         partes.append(_h2(f"Historial de los últimos {'mes' if len(hist) == 1 else f'{len(hist)} meses'}"))
+        total_ventas = sum(m["emitidasNetas"] for m in hist)
+        total_compras = sum(m["recibidas"] for m in hist)
         partes.append(_tabla(
             [("Mes", False), ("Ventas netas", True), ("Compras", True)],
-            [[esc(_mes_legible(m["mes"])), esc(fmt_currency(m["emitidasNetas"])), esc(fmt_currency(m["recibidas"]))] for m in hist],
+            [
+                *[[esc(_mes_legible(m["mes"])), esc(fmt_currency(m["emitidasNetas"])), esc(fmt_currency(m["recibidas"]))] for m in hist],
+                [
+                    "<strong>Total</strong>",
+                    f"<strong>{esc(fmt_currency(total_ventas))}</strong>",
+                    f"<strong>{esc(fmt_currency(total_compras))}</strong>",
+                ],
+            ],
         ))
         texto += ["Historial:", *[
             f"- {_mes_legible(m['mes'])}: ventas {fmt_currency(m['emitidasNetas'])} · compras {fmt_currency(m['recibidas'])}"
             for m in hist
-        ], ""]
+        ], f"- Total: ventas {fmt_currency(total_ventas)} · compras {fmt_currency(total_compras)}", ""]
     if rep["secciones"].get("alertas"):
         partes.append(_h2("Alertas"))
         if not datos.alertas:

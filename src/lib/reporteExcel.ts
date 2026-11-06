@@ -86,6 +86,11 @@ export function descargarReporteExcel(opts: {
   if (ult12.length > 0) {
     const hist: Fila[] = [['Mes', 'Ventas netas', 'Compras']];
     [...ult12].reverse().forEach(m => hist.push([m.mes, m.emitidasNetas, m.recibidas]));
+    hist.push([
+      'Total',
+      ult12.reduce((s, m) => s + m.emitidasNetas, 0),
+      ult12.reduce((s, m) => s + m.recibidas, 0),
+    ]);
     const wsH = XLSX.utils.aoa_to_sheet(hist);
     wsH['!cols'] = [{ wch: 12 }, { wch: 18 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, wsH, 'Historial 12m');

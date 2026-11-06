@@ -477,6 +477,15 @@ export function ReporteCliente() {
                     </td>
                   </tr>
                 ))}
+                <tr className="font-semibold">
+                  <td className="py-2">Total</td>
+                  <td className="py-2 text-right tabular-nums">
+                    {formatCurrency(historial.reduce((s, m) => s + m.emitidasNetas, 0))}
+                  </td>
+                  <td className="py-2 text-right tabular-nums">
+                    {formatCurrency(historial.reduce((s, m) => s + m.recibidas, 0))}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </>

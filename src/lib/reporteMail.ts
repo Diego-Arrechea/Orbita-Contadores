@@ -161,14 +161,28 @@ export function armarMailReporte({
 
   // Historial
   if (rep.secciones.historial && historial.length > 0) {
+    const totalVentas = historial.reduce((s, m) => s + m.emitidasNetas, 0);
+    const totalCompras = historial.reduce((s, m) => s + m.recibidas, 0);
     partes.push(h2(`Historial de los últimos ${historial.length === 1 ? 'mes' : `${historial.length} meses`}`));
     partes.push(
       tabla(
         [{ t: 'Mes' }, { t: 'Ventas netas', der: true }, { t: 'Compras', der: true }],
-        historial.map(m => [esc(mesLegible(m.mes)), esc(formatCurrency(m.emitidasNetas)), esc(formatCurrency(m.recibidas))]),
+        [
+          ...historial.map(m => [esc(mesLegible(m.mes)), esc(formatCurrency(m.emitidasNetas)), esc(formatCurrency(m.recibidas))]),
+          [
+            '<strong>Total</strong>',
+            `<strong>${esc(formatCurrency(totalVentas))}</strong>`,
+            `<strong>${esc(formatCurrency(totalCompras))}</strong>`,
+          ],
+        ],
       ),
     );
-    texto.push('Historial:', ...historial.map(m => `- ${mesLegible(m.mes)}: ventas ${formatCurrency(m.emitidasNetas)} · compras ${formatCurrency(m.recibidas)}`), '');
+    texto.push(
+      'Historial:',
+      ...historial.map(m => `- ${mesLegible(m.mes)}: ventas ${formatCurrency(m.emitidasNetas)} · compras ${formatCurrency(m.recibidas)}`),
+      `- Total: ventas ${formatCurrency(totalVentas)} · compras ${formatCurrency(totalCompras)}`,
+      '',
+    );
   }
 
   // Alertas
