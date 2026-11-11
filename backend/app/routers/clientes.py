@@ -783,6 +783,40 @@ def eliminar_cliente(
     # ForeignKeyViolation → 500. Ver models.py: estas dos tablas tienen FK a clientes_arca.cuit.
     db.execute(delete(models.Extraccion).where(models.Extraccion.cuit == cuit))
     db.execute(delete(models.MovimientoBancario).where(models.MovimientoBancario.cuit == cuit))
+    # Todo lo demás que tiene FK a clientes_arca.cuit (contabilidad, IVA, DFE, agro). Primero lo que
+    # cuelga del plan de cuentas y de los asientos (FK por id), después el plan y los asientos. Sin
+    # esto, un cliente que alguna vez abrió Contabilidad (se crea el plan de cuentas) no se podía
+    # borrar: ForeignKeyViolation en plan_cuentas → 500.
+    cuentas = select(models.CuentaContable.id).where(models.CuentaContable.cuit == cuit)
+    asientos = select(models.AsientoManual.id).where(models.AsientoManual.cuit == cuit)
+    db.execute(
+        delete(models.LineaAsientoManual).where(
+            models.LineaAsientoManual.asiento_id.in_(asientos)
+            | models.LineaAsientoManual.cuenta_id.in_(cuentas)
+        )
+    )
+    db.execute(
+        delete(models.ImputacionComprobante).where(
+            (models.ImputacionComprobante.cuit == cuit)
+            | models.ImputacionComprobante.cuenta_id.in_(cuentas)
+        )
+    )
+    db.execute(
+        delete(models.ReglaImputacion).where(
+            (models.ReglaImputacion.cuit == cuit) | models.ReglaImputacion.cuenta_id.in_(cuentas)
+        )
+    )
+    for modelo in (
+        models.AsientoManual,
+        models.CuentaContable,
+        models.CierreContable,
+        models.EventoContable,
+        models.IvaCorreccion,
+        models.IvaAjuste,
+        models.ComunicacionDFE,
+        models.LiquidacionAgro,
+    ):
+        db.execute(delete(modelo).where(modelo.cuit == cuit))
     db.delete(cliente)
     db.commit()
     return {"cuit": cuit, "comprobantes_eliminados": res.rowcount}
