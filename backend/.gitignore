@@ -14,6 +14,8 @@ __pycache__/
 *.crt
 *.csr
 *.pem
+# Excepción: certificados intermedios PÚBLICOS de CAs para el bundle de la imagen (ver Dockerfile)
+!certs/*.pem
 
 # Perfiles de Chromium del scraping (basura, datos de sesión) — NUNCA al repo
 .perfil_*/

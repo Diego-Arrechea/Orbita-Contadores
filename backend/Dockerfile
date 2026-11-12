@@ -31,6 +31,14 @@ RUN playwright install-deps chromium \
 # 3) Código de la app
 COPY . .
 
+# 4) Bundle de CA = certifi + intermedias que algunos servidores de ARCA no mandan en el handshake.
+#    Desde el 11-nov-2026 portalcf.cloud.afip.gob.ar sirve sólo el certificado hoja (sin la
+#    intermedia «Sectigo Public Server Authentication CA OV R36»): el navegador la completa solo,
+#    requests no → CERTIFICATE_VERIFY_FAILED en todas las sincronizaciones. Las intermedias van en
+#    certs/ (son públicas). Se arma al buildear, así que sigue a certifi cuando se actualiza.
+RUN cat "$(python -m certifi)" certs/*.pem > /opt/ca-orbita.pem
+ENV REQUESTS_CA_BUNDLE=/opt/ca-orbita.pem
+
 EXPOSE 8000
 # 1 solo worker: el scheduler (APScheduler) del sync diario vive dentro del proceso;
 # con varios workers el sync se dispararía N veces.
