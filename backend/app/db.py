@@ -92,7 +92,7 @@ def _migrar_usuarios(conn) -> None:
     # reconstruye la tabla (sólo la primera vez; dev-only).
     if es_sqlite:
         _cuit_nullable_sqlite(conn)
-    else:
+    elif _pg_columna(conn, "usuarios", "cuit")[0] == "NO":
         conn.execute(text("ALTER TABLE usuarios ALTER COLUMN cuit DROP NOT NULL"))
 
     # Backfill de filas previas (las nuevas columnas quedaron NULL en datos viejos) + seed de admins.
@@ -157,6 +157,21 @@ def _cuit_nullable_sqlite(conn) -> None:
         conn.execute(text(str(CreateIndex(indice).compile(engine))))
 
 
+def _pg_columna(conn, tabla: str, columna: str) -> tuple[str | None, int | None]:
+    """(is_nullable 'YES'/'NO', largo máximo) de una columna en Postgres; (None, None) si no existe.
+    Sirve para correr un ALTER ... ALTER COLUMN sólo cuando hace falta: ese ALTER pide la tabla en
+    exclusiva aunque no cambie nada, y si el worker tiene una transacción abierta queda esperando y
+    encola detrás TODAS las consultas a la tabla (13-nov: API colgada ~10 min en un deploy)."""
+    fila = conn.execute(
+        text(
+            "SELECT is_nullable, character_maximum_length FROM information_schema.columns "
+            "WHERE table_name = :t AND column_name = :c"
+        ),
+        {"t": tabla, "c": columna},
+    ).first()
+    return (fila[0], fila[1]) if fila else (None, None)
+
+
 def _columnas(conn, tabla: str) -> set[str]:
     """Nombres de columna de `tabla` (vacío si no existe). Portable SQLite + Postgres."""
     if settings.database_url.startswith("sqlite"):
@@ -212,7 +227,7 @@ def _migrar_clientes_arca(conn) -> None:
     # que devuelve el padrón de impuestos cuando el contribuyente tiene IVA activo. SQLite no valida
     # el largo, así que el problema sólo aparece en Postgres, y recién al sincronizar el primer
     # responsable inscripto. Ampliar un varchar es sólo metadata: no reescribe la tabla.
-    if not es_sqlite:
+    if not es_sqlite and (_pg_columna(conn, "clientes_arca", "regimen")[1] or 0) < 24:
         conn.execute(text("ALTER TABLE clientes_arca ALTER COLUMN regimen TYPE VARCHAR(24)"))
     if "alertas_baseline_en" not in cols:
         tipo = "TIMESTAMP" if es_sqlite else "TIMESTAMP WITH TIME ZONE"
