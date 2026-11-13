@@ -22,7 +22,7 @@ import signal
 import threading
 import time
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, false, func, or_, select
 
 from ..config import settings
 from ..db import SessionLocal
@@ -92,6 +92,20 @@ def _clientes_vencidos(db, limite: dt.datetime, limite_fallidos: dt.datetime):
     # Cuentas de demostración: su cartera es de ejemplo (no existe ante los organismos), así que
     # nunca entra al ciclo. Ver services/demo.py.
     ids_demo = demo_svc.ids_demo(db)
+    # Marcados por un bloqueo del lado de ARCA (ver config.sync_reintento_marcados_dias): fuera del
+    # ciclo normal y del reintento rápido, pero UNA prueba cada N días desde su última extracción
+    # (exitosa o no). Si vuelve a fallar igual, esa extracción fallida corre el reloj otros N días.
+    marcado = or_(
+        ClienteARCA.clave_requiere_cambio.is_(True),
+        ClienteARCA.contribuyente_irregular.is_(True),
+        ClienteARCA.doble_factor.is_(True),
+    )
+    dias_marcados = settings.sync_reintento_marcados_dias
+    reintento_marcados = (
+        and_(marcado, ult.c.fecha < dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=dias_marcados))
+        if dias_marcados > 0
+        else false()
+    )
     q = (
         select(ClienteARCA.cuit, ClienteARCA.cuit_credencial)
         .outerjoin(ult, ult.c.cuit == ClienteARCA.cuit)
@@ -104,22 +118,24 @@ def _clientes_vencidos(db, limite: dt.datetime, limite_fallidos: dt.datetime):
             # flags y el cliente vuelve a entrar al ciclo). Evita martillar un fallo que solo el contador
             # puede resolver (p. ej. Blanco Omar José reintentando en vano).
             ClienteARCA.clave_invalida.is_(False),
-            ClienteARCA.clave_requiere_cambio.is_(False),
-            # Igual criterio si registra irregularidades en el padrón: reintentar es en vano hasta que
-            # el cliente regularice en la dependencia. Una sync exitosa (cuando regularice) apaga el flag.
-            ClienteARCA.contribuyente_irregular.is_(False),
-            # Igual si tiene la verificación en dos pasos (token OTP) activada: cada login pide un token
-            # que no tenemos, así que reintentar es en vano hasta que el cliente la desactive. Una sync
-            # exitosa (cuando la desactive) apaga el flag y el cliente vuelve al ciclo.
-            ClienteARCA.doble_factor.is_(False),
             *([ClienteARCA.usuario_id.notin_(ids_demo)] if ids_demo else []),
             or_(
-                ult.c.fecha.is_(None),                                            # nunca sincronizado
-                ult.c.fecha < limite,                                             # vencido normal
-                (ult.c.resultado == "fallida")                                    # reintento de fallido…
-                & (ult.c.fecha < limite_fallidos)
-                & (func.coalesce(fallos.c.n, 0) < settings.sync_max_reintentos_rapidos),  # …hasta el tope
-            )
+                and_(
+                    # Igual criterio para el cambio de clave forzado por AFIP, las irregularidades en
+                    # el padrón y la verificación en dos pasos: reintentar seguido es en vano, así que
+                    # quedan fuera del ciclo normal y sólo entran por `reintento_marcados` (abajo).
+                    # Una sync exitosa apaga la marca y el cliente vuelve al ciclo normal.
+                    ~marcado,
+                    or_(
+                        ult.c.fecha.is_(None),                                    # nunca sincronizado
+                        ult.c.fecha < limite,                                     # vencido normal
+                        (ult.c.resultado == "fallida")                            # reintento de fallido…
+                        & (ult.c.fecha < limite_fallidos)
+                        & (func.coalesce(fallos.c.n, 0) < settings.sync_max_reintentos_rapidos),  # …hasta el tope
+                    ),
+                ),
+                reintento_marcados,
+            ),
         )
         .order_by(func.coalesce(ult.c.fecha, epoch).asc())
     )

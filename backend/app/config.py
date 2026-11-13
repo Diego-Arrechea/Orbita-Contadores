@@ -77,6 +77,13 @@ class Settings(BaseSettings):
     # bloqueos/captcha). Se resetea solo cuando una sync sale bien. Cada re-despacho hace hasta
     # SYNC_REINTENTOS+1 intentos, así que 3 ≈ un burst de intentos y a la cadencia lenta.
     sync_max_reintentos_rapidos: int = 3
+    # Reintento lento de los clientes MARCADOS por un bloqueo que no depende de nosotros (ARCA pide
+    # cambiar la clave, irregularidad en el padrón, verificación en dos pasos). Salen del ciclo
+    # normal, pero cada N días se prueba UNA vez: si el bloqueo ya no está (el cliente lo resolvió del
+    # lado de ARCA), la sync sale bien y apaga la marca sola. Sin esto quedaban trabados para siempre
+    # (caso Aguerre: marcado el 3-sep, ARCA ya no pedía nada y el contador no podía destrabarlo).
+    # La clave INVÁLIDA no entra: probar una clave mal cargada sólo suma intentos fallidos. 0 = apagado.
+    sync_reintento_marcados_dias: int = 7
     # Cada cuánto el despachador revisa qué clientes están vencidos y los encola (segundos).
     sync_poll_segundos: int = 60
     # Timeout HTTP (segundos) por request a ARCA. Sin esto, un request colgado (ARCA degradada por su
