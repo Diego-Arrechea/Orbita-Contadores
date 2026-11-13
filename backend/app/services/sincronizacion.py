@@ -353,6 +353,9 @@ def sincronizar(db: Session, cuit: str, headless: bool | None = None, on_progres
         # el aviso solo.
         db.rollback()
         cliente.clave_invalida = True
+        # Si estaba marcado por "ARCA pide cambiar la clave", ese pedido ya no es el problema: el
+        # cliente la cambió y la guardada es la vieja. Dejar las dos marcas muestra dos avisos.
+        cliente.clave_requiere_cambio = False
         db.commit()
         _registrar_extraccion(db, cuit, "fallida", 0, _ms(inicio), str(e)[:300])
         raise
